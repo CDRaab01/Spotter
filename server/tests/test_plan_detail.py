@@ -104,7 +104,7 @@ async def test_update_plan_exercises_404_for_wrong_user(auth_client, client, exe
         "/auth/register",
         json={
             "name": "Other User",
-            "email": f"other_{uid}@spotter.test",
+            "email": f"other_{uid}@spotter.com",
             "password": "Testpass123!",
         },
     )

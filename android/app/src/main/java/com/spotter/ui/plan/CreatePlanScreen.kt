@@ -189,7 +189,7 @@ fun CreatePlanScreen(
 }
 
 @Composable
-private fun DraftExerciseRow(
+internal fun DraftExerciseRow(
     draft: DraftExercise,
     onUpdate: (DraftExercise) -> Unit,
     onRemove: () -> Unit,

@@ -1,5 +1,7 @@
+import asyncio
 import uuid
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -8,11 +10,28 @@ from app.main import app
 from app.models.exercise import Exercise
 
 
+@pytest.fixture(scope="session")
+def event_loop():
+    """Share a single event loop across the whole test session.
+
+    The app's engine is a module-level singleton whose asyncpg connection pool
+    binds to the first loop that touches it. Without a shared session loop,
+    pytest-asyncio gives each test its own loop and every DB query raises
+    "attached to a different loop". One session-scoped loop keeps the pool valid.
+    """
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_tables():
     """Ensure all tables exist before any test runs (safe to call after alembic)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Empty the pool so the connection opened above (bound to this setup step)
+    # isn't later reused by a test running on a different loop.
+    await engine.dispose()
     yield
 
 
@@ -30,7 +49,7 @@ async def auth_client(client):
         "/auth/register",
         json={
             "name": "Test User",
-            "email": f"test_{uid}@spotter.test",
+            "email": f"test_{uid}@spotter.com",
             "password": "Testpass123!",
         },
     )

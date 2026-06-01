@@ -1,5 +1,4 @@
 import datetime
-import uuid
 
 
 async def test_list_sessions_requires_auth(client):

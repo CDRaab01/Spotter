@@ -70,7 +70,7 @@ async def test_other_users_plan_not_accessible(auth_client, client, exercise):
         "/auth/register",
         json={
             "name": "Other User",
-            "email": f"other_{uid}@spotter.test",
+            "email": f"other_{uid}@spotter.com",
             "password": "Testpass123!",
         },
     )
