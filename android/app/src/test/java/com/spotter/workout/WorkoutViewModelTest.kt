@@ -1,5 +1,6 @@
 package com.spotter.workout
 
+import android.content.Context
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
@@ -33,13 +34,15 @@ class WorkoutViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var repository: SessionRepository
+    private lateinit var context: Context
     private lateinit var viewModel: WorkoutViewModel
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mock()
-        viewModel = WorkoutViewModel(repository)
+        context = mock()
+        viewModel = WorkoutViewModel(repository, context)
     }
 
     @After
@@ -342,6 +345,73 @@ class WorkoutViewModelTest {
         job.cancel()
     }
 
+    // ── Superset routing ───────────────────────────────────────────────────────
+
+    @Test
+    fun `completeActiveSet with superset activates next set instead of starting rest`() = runTest(testDispatcher) {
+        val set1 = fakeSetLog(id = "set-1", supersetGroup = 1)
+        val set2 = fakeSetLog(id = "set-2", supersetGroup = 1)
+        val session = SessionOut(
+            id = "s1", userId = "user-1", planId = null, date = "2026-06-01",
+            status = "in_progress", durationSeconds = null, note = null,
+            setLogs = listOf(set1, set2),
+        )
+        whenever(repository.getSession("s1")).thenReturn(session)
+        whenever(repository.getPriorBests("s1")).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(set1.copy(completed = true))
+
+        viewModel.loadSession("s1")
+        advanceTimeBy(200)
+        viewModel.activateSet(set1)
+        viewModel.completeActiveSet("s1")
+        advanceTimeBy(200)
+
+        assertEquals("set-2", viewModel.activeSetId.value)
+        assertNull(viewModel.restTimerSeconds.value)
+    }
+
+    @Test
+    fun `completeActiveSet without superset starts rest timer normally`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        val setLog = session.setLogs.first()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(completed = true))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.activateSet(setLog)
+        viewModel.completeActiveSet(session.id)
+        advanceTimeBy(200)
+
+        assertNull(viewModel.activeSetId.value)
+        assertNotNull(viewModel.restTimerSeconds.value)
+    }
+
+    @Test
+    fun `completeActiveSet skips completed sets when looking for superset partner`() = runTest(testDispatcher) {
+        val set1 = fakeSetLog(id = "set-1", supersetGroup = 1)
+        val set2 = fakeSetLog(id = "set-2", supersetGroup = 1, completed = true)  // already done
+        val session = SessionOut(
+            id = "s1", userId = "user-1", planId = null, date = "2026-06-01",
+            status = "in_progress", durationSeconds = null, note = null,
+            setLogs = listOf(set1, set2),
+        )
+        whenever(repository.getSession("s1")).thenReturn(session)
+        whenever(repository.getPriorBests("s1")).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(set1.copy(completed = true))
+
+        viewModel.loadSession("s1")
+        advanceTimeBy(200)
+        viewModel.activateSet(set1)
+        viewModel.completeActiveSet("s1")
+        advanceTimeBy(200)
+
+        // set2 is already completed so no superset partner → rest timer starts
+        assertNull(viewModel.activeSetId.value)
+        assertNotNull(viewModel.restTimerSeconds.value)
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private fun fakeSetLog(
@@ -349,6 +419,8 @@ class WorkoutViewModelTest {
         sessionId: String = "session-1",
         reps: Int = 8,
         targetReps: Int? = 8,
+        supersetGroup: Int? = null,
+        completed: Boolean = false,
     ) = SetLogOut(
         id = id,
         sessionId = sessionId,
@@ -356,8 +428,9 @@ class WorkoutViewModelTest {
         setNumber = 1,
         reps = reps,
         weight = 135.0,
-        completed = false,
+        completed = completed,
         targetReps = targetReps,
+        supersetGroup = supersetGroup,
     )
 
     private fun fakeSession(id: String = "session-1") = SessionOut(

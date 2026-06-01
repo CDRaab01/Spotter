@@ -4,9 +4,11 @@ import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.PlanOut
 import com.spotter.data.model.PlanUpdate
+import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.home.HomeViewModel
 import com.spotter.util.AppPreferences
@@ -27,6 +29,8 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
@@ -36,6 +40,7 @@ class HomeViewModelTest {
     private lateinit var sessionRepository: SessionRepository
     private lateinit var metricRepository: MetricRepository
     private lateinit var aiRepository: AiRepository
+    private lateinit var programRepository: ProgramRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var viewModel: HomeViewModel
 
@@ -46,10 +51,11 @@ class HomeViewModelTest {
         sessionRepository = mock()
         metricRepository = mock()
         aiRepository = mock()
+        programRepository = mock()
         appPreferences = mock()
         whenever(planRepository.plans).thenReturn(emptyFlow())
         whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
-        viewModel = HomeViewModel(planRepository, sessionRepository, metricRepository, aiRepository, appPreferences)
+        viewModel = HomeViewModel(planRepository, sessionRepository, metricRepository, aiRepository, programRepository, appPreferences)
     }
 
     @After
@@ -101,5 +107,38 @@ class HomeViewModelTest {
         advanceTimeBy(200)
 
         verify(metricRepository).addMetric(any<BodyMetricCreate>())
+    }
+
+    @Test
+    fun `nextProgramDay is null initially`() {
+        assertNull(viewModel.nextProgramDay.value)
+    }
+
+    @Test
+    fun `sync populates nextProgramDay when active program has a next day`() = runTest(testDispatcher) {
+        val nextDay = ProgramDayOut(id = "day-1", label = "Push", order = 0)
+        whenever(programRepository.getNextProgramDay()).thenReturn(nextDay)
+
+        viewModel.sync()
+        advanceTimeBy(200)
+
+        assertEquals("Push", viewModel.nextProgramDay.value?.label)
+    }
+
+    @Test
+    fun `sync leaves nextProgramDay null when no active program`() = runTest(testDispatcher) {
+        whenever(programRepository.getNextProgramDay()).thenReturn(null)
+
+        viewModel.sync()
+        advanceTimeBy(200)
+
+        assertNull(viewModel.nextProgramDay.value)
+    }
+
+    @Test
+    fun `sync delegates to programRepository`() = runTest(testDispatcher) {
+        viewModel.sync()
+        advanceTimeBy(200)
+        verify(programRepository).sync()
     }
 }

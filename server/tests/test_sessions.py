@@ -241,3 +241,63 @@ async def test_cannot_access_another_users_session(client, exercise):
     client.headers["Authorization"] = f"Bearer {token2}"
     resp = await client.get(f"/sessions/{session_id}")
     assert resp.status_code == 404
+
+
+async def test_session_includes_muscle_groups_after_completed_sets(auth_client, exercise):
+    _, session = await _make_plan_and_session(auth_client, exercise)
+    for sl in session["set_logs"]:
+        await auth_client.patch(
+            f"/sessions/{session['id']}/sets/{sl['id']}", json={"completed": True}
+        )
+    resp = await auth_client.get(f"/sessions/{session['id']}")
+    assert resp.status_code == 200
+    muscle_groups = resp.json().get("muscle_groups", [])
+    assert len(muscle_groups) > 0
+    assert muscle_groups[0]["muscle_group"] == exercise.muscle_group
+    assert muscle_groups[0]["sets"] == 3
+
+
+async def test_prior_bests_includes_last_sets_after_prior_session(auth_client, exercise):
+    _, s1 = await _make_plan_and_session(auth_client, exercise)
+    for sl in s1["set_logs"][:2]:
+        await auth_client.patch(
+            f"/sessions/{s1['id']}/sets/{sl['id']}", json={"completed": True}
+        )
+
+    _, s2 = await _make_plan_and_session(auth_client, exercise)
+    resp = await auth_client.get(f"/sessions/{s2['id']}/prior-bests")
+    assert resp.status_code == 200
+    bests = resp.json()
+    assert len(bests) == 1
+    last_sets = bests[0]["last_sets"]
+    assert len(last_sets) == 2
+    assert all(sl["completed"] is True for sl in last_sets)
+
+
+async def test_set_log_superset_group_propagated_from_plan(auth_client, exercise):
+    plan_resp = await auth_client.post(
+        "/plans",
+        json={
+            "name": "Superset Plan",
+            "exercises": [
+                {
+                    "exercise_id": str(exercise.id),
+                    "target_sets": 2,
+                    "target_reps": 10,
+                    "is_bodyweight": False,
+                    "order": 0,
+                    "superset_group": 1,
+                }
+            ],
+        },
+    )
+    assert plan_resp.status_code == 201
+    plan_id = plan_resp.json()["id"]
+
+    sess_resp = await auth_client.post(
+        "/sessions", json={"plan_id": plan_id, "date": str(datetime.date.today())}
+    )
+    assert sess_resp.status_code == 201
+    set_logs = sess_resp.json()["set_logs"]
+    assert len(set_logs) == 2
+    assert all(sl["superset_group"] == 1 for sl in set_logs)
