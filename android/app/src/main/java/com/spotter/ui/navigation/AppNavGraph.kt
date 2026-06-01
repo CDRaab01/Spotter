@@ -7,8 +7,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spotter.ui.ai.AiChatScreen
+import com.spotter.ui.auth.ForgotPasswordScreen
 import com.spotter.ui.auth.LoginScreen
 import com.spotter.ui.auth.RegisterScreen
+import com.spotter.ui.auth.ResetPasswordScreen
 import com.spotter.ui.calendar.CalendarScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
@@ -30,6 +32,21 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
                     navController.navigate(Screen.Home.route) { popUpTo(0) { inclusive = true } }
                 },
                 onNavigateToRegister = { navController.navigate(Screen.Register.route) },
+                onNavigateToForgotPassword = { navController.navigate(Screen.ForgotPassword.route) },
+            )
+        }
+        composable(Screen.ForgotPassword.route) {
+            ForgotPasswordScreen(
+                onBack = { navController.popBackStack() },
+                onCodeSent = { navController.navigate(Screen.ResetPassword.route) },
+            )
+        }
+        composable(Screen.ResetPassword.route) {
+            ResetPasswordScreen(
+                onBack = { navController.popBackStack() },
+                onResetSuccess = {
+                    navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
+                },
             )
         }
         composable(Screen.Register.route) {

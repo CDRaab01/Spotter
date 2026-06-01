@@ -21,3 +21,12 @@ data class RefreshRequest(@SerialName("refresh_token") val refreshToken: String)
 
 @Serializable
 data class UserOut(val id: String, val name: String, val email: String)
+
+@Serializable
+data class ForgotPasswordRequest(val email: String)
+
+@Serializable
+data class ResetPasswordRequest(
+    val token: String,
+    @SerialName("new_password") val newPassword: String,
+)

@@ -1,7 +1,9 @@
 package com.spotter.data.repository
 
+import com.spotter.data.model.ForgotPasswordRequest
 import com.spotter.data.model.LoginRequest
 import com.spotter.data.model.RegisterRequest
+import com.spotter.data.model.ResetPasswordRequest
 import com.spotter.data.model.TokenResponse
 import com.spotter.data.remote.ApiService
 import com.spotter.util.TokenStore
@@ -24,4 +26,10 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun logout() = tokenStore.clear()
+
+    suspend fun forgotPassword(email: String) =
+        api.forgotPassword(ForgotPasswordRequest(email))
+
+    suspend fun resetPassword(token: String, newPassword: String) =
+        api.resetPassword(ResetPasswordRequest(token, newPassword))
 }

@@ -6,9 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+)
 from app.security import create_access_token, create_refresh_token
-from app.services.auth_service import login_user, register_user
+from app.services.auth_service import forgot_password, login_user, register_user, reset_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,3 +52,19 @@ async def refresh(req: RefreshRequest):
         access_token=create_access_token(user_id),
         refresh_token=create_refresh_token(user_id),
     )
+
+
+@router.post("/forgot-password", status_code=200)
+async def forgot_password_endpoint(
+    req: ForgotPasswordRequest, db: Annotated[AsyncSession, Depends(get_db)]
+):
+    await forgot_password(db, req)
+    return {"detail": "If an account with that email exists, a reset code has been sent."}
+
+
+@router.post("/reset-password", status_code=200)
+async def reset_password_endpoint(
+    req: ResetPasswordRequest, db: Annotated[AsyncSession, Depends(get_db)]
+):
+    await reset_password(db, req)
+    return {"detail": "Password updated successfully."}

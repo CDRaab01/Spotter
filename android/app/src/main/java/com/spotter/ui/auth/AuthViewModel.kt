@@ -41,4 +41,32 @@ class AuthViewModel @Inject constructor(
             }
         }
     }
+
+    fun forgotPassword(email: String) {
+        viewModelScope.launch {
+            _authState.value = UiState.Loading
+            _authState.value = try {
+                authRepository.forgotPassword(email)
+                UiState.Success(Unit)
+            } catch (e: Exception) {
+                UiState.Error(e.message ?: "Request failed. Please try again.")
+            }
+        }
+    }
+
+    fun resetPassword(token: String, newPassword: String) {
+        viewModelScope.launch {
+            _authState.value = UiState.Loading
+            _authState.value = try {
+                authRepository.resetPassword(token, newPassword)
+                UiState.Success(Unit)
+            } catch (e: Exception) {
+                UiState.Error(e.message ?: "Invalid or expired code. Please try again.")
+            }
+        }
+    }
+
+    fun clearState() {
+        _authState.value = UiState.Idle
+    }
 }

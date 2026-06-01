@@ -22,6 +22,8 @@ import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
+import com.spotter.data.model.ForgotPasswordRequest
+import com.spotter.data.model.ResetPasswordRequest
 import com.spotter.data.model.TokenResponse
 import com.spotter.data.model.TrackedExercise
 import com.spotter.data.model.UserOut
@@ -44,6 +46,12 @@ interface ApiService {
 
     @POST("auth/refresh")
     suspend fun refresh(@Body req: RefreshRequest): TokenResponse
+
+    @POST("auth/forgot-password")
+    suspend fun forgotPassword(@Body req: ForgotPasswordRequest)
+
+    @POST("auth/reset-password")
+    suspend fun resetPassword(@Body req: ResetPasswordRequest)
 
     // Plans
     @GET("plans")
