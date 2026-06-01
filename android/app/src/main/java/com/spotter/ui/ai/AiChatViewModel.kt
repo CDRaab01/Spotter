@@ -34,8 +34,12 @@ class AiChatViewModel @Inject constructor(
                 _messages.value = newMessages + ChatMessage("assistant", response.reply)
                 _sendState.value = UiState.Success(Unit)
             } catch (e: Exception) {
-                _sendState.value = UiState.Error(e.message ?: "Failed to send message")
+                _sendState.value = UiState.Error(e.message ?: "Failed to reach Spotter. Try again.")
             }
         }
+    }
+
+    fun clearError() {
+        if (_sendState.value is UiState.Error) _sendState.value = UiState.Idle
     }
 }

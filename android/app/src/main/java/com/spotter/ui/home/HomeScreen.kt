@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +28,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -43,6 +46,14 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val plans by viewModel.plans.collectAsState()
+    val startState by viewModel.startState.collectAsState()
+    val isStarting = startState is UiState.Loading
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateToWorkout.collect { sessionId ->
+            navController.navigate(Screen.Workout.createRoute(sessionId))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -94,7 +105,7 @@ fun HomeScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(padding),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                        contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(state.data) { plan ->
@@ -104,8 +115,18 @@ fun HomeScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(plan.name, style = MaterialTheme.typography.titleLarge)
-                                        Text(plan.source, style = MaterialTheme.typography.bodyMedium)
+                                        Text(plan.name, style = MaterialTheme.typography.titleMedium)
+                                        Text(
+                                            plan.source,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { viewModel.startSession(plan.id) },
+                                        enabled = !isStarting,
+                                    ) {
+                                        Text(if (isStarting) "Starting…" else "Start")
                                     }
                                 }
                             }

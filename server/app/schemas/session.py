@@ -18,11 +18,20 @@ class SetLogCreate(BaseModel):
     completed: bool = False
 
 
-class SetLogOut(SetLogCreate):
+class SetLogOut(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
+    exercise_id: uuid.UUID
+    set_number: int
+    reps: int
+    weight: float | None = None
+    completed: bool = False
     completed_at: datetime.datetime | None = None
-    model_config = {"from_attributes": True}
+    # Enriched fields — populated when the session has an associated plan
+    exercise_name: str | None = None
+    target_sets: int | None = None
+    target_reps: int | None = None
+    target_weight: float | None = None
 
 
 class SessionOut(BaseModel):
@@ -34,4 +43,3 @@ class SessionOut(BaseModel):
     duration_seconds: int | None
     note: str | None
     set_logs: list[SetLogOut] = []
-    model_config = {"from_attributes": True}

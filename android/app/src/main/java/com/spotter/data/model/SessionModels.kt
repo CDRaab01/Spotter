@@ -29,6 +29,10 @@ data class SetLogOut(
     val weight: Double? = null,
     val completed: Boolean = false,
     @SerialName("completed_at") val completedAt: String? = null,
+    @SerialName("exercise_name") val exerciseName: String? = null,
+    @SerialName("target_sets") val targetSets: Int? = null,
+    @SerialName("target_reps") val targetReps: Int? = null,
+    @SerialName("target_weight") val targetWeight: Double? = null,
 )
 
 @Serializable
