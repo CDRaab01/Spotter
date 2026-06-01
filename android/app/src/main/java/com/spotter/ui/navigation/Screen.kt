@@ -14,4 +14,5 @@ sealed class Screen(val route: String) {
     data object Calendar : Screen("calendar")
     data object Progress : Screen("progress")
     data object AiChat : Screen("ai_chat")
+    data object CreatePlan : Screen("create_plan")
 }

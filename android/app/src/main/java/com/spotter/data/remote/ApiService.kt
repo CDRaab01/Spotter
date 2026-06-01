@@ -5,6 +5,7 @@ import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.ChatResponse
+import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.LoginRequest
@@ -96,6 +97,10 @@ interface ApiService {
         @Query("from") from: String,
         @Query("to") to: String,
     ): List<CalendarEntry>
+
+    // Exercises
+    @GET("exercises")
+    suspend fun searchExercises(@Query("search") search: String = ""): List<ExerciseOut>
 
     // Progress
     @GET("progress/exercises")

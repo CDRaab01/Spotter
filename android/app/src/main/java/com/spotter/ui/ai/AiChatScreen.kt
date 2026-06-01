@@ -1,5 +1,6 @@
 package com.spotter.ui.ai
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
@@ -30,10 +31,12 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -54,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.model.SuggestedPlan
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,6 +68,7 @@ fun AiChatScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val sendState by viewModel.sendState.collectAsState()
+    val pendingPlan by viewModel.pendingPlan.collectAsState()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -81,6 +86,15 @@ fun AiChatScreen(
                 duration = SnackbarDuration.Long,
             )
             viewModel.clearError()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.planSaved.collect { planName ->
+            snackbarHostState.showSnackbar(
+                message = "Plan \"$planName\" saved!",
+                duration = SnackbarDuration.Short,
+            )
         }
     }
 
@@ -148,6 +162,17 @@ fun AiChatScreen(
                 }
             }
 
+            AnimatedVisibility(visible = pendingPlan != null) {
+                pendingPlan?.let { plan ->
+                    SuggestedPlanCard(
+                        plan = plan,
+                        onSave = { viewModel.savePlan() },
+                        onDismiss = { viewModel.dismissPlan() },
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,6 +195,45 @@ fun AiChatScreen(
                     enabled = inputText.isNotBlank() && !isLoading,
                 ) {
                     Icon(Icons.Default.Send, contentDescription = "Send")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestedPlanCard(
+    plan: SuggestedPlan,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = plan.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = "${plan.exercises.size} exercise${if (plan.exercises.size != 1) "s" else ""}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+            )
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(onClick = onSave, modifier = Modifier.weight(1f)) {
+                    Text("Save Plan")
+                }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    Text("Dismiss")
                 }
             }
         }

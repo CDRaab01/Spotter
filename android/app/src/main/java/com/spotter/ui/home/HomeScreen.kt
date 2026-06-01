@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.FitnessCenter
@@ -33,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -98,8 +100,16 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showBodyweightDialog = true }) {
-                Icon(Icons.Default.FitnessCenter, contentDescription = "Log bodyweight")
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SmallFloatingActionButton(onClick = { showBodyweightDialog = true }) {
+                    Icon(Icons.Default.FitnessCenter, contentDescription = "Log bodyweight")
+                }
+                FloatingActionButton(onClick = { navController.navigate(Screen.CreatePlan.route) }) {
+                    Icon(Icons.Default.Add, contentDescription = "New plan")
+                }
             }
         },
     ) { padding ->
