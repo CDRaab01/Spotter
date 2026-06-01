@@ -7,6 +7,10 @@ sealed class Screen(val route: String) {
     data object Workout : Screen("workout/{sessionId}") {
         fun createRoute(sessionId: String) = "workout/$sessionId"
     }
+    data object WorkoutSummary : Screen("workout_summary/{duration}/{doneSets}/{totalSets}/{volume}") {
+        fun createRoute(duration: Int, doneSets: Int, totalSets: Int, volume: Int) =
+            "workout_summary/$duration/$doneSets/$totalSets/$volume"
+    }
     data object Calendar : Screen("calendar")
     data object Progress : Screen("progress")
     data object AiChat : Screen("ai_chat")

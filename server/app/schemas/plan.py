@@ -19,6 +19,10 @@ class PlanCreate(BaseModel):
     exercises: list[PlannedExerciseIn] = []
 
 
+class PlanUpdate(BaseModel):
+    name: str
+
+
 class PlannedExerciseOut(PlannedExerciseIn):
     id: uuid.UUID
     model_config = {"from_attributes": True}

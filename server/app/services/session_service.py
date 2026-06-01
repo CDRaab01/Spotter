@@ -2,14 +2,17 @@ import datetime
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.exercise import Exercise
 from app.models.planned_exercise import PlannedExercise
 from app.models.set_log import SetLog
+from app.models.workout_plan import WorkoutPlan
 from app.models.workout_session import WorkoutSession
 from app.schemas.session import (
+    ExercisePrior,
     SessionCreate,
     SessionOut,
     SessionUpdate,
@@ -67,6 +70,7 @@ async def get_session(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
         )
 
+    plan_name: str | None = None
     exercise_context: dict[uuid.UUID, tuple] = {}
     exercise_order: dict[uuid.UUID, int] = {}
     if s.plan_id:
@@ -83,6 +87,13 @@ async def get_session(
                 pe.target_weight,
             )
             exercise_order[pe.exercise_id] = pe.order
+
+        plan_result = await db.execute(
+            select(WorkoutPlan).where(WorkoutPlan.id == s.plan_id)
+        )
+        plan = plan_result.scalar_one_or_none()
+        if plan:
+            plan_name = plan.name
 
     set_logs_out = []
     for sl in sorted(
@@ -111,10 +122,12 @@ async def get_session(
         id=s.id,
         user_id=s.user_id,
         plan_id=s.plan_id,
+        plan_name=plan_name,
         date=s.date,
         status=s.status,
         duration_seconds=s.duration_seconds,
         note=s.note,
+        exercise_notes=s.exercise_notes,
         set_logs=set_logs_out,
     )
 
@@ -139,6 +152,8 @@ async def update_session(
         s.duration_seconds = req.duration_seconds
     if req.note is not None:
         s.note = req.note
+    if req.exercise_notes is not None:
+        s.exercise_notes = req.exercise_notes
     await db.commit()
     return await get_session(db, user_id, session_id)
 
@@ -215,3 +230,62 @@ async def update_set_log(
         completed=sl.completed,
         completed_at=sl.completed_at,
     )
+
+
+async def get_prior_bests(
+    db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID
+) -> list[ExercisePrior]:
+    session_result = await db.execute(
+        select(WorkoutSession).where(
+            WorkoutSession.id == session_id,
+            WorkoutSession.user_id == user_id,
+        )
+    )
+    if not session_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
+
+    exercise_id_result = await db.execute(
+        select(SetLog.exercise_id).where(SetLog.session_id == session_id).distinct()
+    )
+    exercise_ids = [row[0] for row in exercise_id_result]
+    if not exercise_ids:
+        return []
+
+    # Load exercise names in one query
+    exercise_names: dict[uuid.UUID, str] = {}
+    ex_result = await db.execute(
+        select(Exercise).where(Exercise.id.in_(exercise_ids))
+    )
+    for ex in ex_result.scalars().all():
+        exercise_names[ex.id] = ex.name
+
+    priors: list[ExercisePrior] = []
+    for exercise_id in exercise_ids:
+        # Most recent completed set for this exercise in a prior session for this user
+        row_result = await db.execute(
+            select(SetLog.reps, SetLog.weight, WorkoutSession.date)
+            .join(WorkoutSession, SetLog.session_id == WorkoutSession.id)
+            .where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.id != session_id,
+                SetLog.exercise_id == exercise_id,
+                SetLog.completed == True,  # noqa: E712
+            )
+            .order_by(WorkoutSession.date.desc(), SetLog.set_number.desc())
+            .limit(1)
+        )
+        row = row_result.first()
+        if row:
+            priors.append(
+                ExercisePrior(
+                    exercise_id=exercise_id,
+                    exercise_name=exercise_names.get(exercise_id),
+                    reps=row[0],
+                    weight=row[1],
+                    date=row[2],
+                )
+            )
+
+    return priors

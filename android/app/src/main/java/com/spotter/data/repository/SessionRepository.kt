@@ -4,6 +4,7 @@ import com.spotter.data.local.dao.SetLogDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.SetLogEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
+import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
@@ -25,10 +26,16 @@ class SessionRepository @Inject constructor(
     }
 
     suspend fun getSession(id: String): SessionOut {
-        val result = api.getSession(id)
-        sessionDao.upsert(result.toEntity())
-        setLogDao.upsertAll(result.setLogs.map { it.toEntity() })
-        return result
+        return try {
+            val result = api.getSession(id)
+            sessionDao.upsert(result.toEntity())
+            setLogDao.upsertAll(result.setLogs.map { it.toEntity() })
+            result
+        } catch (e: Exception) {
+            val cached = sessionDao.getById(id) ?: throw e
+            val sets = setLogDao.getBySession(id)
+            cached.toSessionOut(sets)
+        }
     }
 
     suspend fun updateSession(sessionId: String, req: SessionUpdate): SessionOut {
@@ -49,12 +56,27 @@ class SessionRepository @Inject constructor(
         return result
     }
 
+    suspend fun getPriorBests(sessionId: String): List<ExercisePrior> =
+        api.getPriorBests(sessionId)
+
     private fun SessionOut.toEntity() = WorkoutSessionEntity(
         id = id, userId = userId, planId = planId, date = date,
         status = status, durationSeconds = durationSeconds, note = note,
     )
 
     private fun SetLogOut.toEntity() = SetLogEntity(
+        id = id, sessionId = sessionId, exerciseId = exerciseId,
+        setNumber = setNumber, reps = reps, weight = weight,
+        completed = completed, completedAt = completedAt,
+    )
+
+    private fun WorkoutSessionEntity.toSessionOut(sets: List<SetLogEntity>) = SessionOut(
+        id = id, userId = userId, planId = planId, date = date,
+        status = status, durationSeconds = durationSeconds, note = note,
+        setLogs = sets.map { it.toSetLogOut() },
+    )
+
+    private fun SetLogEntity.toSetLogOut() = SetLogOut(
         id = id, sessionId = sessionId, exerciseId = exerciseId,
         setNumber = setNumber, reps = reps, weight = weight,
         completed = completed, completedAt = completedAt,

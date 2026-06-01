@@ -40,6 +40,7 @@ data class SessionUpdate(
     val status: String? = null,
     @SerialName("duration_seconds") val durationSeconds: Int? = null,
     val note: String? = null,
+    @SerialName("exercise_notes") val exerciseNotes: Map<String, String>? = null,
 )
 
 @Serializable
@@ -54,9 +55,20 @@ data class SessionOut(
     val id: String,
     @SerialName("user_id") val userId: String,
     @SerialName("plan_id") val planId: String? = null,
+    @SerialName("plan_name") val planName: String? = null,
     val date: String,
     val status: String,
     @SerialName("duration_seconds") val durationSeconds: Int? = null,
     val note: String? = null,
+    @SerialName("exercise_notes") val exerciseNotes: Map<String, String>? = null,
     @SerialName("set_logs") val setLogs: List<SetLogOut> = emptyList(),
+)
+
+@Serializable
+data class ExercisePrior(
+    @SerialName("exercise_id") val exerciseId: String,
+    @SerialName("exercise_name") val exerciseName: String? = null,
+    val reps: Int,
+    val weight: Double? = null,
+    val date: String,
 )

@@ -3,7 +3,10 @@ package com.spotter.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.data.model.BodyMetricCreate
+import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.SessionCreate
+import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.UiState
@@ -23,6 +26,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val planRepository: PlanRepository,
     private val sessionRepository: SessionRepository,
+    private val metricRepository: MetricRepository,
 ) : ViewModel() {
 
     private val _plans = MutableStateFlow<UiState<List<WorkoutPlanEntity>>>(UiState.Loading)
@@ -30,6 +34,9 @@ class HomeViewModel @Inject constructor(
 
     private val _startState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val startState: StateFlow<UiState<Unit>> = _startState
+
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError: StateFlow<String?> = _actionError
 
     private val _navigateToWorkout = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
@@ -72,5 +79,40 @@ class HomeViewModel @Inject constructor(
                 _startState.value = UiState.Error(e.message ?: "Could not start workout")
             }
         }
+    }
+
+    fun deletePlan(planId: String) {
+        viewModelScope.launch {
+            try {
+                planRepository.deletePlan(planId)
+            } catch (e: Exception) {
+                _actionError.value = e.message ?: "Could not delete plan"
+            }
+        }
+    }
+
+    fun renamePlan(planId: String, newName: String) {
+        if (newName.isBlank()) return
+        viewModelScope.launch {
+            try {
+                planRepository.renamePlan(planId, PlanUpdate(name = newName.trim()))
+            } catch (e: Exception) {
+                _actionError.value = e.message ?: "Could not rename plan"
+            }
+        }
+    }
+
+    fun logBodyweight(weight: Double) {
+        viewModelScope.launch {
+            try {
+                metricRepository.addMetric(
+                    BodyMetricCreate(date = LocalDate.now().toString(), weight = weight)
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun clearActionError() {
+        _actionError.value = null
     }
 }

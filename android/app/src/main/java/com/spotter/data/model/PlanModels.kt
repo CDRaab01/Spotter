@@ -4,6 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class PlanUpdate(val name: String)
+
+@Serializable
 data class PlannedExerciseIn(
     @SerialName("exercise_id") val exerciseId: String,
     @SerialName("target_sets") val targetSets: Int,

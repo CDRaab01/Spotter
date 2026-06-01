@@ -14,6 +14,7 @@ class SessionUpdate(BaseModel):
     status: str | None = None
     duration_seconds: int | None = None
     note: str | None = None
+    exercise_notes: dict[str, str] | None = None
 
 
 class SetLogCreate(BaseModel):
@@ -50,8 +51,18 @@ class SessionOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     plan_id: uuid.UUID | None
+    plan_name: str | None = None
     date: datetime.date
     status: str
     duration_seconds: int | None
     note: str | None
+    exercise_notes: dict[str, str] | None = None
     set_logs: list[SetLogOut] = []
+
+
+class ExercisePrior(BaseModel):
+    exercise_id: uuid.UUID
+    exercise_name: str | None = None
+    reps: int
+    weight: float | None = None
+    date: datetime.date

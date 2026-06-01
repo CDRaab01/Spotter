@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import ai, auth, calendar, metrics, plans, sessions
+from app.routers import ai, auth, calendar, metrics, plans, progress, sessions
 
 app = FastAPI(title="Spotter API", version="0.1.0")
 
@@ -19,6 +19,7 @@ app.include_router(sessions.router)
 app.include_router(metrics.router)
 app.include_router(ai.router)
 app.include_router(calendar.router)
+app.include_router(progress.router)
 
 
 @app.get("/health", tags=["health"])

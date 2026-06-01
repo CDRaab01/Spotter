@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.planned_exercise import PlannedExercise
 from app.models.workout_plan import WorkoutPlan
-from app.schemas.plan import PlanCreate
+from app.schemas.plan import PlanCreate, PlanUpdate
 
 
 async def get_user_plans(db: AsyncSession, user_id: uuid.UUID) -> list[WorkoutPlan]:
@@ -49,4 +49,36 @@ async def get_plan(
     plan = result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    return plan
+
+
+async def delete_plan(
+    db: AsyncSession, user_id: uuid.UUID, plan_id: uuid.UUID
+) -> None:
+    result = await db.execute(
+        select(WorkoutPlan).where(
+            WorkoutPlan.id == plan_id, WorkoutPlan.user_id == user_id
+        )
+    )
+    plan = result.scalar_one_or_none()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    await db.delete(plan)
+    await db.commit()
+
+
+async def rename_plan(
+    db: AsyncSession, user_id: uuid.UUID, plan_id: uuid.UUID, req: PlanUpdate
+) -> WorkoutPlan:
+    result = await db.execute(
+        select(WorkoutPlan)
+        .where(WorkoutPlan.id == plan_id, WorkoutPlan.user_id == user_id)
+        .options(selectinload(WorkoutPlan.planned_exercises))
+    )
+    plan = result.scalar_one_or_none()
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    plan.name = req.name
+    await db.commit()
+    await db.refresh(plan)
     return plan

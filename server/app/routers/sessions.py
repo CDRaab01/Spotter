@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.session import (
+    ExercisePrior,
     SessionCreate,
     SessionOut,
     SessionUpdate,
@@ -18,6 +19,7 @@ from app.security import get_current_user
 from app.services.session_service import (
     add_set,
     create_session,
+    get_prior_bests,
     get_session,
     update_session,
     update_set_log,
@@ -74,3 +76,12 @@ async def update_set(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await update_set_log(db, current_user.id, session_id, set_id, req)
+
+
+@router.get("/{session_id}/prior-bests", response_model=list[ExercisePrior])
+async def prior_bests(
+    session_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await get_prior_bests(db, current_user.id, session_id)

@@ -5,9 +5,12 @@ import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.ChatResponse
+import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.LoginRequest
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanOut
+import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.RefreshRequest
 import com.spotter.data.model.RegisterRequest
 import com.spotter.data.model.SessionCreate
@@ -17,7 +20,9 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.TokenResponse
+import com.spotter.data.model.TrackedExercise
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -45,6 +50,12 @@ interface ApiService {
     @GET("plans/{id}")
     suspend fun getPlan(@Path("id") id: String): PlanOut
 
+    @PATCH("plans/{id}")
+    suspend fun renamePlan(@Path("id") id: String, @Body req: PlanUpdate): PlanOut
+
+    @DELETE("plans/{id}")
+    suspend fun deletePlan(@Path("id") id: String)
+
     // Sessions
     @POST("sessions")
     suspend fun createSession(@Body req: SessionCreate): SessionOut
@@ -65,6 +76,9 @@ interface ApiService {
         @Body req: SetLogUpdate,
     ): SetLogOut
 
+    @GET("sessions/{id}/prior-bests")
+    suspend fun getPriorBests(@Path("id") id: String): List<ExercisePrior>
+
     // Metrics
     @GET("metrics/weight")
     suspend fun getWeightMetrics(): List<BodyMetricOut>
@@ -82,4 +96,11 @@ interface ApiService {
         @Query("from") from: String,
         @Query("to") to: String,
     ): List<CalendarEntry>
+
+    // Progress
+    @GET("progress/exercises")
+    suspend fun getTrackedExercises(): List<TrackedExercise>
+
+    @GET("progress/exercises/{exerciseId}")
+    suspend fun getExerciseProgress(@Path("exerciseId") exerciseId: String): List<ExerciseProgressPoint>
 }

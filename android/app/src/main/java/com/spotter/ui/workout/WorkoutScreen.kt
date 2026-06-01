@@ -1,5 +1,6 @@
 package com.spotter.ui.workout
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,12 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,11 +45,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SetLogOut
+import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +67,9 @@ fun WorkoutScreen(
     val session by viewModel.session.collectAsState()
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val finishState by viewModel.finishState.collectAsState()
+    val restTimerSeconds by viewModel.restTimerSeconds.collectAsState()
+    val exerciseNotes by viewModel.exerciseNotes.collectAsState()
+    val priorBests by viewModel.priorBests.collectAsState()
     val timerText = "%02d:%02d".format(elapsed / 60, elapsed % 60)
     val isFinishing = finishState is UiState.Loading
 
@@ -66,6 +79,15 @@ fun WorkoutScreen(
     LaunchedEffect(sessionId) { viewModel.loadSession(sessionId) }
     LaunchedEffect(Unit) {
         viewModel.navigateBack.collect { navController.popBackStack() }
+    }
+    LaunchedEffect(Unit) {
+        viewModel.navigateToSummary.collect { data ->
+            navController.navigate(
+                Screen.WorkoutSummary.createRoute(
+                    data.durationSeconds, data.doneSets, data.totalSets, data.totalVolumeLb
+                )
+            ) { popUpTo(Screen.Workout.route) { inclusive = true } }
+        }
     }
 
     val allSets = (session as? UiState.Success)?.data?.setLogs ?: emptyList()
@@ -78,15 +100,10 @@ fun WorkoutScreen(
         AlertDialog(
             onDismissRequest = { showFinishDialog = false },
             title = { Text("Finish workout?") },
-            text = {
-                Text("$completedCount of $totalCount sets completed · $timerText")
-            },
+            text = { Text("$completedCount of $totalCount sets completed · $timerText") },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        showFinishDialog = false
-                        viewModel.finishSession(sessionId)
-                    },
+                    onClick = { showFinishDialog = false; viewModel.finishSession(sessionId) },
                     enabled = !isFinishing,
                 ) { Text("Finish") }
             },
@@ -158,6 +175,45 @@ fun WorkoutScreen(
                 }
             }
 
+            // Rest timer banner
+            AnimatedVisibility(visible = restTimerSeconds != null) {
+                restTimerSeconds?.let { seconds ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text(
+                                    "Rest Timer",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                                Text(
+                                    "%d:%02d".format(seconds / 60, seconds % 60),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                            IconButton(onClick = { viewModel.dismissRestTimer() }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Dismiss timer",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             when (val state = session) {
                 is UiState.Loading -> Box(
                     Modifier.fillMaxSize(),
@@ -190,9 +246,12 @@ fun WorkoutScreen(
                             items(grouped.entries.toList(), key = { it.key }) { (exerciseId, sets) ->
                                 ExerciseCard(
                                     sets = sets,
+                                    note = exerciseNotes[exerciseId] ?: "",
+                                    priorBest = priorBests[exerciseId],
                                     onToggle = { setLog -> viewModel.toggleSet(sessionId, setLog) },
                                     onEditWeight = { setLog -> editingSet = setLog },
                                     onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
+                                    onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
                                 )
                             }
                         }
@@ -259,14 +318,20 @@ private fun EditSetDialog(
 @Composable
 private fun ExerciseCard(
     sets: List<SetLogOut>,
+    note: String,
+    priorBest: ExercisePrior?,
     onToggle: (SetLogOut) -> Unit,
     onEditWeight: (SetLogOut) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
+    onNoteSave: (String) -> Unit,
 ) {
     val first = sets.first()
     val name = first.exerciseName ?: first.exerciseId
     val targetHeader = buildTargetHeader(first)
     val done = sets.count { it.completed }
+    var showNote by remember { mutableStateOf(note.isNotEmpty()) }
+    var noteText by remember(note) { mutableStateOf(note) }
+    val focusManager = LocalFocusManager.current
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -283,6 +348,22 @@ private fun ExerciseCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (priorBest != null) {
+                        val weightStr = priorBest.weight?.let { " @ ${it.toInt()} lb" } ?: ""
+                        Text(
+                            "Last: ${priorBest.reps} reps$weightStr",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
+                IconButton(onClick = { showNote = !showNote }) {
+                    Icon(
+                        Icons.Default.EditNote,
+                        contentDescription = "Toggle note",
+                        tint = if (noteText.isNotEmpty()) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Text(
                     "$done / ${sets.size}",
@@ -291,6 +372,22 @@ private fun ExerciseCard(
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            AnimatedVisibility(visible = showNote) {
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it },
+                    label = { Text("Note") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        onNoteSave(noteText)
+                        focusManager.clearFocus()
+                    }),
+                    maxLines = 3,
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                 sets.forEach { setLog ->

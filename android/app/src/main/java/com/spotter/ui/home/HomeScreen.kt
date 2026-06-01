@@ -13,29 +13,43 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 
@@ -48,11 +62,22 @@ fun HomeScreen(
     val plans by viewModel.plans.collectAsState()
     val startState by viewModel.startState.collectAsState()
     val isStarting = startState is UiState.Loading
+    var showBodyweightDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToWorkout.collect { sessionId ->
             navController.navigate(Screen.Workout.createRoute(sessionId))
         }
+    }
+
+    if (showBodyweightDialog) {
+        BodyweightLogDialog(
+            onDismiss = { showBodyweightDialog = false },
+            onConfirm = { weight ->
+                viewModel.logBodyweight(weight)
+                showBodyweightDialog = false
+            },
+        )
     }
 
     Scaffold(
@@ -71,6 +96,11 @@ fun HomeScreen(
                     }
                 },
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showBodyweightDialog = true }) {
+                Icon(Icons.Default.FitnessCenter, contentDescription = "Log bodyweight")
+            }
         },
     ) { padding ->
         when (val state = plans) {
@@ -108,28 +138,14 @@ fun HomeScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(state.data) { plan ->
-                            Card(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(plan.name, style = MaterialTheme.typography.titleMedium)
-                                        Text(
-                                            plan.source,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    Button(
-                                        onClick = { viewModel.startSession(plan.id) },
-                                        enabled = !isStarting,
-                                    ) {
-                                        Text(if (isStarting) "Starting…" else "Start")
-                                    }
-                                }
-                            }
+                        items(state.data, key = { it.id }) { plan ->
+                            PlanCard(
+                                plan = plan,
+                                isStarting = isStarting,
+                                onStart = { viewModel.startSession(plan.id) },
+                                onDelete = { viewModel.deletePlan(plan.id) },
+                                onRename = { newName -> viewModel.renamePlan(plan.id, newName) },
+                            )
                         }
                     }
                 }
@@ -138,4 +154,144 @@ fun HomeScreen(
             else -> Unit
         }
     }
+}
+
+@Composable
+private fun PlanCard(
+    plan: WorkoutPlanEntity,
+    isStarting: Boolean,
+    onStart: () -> Unit,
+    onDelete: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    if (showRenameDialog) {
+        RenameDialog(
+            currentName = plan.name,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { newName ->
+                onRename(newName)
+                showRenameDialog = false
+            },
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete plan?") },
+            text = { Text("\"${plan.name}\" will be permanently deleted.") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteConfirm = false; onDelete() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(plan.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    plan.source,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(
+                onClick = onStart,
+                enabled = !isStarting,
+            ) {
+                Text(if (isStarting) "Starting…" else "Start")
+            }
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Plan options")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = { menuExpanded = false; showRenameDialog = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menuExpanded = false; showDeleteConfirm = true },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenameDialog(
+    currentName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var nameText by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename plan") },
+        text = {
+            OutlinedTextField(
+                value = nameText,
+                onValueChange = { nameText = it },
+                label = { Text("Plan name") },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(nameText) },
+                enabled = nameText.isNotBlank(),
+            ) { Text("Rename") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun BodyweightLogDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (Double) -> Unit,
+) {
+    var weightText by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Log bodyweight") },
+        text = {
+            OutlinedTextField(
+                value = weightText,
+                onValueChange = { weightText = it.filter { c -> c.isDigit() || c == '.' } },
+                label = { Text("Weight (lb)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { weightText.toDoubleOrNull()?.let { onConfirm(it) } },
+                enabled = weightText.toDoubleOrNull() != null,
+            ) { Text("Log") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }

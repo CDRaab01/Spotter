@@ -2,6 +2,7 @@ package com.spotter.ui.workout
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
@@ -10,15 +11,24 @@ import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+data class WorkoutSummaryData(
+    val durationSeconds: Int,
+    val doneSets: Int,
+    val totalSets: Int,
+    val totalVolumeLb: Int,
+)
 
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
@@ -37,6 +47,20 @@ class WorkoutViewModel @Inject constructor(
     private val _navigateBack = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateBack: SharedFlow<Unit> = _navigateBack
 
+    private val _navigateToSummary = MutableSharedFlow<WorkoutSummaryData>(extraBufferCapacity = 1)
+    val navigateToSummary: SharedFlow<WorkoutSummaryData> = _navigateToSummary.asSharedFlow()
+
+    private val _restTimerSeconds = MutableStateFlow<Int?>(null)
+    val restTimerSeconds: StateFlow<Int?> = _restTimerSeconds.asStateFlow()
+
+    private val _exerciseNotes = MutableStateFlow<Map<String, String>>(emptyMap())
+    val exerciseNotes: StateFlow<Map<String, String>> = _exerciseNotes.asStateFlow()
+
+    private val _priorBests = MutableStateFlow<Map<String, ExercisePrior>>(emptyMap())
+    val priorBests: StateFlow<Map<String, ExercisePrior>> = _priorBests.asStateFlow()
+
+    private var restTimerJob: Job? = null
+
     init {
         viewModelScope.launch {
             while (true) {
@@ -50,14 +74,27 @@ class WorkoutViewModel @Inject constructor(
         viewModelScope.launch {
             _session.value = UiState.Loading
             _session.value = try {
-                UiState.Success(sessionRepository.getSession(sessionId))
+                val data = sessionRepository.getSession(sessionId)
+                _exerciseNotes.value = data.exerciseNotes ?: emptyMap()
+                UiState.Success(data)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Failed to load session")
             }
+            loadPriorBests(sessionId)
+        }
+    }
+
+    private fun loadPriorBests(sessionId: String) {
+        viewModelScope.launch {
+            try {
+                val bests = sessionRepository.getPriorBests(sessionId)
+                _priorBests.value = bests.associateBy { it.exerciseId }
+            } catch (_: Exception) {}
         }
     }
 
     fun toggleSet(sessionId: String, setLog: SetLogOut) {
+        val wasIncomplete = !setLog.completed
         viewModelScope.launch {
             try {
                 sessionRepository.updateSet(
@@ -66,6 +103,9 @@ class WorkoutViewModel @Inject constructor(
                     SetLogUpdate(completed = !setLog.completed),
                 )
                 loadSession(sessionId)
+                if (wasIncomplete) {
+                    startRestTimer(setLog.targetReps)
+                }
             } catch (_: Exception) {}
         }
     }
@@ -101,6 +141,44 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
+    fun saveExerciseNote(sessionId: String, exerciseId: String, note: String) {
+        val updated = _exerciseNotes.value.toMutableMap()
+        updated[exerciseId] = note
+        _exerciseNotes.value = updated
+        viewModelScope.launch {
+            try {
+                sessionRepository.updateSession(
+                    sessionId,
+                    SessionUpdate(exerciseNotes = updated),
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun startRestTimer(targetReps: Int?) {
+        val duration = when {
+            targetReps == null || targetReps <= 5 -> 180
+            targetReps <= 12 -> 90
+            else -> 60
+        }
+        restTimerJob?.cancel()
+        _restTimerSeconds.value = duration
+        restTimerJob = viewModelScope.launch {
+            var remaining = duration
+            while (remaining > 0) {
+                delay(1000)
+                remaining--
+                _restTimerSeconds.value = remaining
+            }
+            _restTimerSeconds.value = null
+        }
+    }
+
+    fun dismissRestTimer() {
+        restTimerJob?.cancel()
+        _restTimerSeconds.value = null
+    }
+
     fun finishSession(sessionId: String) {
         viewModelScope.launch {
             _finishState.value = UiState.Loading
@@ -113,7 +191,21 @@ class WorkoutViewModel @Inject constructor(
                     ),
                 )
                 _finishState.value = UiState.Success(Unit)
-                _navigateBack.emit(Unit)
+                val data = (_session.value as? UiState.Success)?.data
+                val setLogs = data?.setLogs ?: emptyList()
+                val doneSets = setLogs.count { it.completed }
+                val totalSets = setLogs.size
+                val volumeLb = setLogs
+                    .filter { it.completed }
+                    .sumOf { (it.reps * (it.weight ?: 0.0)).toInt() }
+                _navigateToSummary.emit(
+                    WorkoutSummaryData(
+                        durationSeconds = _elapsedSeconds.value,
+                        doneSets = doneSets,
+                        totalSets = totalSets,
+                        totalVolumeLb = volumeLb,
+                    )
+                )
             } catch (e: Exception) {
                 _finishState.value = UiState.Error(e.message ?: "Failed to finish workout")
             }
