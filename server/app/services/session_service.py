@@ -32,6 +32,15 @@ async def create_session(
     await db.flush()
 
     if req.plan_id:
+        plan_check = await db.execute(
+            select(WorkoutPlan).where(
+                WorkoutPlan.id == req.plan_id,
+                WorkoutPlan.user_id == user_id,
+            )
+        )
+        if plan_check.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
         pe_result = await db.execute(
             select(PlannedExercise)
             .where(PlannedExercise.plan_id == req.plan_id)

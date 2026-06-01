@@ -60,7 +60,7 @@ async def forgot_password(db: AsyncSession, req: ForgotPasswordRequest) -> None:
     if user is None:
         return
 
-    token = str(secrets.randbelow(900000) + 100000)  # 6-digit code: 100000–999999
+    token = secrets.token_urlsafe(32)  # 256-bit URL-safe token
     user.reset_token = token
     user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(
         minutes=RESET_TOKEN_EXPIRY_MINUTES
@@ -102,8 +102,8 @@ def _deliver_reset_token(email: str, token: str) -> None:
 
 def _send_email(to: str, token: str) -> None:
     body = (
-        f"Your Spotter password reset code is: {token}\n\n"
-        f"Enter this code in the app to reset your password. "
+        f"Your Spotter password reset token is:\n\n{token}\n\n"
+        f"Paste this token into the app to reset your password. "
         f"It expires in {RESET_TOKEN_EXPIRY_MINUTES} minutes.\n\n"
         "If you didn't request this, you can ignore this email."
     )

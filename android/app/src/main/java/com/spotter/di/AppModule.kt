@@ -3,6 +3,7 @@ package com.spotter.di
 import android.content.Context
 import androidx.room.Room
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
 import com.spotter.data.remote.ApiService
@@ -40,9 +41,13 @@ object AppModule {
     fun provideOkHttp(authInterceptor: AuthInterceptor): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            })
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.BODY
+                    })
+                }
+            }
             .build()
 
     @Provides

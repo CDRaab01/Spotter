@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -28,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,7 +40,7 @@ fun ResetPasswordScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsState()
-    var code by remember { mutableStateOf("") }
+    var token by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -74,27 +72,26 @@ fun ResetPasswordScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Enter your reset code", style = MaterialTheme.typography.headlineSmall)
+            Text("Reset your password", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(8.dp))
             Text(
-                "Check your email for the 6-digit code.",
+                "Check your email for the reset token and paste it below.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(32.dp))
             OutlinedTextField(
-                value = code,
-                onValueChange = { if (it.length <= 6) code = it.filter { c -> c.isDigit() } },
-                label = { Text("6-digit code") },
+                value = token,
+                onValueChange = { token = it.trim() },
+                label = { Text("Reset token") },
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
             )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = newPassword,
                 onValueChange = { newPassword = it },
-                label = { Text("New Password") },
+                label = { Text("New password (min 8 characters)") },
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
@@ -103,7 +100,7 @@ fun ResetPasswordScreen(
             OutlinedTextField(
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it },
-                label = { Text("Confirm Password") },
+                label = { Text("Confirm password") },
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
@@ -112,15 +109,17 @@ fun ResetPasswordScreen(
             Spacer(Modifier.height(24.dp))
             Button(
                 onClick = {
-                    if (newPassword != confirmPassword) {
-                        localError = "Passwords do not match"
-                    } else {
-                        localError = null
-                        viewModel.resetPassword(code, newPassword)
+                    when {
+                        newPassword.length < 8 -> localError = "Password must be at least 8 characters"
+                        newPassword != confirmPassword -> localError = "Passwords do not match"
+                        else -> {
+                            localError = null
+                            viewModel.resetPassword(token, newPassword)
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = code.length == 6 && newPassword.isNotBlank() && authState !is UiState.Loading,
+                enabled = token.isNotBlank() && newPassword.isNotBlank() && authState !is UiState.Loading,
             ) {
                 Text(if (authState is UiState.Loading) "Resetting…" else "Reset Password")
             }

@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.limiter import limiter
 from app.schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -21,14 +22,22 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
+@limiter.limit("5/minute")
 async def register(
-    req: RegisterRequest, db: Annotated[AsyncSession, Depends(get_db)]
+    request: Request,
+    req: RegisterRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await register_user(db, req)
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)]):
+@limiter.limit("10/minute")
+async def login(
+    request: Request,
+    req: LoginRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
     return await login_user(db, req)
 
 
@@ -55,16 +64,22 @@ async def refresh(req: RefreshRequest):
 
 
 @router.post("/forgot-password", status_code=200)
+@limiter.limit("5/minute")
 async def forgot_password_endpoint(
-    req: ForgotPasswordRequest, db: Annotated[AsyncSession, Depends(get_db)]
+    request: Request,
+    req: ForgotPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     await forgot_password(db, req)
     return {"detail": "If an account with that email exists, a reset code has been sent."}
 
 
 @router.post("/reset-password", status_code=200)
+@limiter.limit("5/minute")
 async def reset_password_endpoint(
-    req: ResetPasswordRequest, db: Annotated[AsyncSession, Depends(get_db)]
+    request: Request,
+    req: ResetPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     await reset_password(db, req)
     return {"detail": "Password updated successfully."}
