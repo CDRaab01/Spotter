@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -24,6 +25,20 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
+enum class ChartRange(val label: String) {
+    ONE_MONTH("1M"),
+    SIX_MONTHS("6M"),
+    ONE_YEAR("1Y"),
+    ALL_TIME("All");
+
+    fun cutoff(): LocalDate? = when (this) {
+        ONE_MONTH -> LocalDate.now().minusMonths(1)
+        SIX_MONTHS -> LocalDate.now().minusMonths(6)
+        ONE_YEAR -> LocalDate.now().minusYears(1)
+        ALL_TIME -> null
+    }
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ProgressViewModel @Inject constructor(
@@ -31,15 +46,22 @@ class ProgressViewModel @Inject constructor(
     private val api: ApiService,
 ) : ViewModel() {
 
-    private val _metrics = MutableStateFlow<UiState<List<BodyMetricEntity>>>(UiState.Loading)
-    val metrics: StateFlow<UiState<List<BodyMetricEntity>>> = _metrics
+    private val _allMetrics = MutableStateFlow<UiState<List<BodyMetricEntity>>>(UiState.Loading)
 
     private val _trackedExercises = MutableStateFlow<UiState<List<TrackedExercise>>>(UiState.Loading)
     val trackedExercises: StateFlow<UiState<List<TrackedExercise>>> = _trackedExercises
 
     val selectedExerciseId = MutableStateFlow<String?>(null)
 
-    val exerciseProgress: StateFlow<UiState<List<ExerciseProgressPoint>>> =
+    private val _chartRange = MutableStateFlow(ChartRange.SIX_MONTHS)
+    val chartRange: StateFlow<ChartRange> = _chartRange
+
+    val metrics: StateFlow<UiState<List<BodyMetricEntity>>> =
+        combine(_allMetrics, _chartRange) { metricsState, range ->
+            filterByRange(metricsState, range) { LocalDate.parse(it.date) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState.Loading)
+
+    private val _rawExerciseProgress: StateFlow<UiState<List<ExerciseProgressPoint>>> =
         selectedExerciseId
             .flatMapLatest { id ->
                 if (id == null) {
@@ -57,6 +79,11 @@ class ProgressViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.Lazily, UiState.Idle)
 
+    val exerciseProgress: StateFlow<UiState<List<ExerciseProgressPoint>>> =
+        combine(_rawExerciseProgress, _chartRange) { progressState, range ->
+            filterByRange(progressState, range) { LocalDate.parse(it.date) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UiState.Idle)
+
     init {
         observeMetrics()
         sync()
@@ -66,9 +93,9 @@ class ProgressViewModel @Inject constructor(
     private fun observeMetrics() {
         viewModelScope.launch {
             metricRepository.metrics
-                .onStart { _metrics.value = UiState.Loading }
-                .catch { _metrics.value = UiState.Error(it.message ?: "Unknown error") }
-                .collect { _metrics.value = UiState.Success(it) }
+                .onStart { _allMetrics.value = UiState.Loading }
+                .catch { _allMetrics.value = UiState.Error(it.message ?: "Unknown error") }
+                .collect { _allMetrics.value = UiState.Success(it) }
         }
     }
 
@@ -95,6 +122,10 @@ class ProgressViewModel @Inject constructor(
         selectedExerciseId.value = exerciseId
     }
 
+    fun setChartRange(range: ChartRange) {
+        _chartRange.value = range
+    }
+
     fun logBodyweight(weight: Double) {
         viewModelScope.launch {
             try {
@@ -102,6 +133,20 @@ class ProgressViewModel @Inject constructor(
                     BodyMetricCreate(date = LocalDate.now().toString(), weight = weight)
                 )
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun <T> filterByRange(
+        state: UiState<List<T>>,
+        range: ChartRange,
+        dateOf: (T) -> LocalDate,
+    ): UiState<List<T>> {
+        val cutoff = range.cutoff() ?: return state
+        return when (state) {
+            is UiState.Success -> UiState.Success(
+                state.data.filter { !dateOf(it).isBefore(cutoff) }
+            )
+            else -> state
         }
     }
 }
