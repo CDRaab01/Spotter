@@ -3,11 +3,11 @@ package com.spotter.ui.workout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.spotter.data.model.SetLogOut
 
@@ -23,34 +24,43 @@ import com.spotter.data.model.SetLogOut
 fun SetLogRow(
     setLog: SetLogOut,
     onToggle: () -> Unit,
+    onEditWeight: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
+        Text(
+            text = "Set ${setLog.setNumber}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(
                     if (setLog.completed) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant
+                    else MaterialTheme.colorScheme.surfaceVariant,
                 )
                 .clickable(onClick = onToggle),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "${setLog.reps}",
+                text = "${setLog.reps}",
                 style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = if (setLog.completed) Color.White
                         else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
-            text = if (setLog.weight != null) "${setLog.weight} lb" else "BW",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            text = if (setLog.weight != null) "${setLog.weight.toInt()} lb" else "BW",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onEditWeight),
         )
     }
 }

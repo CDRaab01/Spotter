@@ -4,6 +4,9 @@ import com.spotter.data.local.dao.WorkoutPlanDao
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanOut
+import com.spotter.data.model.PlanUpdate
+import com.spotter.data.model.PlannedExerciseIn
+import com.spotter.data.model.PlannedExercisesUpdate
 import com.spotter.data.remote.ApiService
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -26,6 +29,20 @@ class PlanRepository @Inject constructor(
     }
 
     suspend fun getPlan(id: String): PlanOut = api.getPlan(id)
+
+    suspend fun renamePlan(id: String, req: PlanUpdate): PlanOut {
+        val result = api.renamePlan(id, req)
+        dao.upsert(result.toEntity())
+        return result
+    }
+
+    suspend fun deletePlan(id: String) {
+        api.deletePlan(id)
+        dao.deleteById(id)
+    }
+
+    suspend fun updateExercises(planId: String, exercises: List<PlannedExerciseIn>): PlanOut =
+        api.updatePlanExercises(planId, PlannedExercisesUpdate(exercises))
 
     private fun PlanOut.toEntity() = WorkoutPlanEntity(
         id = id,

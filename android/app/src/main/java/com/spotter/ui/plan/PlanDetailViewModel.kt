@@ -1,0 +1,171 @@
+package com.spotter.ui.plan
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.spotter.data.model.ExerciseOut
+import com.spotter.data.model.PlannedExerciseIn
+import com.spotter.data.model.PlanOut
+import com.spotter.data.repository.ExerciseRepository
+import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.SessionRepository
+import com.spotter.util.UiState
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import javax.inject.Inject
+
+@HiltViewModel
+@OptIn(FlowPreview::class)
+class PlanDetailViewModel @Inject constructor(
+    private val planRepository: PlanRepository,
+    private val exerciseRepository: ExerciseRepository,
+    private val sessionRepository: SessionRepository,
+) : ViewModel() {
+
+    private val _plan = MutableStateFlow<UiState<PlanOut>>(UiState.Loading)
+    val plan: StateFlow<UiState<PlanOut>> = _plan.asStateFlow()
+
+    private val _isEditing = MutableStateFlow(false)
+    val isEditing: StateFlow<Boolean> = _isEditing.asStateFlow()
+
+    private val _draftExercises = MutableStateFlow<List<DraftExercise>>(emptyList())
+    val draftExercises: StateFlow<List<DraftExercise>> = _draftExercises.asStateFlow()
+
+    val searchQuery = MutableStateFlow("")
+
+    val searchResults: StateFlow<List<ExerciseOut>> = searchQuery
+        .debounce(300)
+        .flatMapLatest { q ->
+            flow {
+                if (q.isBlank()) {
+                    emit(emptyList())
+                } else {
+                    try {
+                        emit(exerciseRepository.search(q))
+                    } catch (e: Exception) {
+                        emit(emptyList())
+                    }
+                }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList(),
+        )
+
+    private val _navigateToWorkout = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
+
+    fun loadPlan(planId: String) {
+        viewModelScope.launch {
+            _plan.value = UiState.Loading
+            try {
+                val result = planRepository.getPlan(planId)
+                _plan.value = UiState.Success(result)
+            } catch (e: Exception) {
+                _plan.value = UiState.Error(e.message ?: "Failed to load plan")
+            }
+        }
+    }
+
+    fun startEdit() {
+        val current = (_plan.value as? UiState.Success)?.data ?: return
+        _draftExercises.value = current.exercises.map { pe ->
+            DraftExercise(
+                exerciseId = pe.exerciseId,
+                name = pe.exerciseName ?: pe.exerciseId,
+                targetSets = pe.targetSets,
+                targetReps = pe.targetReps,
+                targetWeight = pe.targetWeight,
+                isBodyweight = pe.isBodyweight,
+                order = pe.order,
+            )
+        }
+        _isEditing.value = true
+    }
+
+    fun cancelEdit() {
+        _draftExercises.value = emptyList()
+        _isEditing.value = false
+    }
+
+    fun addExercise(ex: ExerciseOut) {
+        val list = _draftExercises.value.toMutableList()
+        list.add(
+            DraftExercise(
+                exerciseId = ex.id,
+                name = ex.name,
+                isBodyweight = ex.equipment == "bodyweight",
+                order = list.size,
+            )
+        )
+        _draftExercises.value = list
+    }
+
+    fun removeExercise(index: Int) {
+        val list = _draftExercises.value.toMutableList()
+        if (index in list.indices) {
+            list.removeAt(index)
+            _draftExercises.value = list.mapIndexed { i, ex -> ex.copy(order = i) }
+        }
+    }
+
+    fun updateExercise(index: Int, draft: DraftExercise) {
+        val list = _draftExercises.value.toMutableList()
+        if (index in list.indices) {
+            list[index] = draft
+            _draftExercises.value = list
+        }
+    }
+
+    fun saveEdits(planId: String) {
+        viewModelScope.launch {
+            try {
+                val exercises = _draftExercises.value.mapIndexed { i, ex ->
+                    PlannedExerciseIn(
+                        exerciseId = ex.exerciseId,
+                        targetSets = ex.targetSets,
+                        targetReps = ex.targetReps,
+                        targetWeight = ex.targetWeight,
+                        isBodyweight = ex.isBodyweight,
+                        order = i,
+                    )
+                }
+                planRepository.updateExercises(planId, exercises)
+                loadPlan(planId)
+                cancelEdit()
+            } catch (e: Exception) {
+                // Errors silently ignored; could expose error state if needed
+            }
+        }
+    }
+
+    fun startWorkout(planId: String) {
+        viewModelScope.launch {
+            try {
+                val session = sessionRepository.createSession(
+                    com.spotter.data.model.SessionCreate(
+                        planId = planId,
+                        date = LocalDate.now().toString(),
+                    )
+                )
+                _navigateToWorkout.emit(session.id)
+            } catch (e: Exception) {
+                // Silently ignored
+            }
+        }
+    }
+}

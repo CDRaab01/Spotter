@@ -18,3 +18,6 @@ data class TokenResponse(
 
 @Serializable
 data class RefreshRequest(@SerialName("refresh_token") val refreshToken: String)
+
+@Serializable
+data class UserOut(val id: String, val name: String, val email: String)

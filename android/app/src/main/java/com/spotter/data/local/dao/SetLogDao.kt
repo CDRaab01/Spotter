@@ -12,6 +12,9 @@ interface SetLogDao {
     @Query("SELECT * FROM set_logs WHERE sessionId = :sessionId ORDER BY setNumber ASC")
     fun observeBySession(sessionId: String): Flow<List<SetLogEntity>>
 
+    @Query("SELECT * FROM set_logs WHERE sessionId = :sessionId ORDER BY setNumber ASC")
+    suspend fun getBySession(sessionId: String): List<SetLogEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(log: SetLogEntity)
 

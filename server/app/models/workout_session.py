@@ -2,6 +2,7 @@ import datetime
 import uuid
 
 from sqlalchemy import Date, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,6 +20,7 @@ class WorkoutSession(Base):
     status: Mapped[str] = mapped_column(String(20), default="in_progress")
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exercise_notes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user = relationship("User", back_populates="sessions", lazy="raise")
     plan = relationship("WorkoutPlan", back_populates="sessions", lazy="raise")

@@ -5,19 +5,32 @@ import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.ChatResponse
+import com.spotter.data.model.ExerciseOut
+import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.LoginRequest
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanOut
+import com.spotter.data.model.PlanUpdate
+import com.spotter.data.model.PlannedExercisesUpdate
 import com.spotter.data.model.RefreshRequest
 import com.spotter.data.model.RegisterRequest
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.SessionOut
+import com.spotter.data.model.SessionSummary
+import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
+import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.TokenResponse
+import com.spotter.data.model.TrackedExercise
+import com.spotter.data.model.UserOut
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -42,15 +55,40 @@ interface ApiService {
     @GET("plans/{id}")
     suspend fun getPlan(@Path("id") id: String): PlanOut
 
+    @PATCH("plans/{id}")
+    suspend fun renamePlan(@Path("id") id: String, @Body req: PlanUpdate): PlanOut
+
+    @DELETE("plans/{id}")
+    suspend fun deletePlan(@Path("id") id: String)
+
+    @PUT("plans/{id}/exercises")
+    suspend fun updatePlanExercises(@Path("id") id: String, @Body req: PlannedExercisesUpdate): PlanOut
+
     // Sessions
+    @GET("sessions")
+    suspend fun listSessions(): List<SessionSummary>
+
     @POST("sessions")
     suspend fun createSession(@Body req: SessionCreate): SessionOut
 
     @GET("sessions/{id}")
     suspend fun getSession(@Path("id") id: String): SessionOut
 
+    @PATCH("sessions/{id}")
+    suspend fun updateSession(@Path("id") id: String, @Body req: SessionUpdate): SessionOut
+
     @POST("sessions/{id}/sets")
     suspend fun logSet(@Path("id") id: String, @Body req: SetLogCreate): SetLogOut
+
+    @PATCH("sessions/{id}/sets/{setId}")
+    suspend fun updateSet(
+        @Path("id") id: String,
+        @Path("setId") setId: String,
+        @Body req: SetLogUpdate,
+    ): SetLogOut
+
+    @GET("sessions/{id}/prior-bests")
+    suspend fun getPriorBests(@Path("id") id: String): List<ExercisePrior>
 
     // Metrics
     @GET("metrics/weight")
@@ -69,4 +107,19 @@ interface ApiService {
         @Query("from") from: String,
         @Query("to") to: String,
     ): List<CalendarEntry>
+
+    // Exercises
+    @GET("exercises")
+    suspend fun searchExercises(@Query("search") search: String = ""): List<ExerciseOut>
+
+    // Users
+    @GET("users/me")
+    suspend fun getMe(): UserOut
+
+    // Progress
+    @GET("progress/exercises")
+    suspend fun getTrackedExercises(): List<TrackedExercise>
+
+    @GET("progress/exercises/{exerciseId}")
+    suspend fun getExerciseProgress(@Path("exerciseId") exerciseId: String): List<ExerciseProgressPoint>
 }
