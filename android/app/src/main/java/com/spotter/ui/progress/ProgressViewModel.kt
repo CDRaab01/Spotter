@@ -43,9 +43,9 @@ class ProgressViewModel @Inject constructor(
         selectedExerciseId
             .flatMapLatest { id ->
                 if (id == null) {
-                    flowOf(UiState.Idle)
+                    flowOf<UiState<List<ExerciseProgressPoint>>>(UiState.Idle)
                 } else {
-                    flow {
+                    flow<UiState<List<ExerciseProgressPoint>>> {
                         emit(UiState.Loading)
                         try {
                             emit(UiState.Success(api.getExerciseProgress(id)))
