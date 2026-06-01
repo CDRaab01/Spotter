@@ -39,6 +39,10 @@ class AiChatViewModel @Inject constructor(
         }
     }
 
+    fun startIntake() {
+        send("Hi, I'm ready to get started.")
+    }
+
     fun clearError() {
         if (_sendState.value is UiState.Error) _sendState.value = UiState.Idle
     }

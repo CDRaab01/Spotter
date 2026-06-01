@@ -27,7 +27,8 @@ fun AppNavGraph() {
         composable(Screen.Register.route) {
             RegisterScreen(
                 onRegisterSuccess = {
-                    navController.navigate(Screen.Home.route) { popUpTo(0) { inclusive = true } }
+                    // New users land in the AI coach for guided onboarding
+                    navController.navigate(Screen.AiChat.route) { popUpTo(0) { inclusive = true } }
                 },
                 onNavigateToLogin = { navController.popBackStack() },
             )

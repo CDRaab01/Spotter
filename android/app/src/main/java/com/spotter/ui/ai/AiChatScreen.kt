@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -113,18 +114,24 @@ fun AiChatScreen(
                         Column(
                             modifier = Modifier.padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Text(
                                 "Hey, I'm Spotter",
                                 style = MaterialTheme.typography.titleLarge,
                             )
                             Text(
-                                "Your personal gym coach. Tell me your goals and I'll build you a custom workout plan.",
+                                "Your personal gym coach. Let's build your first workout plan — tap below to get started.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            Button(
+                                onClick = { viewModel.startIntake() },
+                                enabled = !isLoading,
+                            ) {
+                                Text("Get Started")
+                            }
                         }
                     }
                 }
