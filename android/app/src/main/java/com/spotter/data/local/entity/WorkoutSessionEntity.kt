@@ -12,4 +12,7 @@ data class WorkoutSessionEntity(
     val status: String,
     val durationSeconds: Int?,
     val note: String?,
+    val exerciseNotes: String? = null,   // JSON Map<String,String>
+    val serverId: String? = null,         // server-assigned UUID after sync
+    val syncPending: Boolean = false,     // true when created/updated offline
 )

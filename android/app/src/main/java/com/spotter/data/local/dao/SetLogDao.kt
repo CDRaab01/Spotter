@@ -23,4 +23,10 @@ interface SetLogDao {
 
     @Query("DELETE FROM set_logs WHERE sessionId = :sessionId")
     suspend fun deleteBySession(sessionId: String)
+
+    @Query("SELECT * FROM set_logs WHERE id = :id")
+    suspend fun getById(id: String): SetLogEntity?
+
+    @Query("SELECT * FROM set_logs WHERE syncPending = 1 AND serverId IS NOT NULL")
+    suspend fun getSyncPendingLogs(): List<SetLogEntity>
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.spotter.data.local.SpotterDatabase
+import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
 import com.spotter.util.TokenStore
@@ -61,7 +62,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): SpotterDatabase =
         Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(MIGRATION_2_3)
             .build()
 
     @Provides

@@ -107,11 +107,8 @@ class HomeViewModel @Inject constructor(
 
     fun sync() {
         viewModelScope.launch {
-            try {
-                planRepository.sync()
-            } catch (_: Exception) {
-                // offline — local data still shown
-            }
+            try { planRepository.sync() } catch (_: Exception) {}
+            try { sessionRepository.syncPending() } catch (_: Exception) {}
         }
     }
 
@@ -153,10 +150,11 @@ class HomeViewModel @Inject constructor(
                     SessionCreate(planId = planId, date = LocalDate.now().toString()),
                 )
                 _navigateToWorkout.emit(session.id)
-                _startState.value = UiState.Idle
             } catch (e: Exception) {
                 _startState.value = UiState.Error(e.message ?: "Could not start workout")
+                return@launch
             }
+            _startState.value = UiState.Idle
         }
     }
 

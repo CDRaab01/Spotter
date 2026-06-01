@@ -13,4 +13,10 @@ data class SetLogEntity(
     val weight: Double?,
     val completed: Boolean,
     val completedAt: String?,
+    val exerciseName: String? = null,
+    val targetSets: Int? = null,
+    val targetReps: Int? = null,
+    val targetWeight: Double? = null,
+    val serverId: String? = null,        // server-assigned UUID after sync
+    val syncPending: Boolean = false,    // true when modified offline
 )
