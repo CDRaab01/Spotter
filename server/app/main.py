@@ -4,7 +4,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.limiter import limiter
-from app.routers import ai, auth, calendar, exercises, metrics, plans, progress, sessions, users
+from app.routers import ai, auth, calendar, exercises, metrics, plans, progress, programs, sessions, users
 
 app = FastAPI(title="Spotter API", version="0.1.0")
 app.state.limiter = limiter
@@ -40,6 +40,7 @@ app.include_router(calendar.router)
 app.include_router(progress.router)
 app.include_router(exercises.router)
 app.include_router(users.router)
+app.include_router(programs.router)
 
 
 @app.get("/health", tags=["health"])

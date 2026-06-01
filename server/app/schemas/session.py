@@ -45,6 +45,13 @@ class SetLogOut(BaseModel):
     target_sets: int | None = None
     target_reps: int | None = None
     target_weight: float | None = None
+    superset_group: int | None = None
+
+
+class MuscleGroupSummary(BaseModel):
+    muscle_group: str
+    sets: int
+    volume: float  # in kg; client converts to preferred unit
 
 
 class SessionOut(BaseModel):
@@ -58,6 +65,7 @@ class SessionOut(BaseModel):
     note: str | None
     exercise_notes: dict[str, str] | None = None
     set_logs: list[SetLogOut] = []
+    muscle_groups: list[MuscleGroupSummary] = []
 
 
 class ExerciseSummary(BaseModel):
@@ -83,3 +91,4 @@ class ExercisePrior(BaseModel):
     reps: int
     weight: float | None = None
     date: datetime.date
+    last_sets: list[SetLogOut] = []

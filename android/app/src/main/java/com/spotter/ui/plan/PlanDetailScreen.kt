@@ -271,6 +271,13 @@ private fun ExerciseViewRow(exercise: PlannedExerciseOut) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                exercise.supersetGroup?.let { group ->
+                    Text(
+                        "Superset ${('A' + group - 1).uppercaseChar()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
             }
         }
     }

@@ -12,4 +12,5 @@ data class PlannedExerciseEntity(
     val targetWeight: Double?,
     val isBodyweight: Boolean,
     val order: Int,
+    val supersetGroup: Int? = null,
 )

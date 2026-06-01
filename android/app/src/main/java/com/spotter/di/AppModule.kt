@@ -6,6 +6,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
+import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_3_4
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
 import com.spotter.util.TokenStore
@@ -67,7 +68,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): SpotterDatabase =
         Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db")
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
             .build()
 
     @Provides

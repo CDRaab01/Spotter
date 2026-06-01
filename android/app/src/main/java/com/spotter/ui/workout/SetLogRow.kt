@@ -20,7 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightNullable
+import com.spotter.util.estimatedOneRM
 
 @Composable
 fun SetLogRow(
@@ -75,5 +77,12 @@ fun SetLogRow(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.clickable(onClick = onEditWeight),
         )
+        if (setLog.completed && setLog.reps > 1 && setLog.weight != null) {
+            Text(
+                text = "≈ ${weightUnit.formatWeight(estimatedOneRM(setLog.weight, setLog.reps))} 1RM",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

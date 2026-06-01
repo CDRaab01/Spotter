@@ -9,9 +9,11 @@ import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.SessionCreate
+import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
@@ -35,6 +37,7 @@ class HomeViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val metricRepository: MetricRepository,
     private val aiRepository: AiRepository,
+    private val programRepository: ProgramRepository,
     private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
@@ -58,6 +61,9 @@ class HomeViewModel @Inject constructor(
 
     private val _weeklyWorkouts = MutableStateFlow(0)
     val weeklyWorkouts: StateFlow<Int> = _weeklyWorkouts.asStateFlow()
+
+    private val _nextProgramDay = MutableStateFlow<ProgramDayOut?>(null)
+    val nextProgramDay: StateFlow<ProgramDayOut?> = _nextProgramDay.asStateFlow()
 
     private var autoGenerateTriggered = false
 
@@ -109,6 +115,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try { planRepository.sync() } catch (_: Exception) {}
             try { sessionRepository.syncPending() } catch (_: Exception) {}
+            try { programRepository.sync() } catch (_: Exception) {}
+            _nextProgramDay.value = programRepository.getNextProgramDay()
         }
     }
 

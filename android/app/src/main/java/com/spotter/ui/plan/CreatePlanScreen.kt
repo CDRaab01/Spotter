@@ -201,6 +201,9 @@ internal fun DraftExerciseRow(
     var weightText by remember(draft.exerciseId) {
         mutableStateOf(draft.targetWeight?.toString() ?: "")
     }
+    var supersetText by remember(draft.exerciseId) {
+        mutableStateOf(draft.supersetGroup?.toString() ?: "")
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -271,6 +274,17 @@ internal fun DraftExerciseRow(
                         )
                     }
                 }
+                OutlinedTextField(
+                    value = supersetText,
+                    onValueChange = { v ->
+                        supersetText = v.filter { it.isDigit() }
+                        onUpdate(draft.copy(supersetGroup = supersetText.toIntOrNull()))
+                    },
+                    label = { Text("SS#") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(0.6f),
+                    singleLine = true,
+                )
             }
         }
     }

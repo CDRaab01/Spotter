@@ -19,8 +19,10 @@ import com.spotter.ui.plan.CreatePlanScreen
 import com.spotter.ui.plan.PlanDetailScreen
 import com.spotter.ui.progress.ProgressScreen
 import com.spotter.ui.settings.SettingsScreen
+import com.spotter.ui.program.ProgramScreen
 import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
+import com.spotter.ui.workout.WorkoutSummaryStore
 
 @Composable
 fun AppNavGraph(startDestination: String = Screen.Login.route) {
@@ -85,6 +87,7 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
                 doneSets = doneSets,
                 totalSets = totalSets,
                 totalVolumeLb = volume,
+                muscleGroups = WorkoutSummaryStore.muscleGroups,
                 navController = navController,
             )
         }
@@ -112,6 +115,9 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
         }
         composable(Screen.Settings.route) {
             SettingsScreen(navController = navController)
+        }
+        composable(Screen.Programs.route) {
+            ProgramScreen(navController = navController)
         }
     }
 }

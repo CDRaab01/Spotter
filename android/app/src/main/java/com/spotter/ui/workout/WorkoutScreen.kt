@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
@@ -66,6 +67,7 @@ import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
 import com.spotter.util.WeightUnit
+import com.spotter.util.estimatedOneRM
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -357,6 +359,15 @@ private fun EditSetDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                     )
+                    val dialogReps = repsText.toIntOrNull()
+                    val dialogWeightLbs = weightText.toDoubleOrNull()
+                    if (dialogReps != null && dialogReps > 1 && dialogWeightLbs != null && dialogWeightLbs > 0) {
+                        Text(
+                            text = "≈ ${weightUnit.formatWeight(estimatedOneRM(dialogWeightLbs, dialogReps))} est. 1RM",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     TextButton(
                         onClick = { showPlateCalc = true },
                         modifier = Modifier.align(Alignment.End),
@@ -398,12 +409,21 @@ private fun ExerciseCard(
     val name = first.exerciseName ?: first.exerciseId
     val targetHeader = buildTargetHeader(first, weightUnit)
     val done = sets.count { it.completed }
+    val supersetGroup = first.supersetGroup
     var showNote by remember { mutableStateOf(note.isNotEmpty()) }
     var noteText by remember(note) { mutableStateOf(note) }
     val focusManager = LocalFocusManager.current
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
+            if (supersetGroup != null) {
+                Text(
+                    text = "Superset ${('A' + supersetGroup - 1).uppercaseChar()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -418,12 +438,25 @@ private fun ExerciseCard(
                         )
                     }
                     if (priorBest != null) {
-                        val weightStr = priorBest.weight?.let { " @ ${weightUnit.formatWeight(it)}" } ?: ""
-                        Text(
-                            "Last: ${priorBest.reps} reps$weightStr",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
+                        if (priorBest.lastSets.isNotEmpty()) {
+                            val lastSetsText = priorBest.lastSets.joinToString(" · ") { sl ->
+                                val wt = sl.weight
+                                if (wt != null) "${sl.reps}×${weightUnit.formatWeight(wt)}"
+                                else "${sl.reps} reps"
+                            }
+                            Text(
+                                "Last: $lastSetsText",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        } else {
+                            val weightStr = priorBest.weight?.let { " @ ${weightUnit.formatWeight(it)}" } ?: ""
+                            Text(
+                                "Best: ${priorBest.reps} reps$weightStr",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
                     }
                 }
                 IconButton(onClick = { showNote = !showNote }) {

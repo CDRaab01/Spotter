@@ -17,6 +17,7 @@ data class SetLogEntity(
     val targetSets: Int? = null,
     val targetReps: Int? = null,
     val targetWeight: Double? = null,
+    val supersetGroup: Int? = null,
     val serverId: String? = null,        // server-assigned UUID after sync
     val syncPending: Boolean = false,    // true when modified offline
 )

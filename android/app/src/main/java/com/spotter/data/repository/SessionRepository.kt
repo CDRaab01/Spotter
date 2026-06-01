@@ -52,6 +52,7 @@ class SessionRepository @Inject constructor(
                     weight = ex.targetWeight, completed = false, completedAt = null,
                     exerciseName = ex.exerciseName, targetSets = ex.targetSets,
                     targetReps = ex.targetReps, targetWeight = ex.targetWeight,
+                    supersetGroup = ex.supersetGroup,
                     serverId = null, syncPending = false,
                 )
             }
@@ -339,6 +340,7 @@ class SessionRepository @Inject constructor(
         completed = completed, completedAt = completedAt,
         exerciseName = exerciseName, targetSets = targetSets,
         targetReps = targetReps, targetWeight = targetWeight,
+        supersetGroup = supersetGroup,
         serverId = id, syncPending = false,
     )
 
@@ -348,6 +350,7 @@ class SessionRepository @Inject constructor(
         completed = completed, completedAt = completedAt,
         exerciseName = exerciseName, targetSets = targetSets,
         targetReps = targetReps, targetWeight = targetWeight,
+        supersetGroup = supersetGroup,
     )
 
     private fun adaptSetLogs(

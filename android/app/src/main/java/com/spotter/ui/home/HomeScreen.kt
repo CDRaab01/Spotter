@@ -69,6 +69,7 @@ fun HomeScreen(
     val generatingPlan by viewModel.generatingPlan.collectAsState()
     val streak by viewModel.streak.collectAsState()
     val weeklyWorkouts by viewModel.weeklyWorkouts.collectAsState()
+    val nextProgramDay by viewModel.nextProgramDay.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
 
@@ -119,6 +120,13 @@ fun HomeScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("Programs") },
+                                onClick = {
+                                    overflowExpanded = false
+                                    navController.navigate(Screen.Programs.route)
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {
                                     overflowExpanded = false
@@ -161,7 +169,7 @@ fun HomeScreen(
                         .fillMaxSize()
                         .padding(padding),
                 ) {
-                    if (weeklyWorkouts > 0 || streak >= 2) {
+                    if (weeklyWorkouts > 0 || streak >= 2 || nextProgramDay != null) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -180,6 +188,15 @@ fun HomeScreen(
                                 SuggestionChip(
                                     onClick = {},
                                     label = { Text("$streak day streak 🔥") },
+                                )
+                            }
+                            nextProgramDay?.let { day ->
+                                val label = day.planName?.let { "Next: $it" } ?: "Next: ${day.label}"
+                                SuggestionChip(
+                                    onClick = {
+                                        day.planId?.let { viewModel.startSession(it) }
+                                    },
+                                    label = { Text(label) },
                                 )
                             }
                         }

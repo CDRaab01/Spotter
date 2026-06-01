@@ -1,8 +1,10 @@
 package com.spotter.ui.workout
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
@@ -11,6 +13,7 @@ import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -34,9 +37,14 @@ data class WorkoutSummaryData(
     val totalVolumeLb: Int,
 )
 
+object WorkoutSummaryStore {
+    var muscleGroups: List<MuscleGroupSummary> = emptyList()
+}
+
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _session = MutableStateFlow<UiState<SessionOut>>(UiState.Loading)
@@ -138,8 +146,8 @@ class WorkoutViewModel @Inject constructor(
     fun completeActiveSet(sessionId: String) {
         val setId = _activeSetId.value ?: return
         val actualReps = _activeSetReps.value
-        val setLog = (_session.value as? UiState.Success)?.data
-            ?.setLogs?.find { it.id == setId } ?: return
+        val session = (_session.value as? UiState.Success)?.data ?: return
+        val setLog = session.setLogs.find { it.id == setId } ?: return
         _activeSetId.value = null   // flatMapLatest switches to flowOf(0), stopping the timer
         viewModelScope.launch {
             try {
@@ -148,8 +156,21 @@ class WorkoutViewModel @Inject constructor(
                     SetLogUpdate(completed = true, reps = actualReps),
                 )
                 loadSession(sessionId)
-                startRestTimer(setLog.targetReps, actualReps)
+                // Check for superset continuation — find the next pending set in the same group
+                val supersetNext = findNextSupersetSet(session.setLogs, setLog)
+                if (supersetNext != null) {
+                    activateSet(supersetNext)
+                } else {
+                    startRestTimer(setLog.targetReps, actualReps)
+                }
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun findNextSupersetSet(allSets: List<SetLogOut>, completedSet: SetLogOut): SetLogOut? {
+        val group = completedSet.supersetGroup ?: return null
+        return allSets.firstOrNull { sl ->
+            !sl.completed && sl.id != completedSet.id && sl.supersetGroup == group
         }
     }
 
@@ -208,6 +229,7 @@ class WorkoutViewModel @Inject constructor(
         val duration = if (failure) base + 60 else base
         restTimerJob?.cancel()
         _restTimerSeconds.value = duration
+        context.startService(RestTimerService.startIntent(context, duration))
         restTimerJob = viewModelScope.launch {
             var remaining = duration
             while (remaining > 0) {
@@ -222,13 +244,14 @@ class WorkoutViewModel @Inject constructor(
     fun dismissRestTimer() {
         restTimerJob?.cancel()
         _restTimerSeconds.value = null
+        context.startService(RestTimerService.cancelIntent(context))
     }
 
     fun finishSession(sessionId: String) {
         viewModelScope.launch {
             _finishState.value = UiState.Loading
             try {
-                sessionRepository.updateSession(
+                val updated = sessionRepository.updateSession(
                     sessionId,
                     SessionUpdate(
                         status = "completed",
@@ -236,8 +259,8 @@ class WorkoutViewModel @Inject constructor(
                     ),
                 )
                 _finishState.value = UiState.Success(Unit)
-                val data = (_session.value as? UiState.Success)?.data
-                val setLogs = data?.setLogs ?: emptyList()
+                WorkoutSummaryStore.muscleGroups = updated.muscleGroups
+                val setLogs = updated.setLogs
                 val doneSets = setLogs.count { it.completed }
                 val totalSets = setLogs.size
                 val volumeLb = setLogs

@@ -20,6 +20,7 @@ sealed class Screen(val route: String) {
     }
     data object SessionHistory : Screen("session_history")
     data object Settings : Screen("settings")
+    data object Programs : Screen("programs")
     data object Onboarding : Screen("onboarding")
     data object ForgotPassword : Screen("forgot_password")
     data object ResetPassword : Screen("reset_password")

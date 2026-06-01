@@ -76,5 +76,6 @@ class PlanRepository @Inject constructor(
         targetWeight = targetWeight,
         isBodyweight = isBodyweight,
         order = order,
+        supersetGroup = supersetGroup,
     )
 }

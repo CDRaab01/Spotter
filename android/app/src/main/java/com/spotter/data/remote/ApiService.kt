@@ -23,6 +23,11 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.ForgotPasswordRequest
+import com.spotter.data.model.ProgramCreate
+import com.spotter.data.model.ProgramDayOut
+import com.spotter.data.model.ProgramDaysUpdate
+import com.spotter.data.model.ProgramOut
+import com.spotter.data.model.ProgramUpdate
 import com.spotter.data.model.ResetPasswordRequest
 import com.spotter.data.model.TokenResponse
 import com.spotter.data.model.TrackedExercise
@@ -130,4 +135,26 @@ interface ApiService {
 
     @GET("progress/exercises/{exerciseId}")
     suspend fun getExerciseProgress(@Path("exerciseId") exerciseId: String): List<ExerciseProgressPoint>
+
+    // Programs
+    @GET("programs")
+    suspend fun listPrograms(): List<ProgramOut>
+
+    @POST("programs")
+    suspend fun createProgram(@Body req: ProgramCreate): ProgramOut
+
+    @GET("programs/active/next")
+    suspend fun getNextProgramDay(): ProgramDayOut?
+
+    @GET("programs/{id}")
+    suspend fun getProgram(@Path("id") id: String): ProgramOut
+
+    @PATCH("programs/{id}")
+    suspend fun updateProgram(@Path("id") id: String, @Body req: ProgramUpdate): ProgramOut
+
+    @DELETE("programs/{id}")
+    suspend fun deleteProgram(@Path("id") id: String)
+
+    @PUT("programs/{id}/days")
+    suspend fun replaceProgramDays(@Path("id") id: String, @Body req: ProgramDaysUpdate): ProgramOut
 }

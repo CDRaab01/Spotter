@@ -34,6 +34,7 @@ data class DraftExercise(
     val targetWeight: Double? = null,
     val isBodyweight: Boolean = false,
     val order: Int = 0,
+    val supersetGroup: Int? = null,
 )
 
 @HiltViewModel
@@ -120,6 +121,7 @@ class CreatePlanViewModel @Inject constructor(
                                 targetWeight = ex.targetWeight,
                                 isBodyweight = ex.isBodyweight,
                                 order = i,
+                                supersetGroup = ex.supersetGroup,
                             )
                         },
                     )
