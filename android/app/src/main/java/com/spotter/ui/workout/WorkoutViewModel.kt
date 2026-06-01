@@ -16,10 +16,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -38,8 +40,19 @@ class WorkoutViewModel @Inject constructor(
     private val _session = MutableStateFlow<UiState<SessionOut>>(UiState.Loading)
     val session: StateFlow<UiState<SessionOut>> = _session
 
-    private val _elapsedSeconds = MutableStateFlow(0)
-    val elapsedSeconds: StateFlow<Int> = _elapsedSeconds.asStateFlow()
+    // Session timer. Implemented as a WhileSubscribed flow so it only ticks while
+    // something is collecting it (the WorkoutScreen). This keeps unit tests that
+    // don't observe the timer from leaving an infinite delay loop on the test
+    // scheduler, which would hang runTest's end-of-test drain. The running count
+    // lives in `elapsed` so it survives brief resubscriptions (e.g. rotation).
+    private var elapsed = 0
+    val elapsedSeconds: StateFlow<Int> = flow {
+        while (true) {
+            delay(1000)
+            elapsed++
+            emit(elapsed)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     private val _finishState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val finishState: StateFlow<UiState<Unit>> = _finishState
@@ -60,15 +73,6 @@ class WorkoutViewModel @Inject constructor(
     val priorBests: StateFlow<Map<String, ExercisePrior>> = _priorBests.asStateFlow()
 
     private var restTimerJob: Job? = null
-
-    init {
-        viewModelScope.launch {
-            while (true) {
-                delay(1000)
-                _elapsedSeconds.update { it + 1 }
-            }
-        }
-    }
 
     fun loadSession(sessionId: String) {
         viewModelScope.launch {
@@ -187,7 +191,7 @@ class WorkoutViewModel @Inject constructor(
                     sessionId,
                     SessionUpdate(
                         status = "completed",
-                        durationSeconds = _elapsedSeconds.value,
+                        durationSeconds = elapsedSeconds.value,
                     ),
                 )
                 _finishState.value = UiState.Success(Unit)
@@ -200,7 +204,7 @@ class WorkoutViewModel @Inject constructor(
                     .sumOf { (it.reps * (it.weight ?: 0.0)).toInt() }
                 _navigateToSummary.emit(
                     WorkoutSummaryData(
-                        durationSeconds = _elapsedSeconds.value,
+                        durationSeconds = elapsedSeconds.value,
                         doneSets = doneSets,
                         totalSets = totalSets,
                         totalVolumeLb = volumeLb,

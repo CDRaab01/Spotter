@@ -227,10 +227,14 @@ class WorkoutViewModelTest {
     }
 
     @Test
-    fun `elapsedSeconds increments every second`() = runTest(testDispatcher) {
+    fun `elapsedSeconds increments every second while observed`() = runTest(testDispatcher) {
         assertEquals(0, viewModel.elapsedSeconds.value)
-        advanceTimeBy(3000)
+        // The timer is a WhileSubscribed flow, so it only ticks while collected.
+        val job = launch { viewModel.elapsedSeconds.collect {} }
+        // advanceTimeBy is exclusive of the endpoint, so 3500 covers ticks at 1000/2000/3000.
+        advanceTimeBy(3500)
         assertEquals(3, viewModel.elapsedSeconds.value)
+        job.cancel()
     }
 
     private fun fakeSession(id: String = "session-1") = SessionOut(
