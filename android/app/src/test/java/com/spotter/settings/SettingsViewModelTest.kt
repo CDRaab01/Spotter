@@ -3,10 +3,15 @@ package com.spotter.settings
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
 import com.spotter.ui.settings.SettingsViewModel
+import com.spotter.util.AppPreferences
+import com.spotter.util.DarkModePreference
+import com.spotter.util.DistanceUnit
 import com.spotter.util.TokenStore
 import com.spotter.util.UiState
+import com.spotter.util.WeightUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -28,6 +33,7 @@ class SettingsViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var api: ApiService
     private lateinit var tokenStore: TokenStore
+    private lateinit var appPreferences: AppPreferences
     private lateinit var viewModel: SettingsViewModel
 
     @Before
@@ -35,6 +41,10 @@ class SettingsViewModelTest {
         Dispatchers.setMain(testDispatcher)
         api = mock()
         tokenStore = mock()
+        appPreferences = mock()
+        whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
+        whenever(appPreferences.weightUnit).thenReturn(flowOf(WeightUnit.LBS))
+        whenever(appPreferences.distanceUnit).thenReturn(flowOf(DistanceUnit.MI))
     }
 
     @After
@@ -47,7 +57,7 @@ class SettingsViewModelTest {
         val user = UserOut(id = "u-1", name = "Alice", email = "alice@example.com")
         whenever(api.getMe()).thenReturn(user)
 
-        viewModel = SettingsViewModel(api, tokenStore)
+        viewModel = SettingsViewModel(api, tokenStore, appPreferences)
         advanceTimeBy(200)
 
         assertIs<UiState.Success<UserOut>>(viewModel.user.value)
@@ -59,7 +69,7 @@ class SettingsViewModelTest {
         val user = UserOut(id = "u-1", name = "Alice", email = "alice@example.com")
         whenever(api.getMe()).thenReturn(user)
 
-        viewModel = SettingsViewModel(api, tokenStore)
+        viewModel = SettingsViewModel(api, tokenStore, appPreferences)
         advanceTimeBy(200)
 
         val events = mutableListOf<Unit>()

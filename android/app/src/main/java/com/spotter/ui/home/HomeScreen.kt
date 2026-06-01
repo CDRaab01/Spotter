@@ -53,6 +53,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,6 +65,7 @@ fun HomeScreen(
 ) {
     val plans by viewModel.plans.collectAsState()
     val startState by viewModel.startState.collectAsState()
+    val generatingPlan by viewModel.generatingPlan.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
 
@@ -150,7 +153,7 @@ fun HomeScreen(
             ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
 
             is UiState.Success -> {
-                if (state.data.isEmpty()) {
+                if (state.data.isEmpty() && !generatingPlan) {
                     Box(
                         Modifier.fillMaxSize().padding(padding),
                         contentAlignment = Alignment.Center,
@@ -165,6 +168,17 @@ fun HomeScreen(
                                     navController.navigate(Screen.AiChat.route)
                                 },
                             )
+                        }
+                    }
+                } else if (generatingPlan && state.data.isEmpty()) {
+                    Box(
+                        Modifier.fillMaxSize().padding(padding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(16.dp))
+                            Text("Building your first plan…")
                         }
                     }
                 } else {
@@ -312,6 +326,7 @@ private fun BodyweightLogDialog(
     onDismiss: () -> Unit,
     onConfirm: (Double) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     var weightText by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -320,7 +335,7 @@ private fun BodyweightLogDialog(
             OutlinedTextField(
                 value = weightText,
                 onValueChange = { weightText = it.filter { c -> c.isDigit() || c == '.' } },
-                label = { Text("Weight (lb)") },
+                label = { Text(weightUnit.formatWeightFieldLabel()) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
             )

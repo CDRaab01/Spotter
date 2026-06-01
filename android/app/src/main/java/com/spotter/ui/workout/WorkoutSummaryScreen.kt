@@ -24,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatVolume
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +36,7 @@ fun WorkoutSummaryScreen(
     totalVolumeLb: Int,
     navController: NavController,
 ) {
+    val weightUnit = LocalWeightUnit.current
     Scaffold(
         topBar = { TopAppBar(title = { Text("Workout Complete") }) },
     ) { padding ->
@@ -72,7 +75,7 @@ fun WorkoutSummaryScreen(
             if (totalVolumeLb > 0) {
                 SummaryStat(
                     label = "Total volume",
-                    value = "%,d lb".format(totalVolumeLb),
+                    value = weightUnit.formatVolume(totalVolumeLb),
                 )
                 Spacer(Modifier.height(12.dp))
             }

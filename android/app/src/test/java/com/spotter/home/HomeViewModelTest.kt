@@ -4,13 +4,16 @@ import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.PlanOut
 import com.spotter.data.model.PlanUpdate
+import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.home.HomeViewModel
+import com.spotter.util.AppPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
@@ -32,6 +35,8 @@ class HomeViewModelTest {
     private lateinit var planRepository: PlanRepository
     private lateinit var sessionRepository: SessionRepository
     private lateinit var metricRepository: MetricRepository
+    private lateinit var aiRepository: AiRepository
+    private lateinit var appPreferences: AppPreferences
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -40,8 +45,11 @@ class HomeViewModelTest {
         planRepository = mock()
         sessionRepository = mock()
         metricRepository = mock()
+        aiRepository = mock()
+        appPreferences = mock()
         whenever(planRepository.plans).thenReturn(emptyFlow())
-        viewModel = HomeViewModel(planRepository, sessionRepository, metricRepository)
+        whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
+        viewModel = HomeViewModel(planRepository, sessionRepository, metricRepository, aiRepository, appPreferences)
     }
 
     @After

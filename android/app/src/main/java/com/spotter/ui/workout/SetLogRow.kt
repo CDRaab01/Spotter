@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.spotter.data.model.SetLogOut
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeightNullable
 
 @Composable
 fun SetLogRow(
@@ -26,6 +28,7 @@ fun SetLogRow(
     onToggle: () -> Unit,
     onEditWeight: () -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -57,7 +60,7 @@ fun SetLogRow(
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = if (setLog.weight != null) "${setLog.weight.toInt()} lb" else "BW",
+            text = weightUnit.formatWeightNullable(setLog.weight),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.clickable(onClick = onEditWeight),

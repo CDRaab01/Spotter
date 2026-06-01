@@ -7,7 +7,10 @@ import kotlinx.serialization.Serializable
 data class ChatMessage(val role: String, val content: String)
 
 @Serializable
-data class ChatRequest(val messages: List<ChatMessage>)
+data class ChatRequest(
+    val messages: List<ChatMessage>,
+    @SerialName("user_context") val userContext: String? = null,
+)
 
 @Serializable
 data class SuggestedPlan(

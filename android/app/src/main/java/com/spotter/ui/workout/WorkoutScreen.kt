@@ -55,7 +55,11 @@ import androidx.navigation.NavController
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
+import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
+import com.spotter.util.WeightUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -293,7 +297,7 @@ private fun EditSetDialog(
                         onValueChange = { new ->
                             weightText = new.filter { c -> c.isDigit() || c == '.' }
                         },
-                        label = { Text("Weight (lb)") },
+                        label = { Text(LocalWeightUnit.current.formatWeightFieldLabel()) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                     )
@@ -325,9 +329,10 @@ private fun ExerciseCard(
     onAddSet: (SetLogOut) -> Unit,
     onNoteSave: (String) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     val first = sets.first()
     val name = first.exerciseName ?: first.exerciseId
-    val targetHeader = buildTargetHeader(first)
+    val targetHeader = buildTargetHeader(first, weightUnit)
     val done = sets.count { it.completed }
     var showNote by remember { mutableStateOf(note.isNotEmpty()) }
     var noteText by remember(note) { mutableStateOf(note) }
@@ -349,7 +354,7 @@ private fun ExerciseCard(
                         )
                     }
                     if (priorBest != null) {
-                        val weightStr = priorBest.weight?.let { " @ ${it.toInt()} lb" } ?: ""
+                        val weightStr = priorBest.weight?.let { " @ ${weightUnit.formatWeight(it)}" } ?: ""
                         Text(
                             "Last: ${priorBest.reps} reps$weightStr",
                             style = MaterialTheme.typography.bodySmall,
@@ -408,12 +413,12 @@ private fun ExerciseCard(
     }
 }
 
-private fun buildTargetHeader(set: SetLogOut): String {
+private fun buildTargetHeader(set: SetLogOut, weightUnit: WeightUnit): String {
     val targetSets = set.targetSets ?: return ""
     val targetReps = set.targetReps ?: return ""
     return if (set.targetWeight == null) {
         "$targetSets × $targetReps  BW"
     } else {
-        "$targetSets × $targetReps @ ${set.targetWeight.toInt()} lb"
+        "$targetSets × $targetReps @ ${weightUnit.formatWeight(set.targetWeight)}"
     }
 }

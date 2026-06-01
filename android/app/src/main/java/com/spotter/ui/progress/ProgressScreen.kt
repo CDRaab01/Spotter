@@ -55,6 +55,10 @@ import androidx.navigation.NavController
 import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.TrackedExercise
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
+import com.spotter.ui.theme.formatWeightFieldLabel
+import com.spotter.ui.theme.formatWeightNullable
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,6 +133,7 @@ fun ProgressScreen(
 
 @Composable
 private fun BodyWeightTab(metrics: UiState<List<BodyMetricEntity>>) {
+    val weightUnit = LocalWeightUnit.current
     when (metrics) {
         is UiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -164,7 +169,7 @@ private fun BodyWeightTab(metrics: UiState<List<BodyMetricEntity>>) {
                                 Text(metric.date, style = MaterialTheme.typography.bodyMedium)
                                 val bodyfatText = metric.bodyfat?.let { " · ${it}% bf" } ?: ""
                                 Text(
-                                    "${metric.weight} lb$bodyfatText",
+                                    "${weightUnit.formatWeight(metric.weight)}$bodyfatText",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -185,6 +190,7 @@ private fun StrengthTab(
     selectedExerciseId: String?,
     onSelectExercise: (String?) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     Column(modifier = Modifier.fillMaxSize()) {
         when (trackedExercises) {
             is UiState.Loading -> Box(
@@ -268,7 +274,7 @@ private fun StrengthTab(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(point.date, style = MaterialTheme.typography.bodyMedium)
-                                    val wt = point.maxWeight?.let { "${it.toInt()} lb" } ?: "BW"
+                                    val wt = weightUnit.formatWeightNullable(point.maxWeight)
                                     Text(
                                         "${point.maxReps} reps · $wt",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -336,6 +342,7 @@ private fun BodyweightLogDialog(
     onDismiss: () -> Unit,
     onConfirm: (Double) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     var weightText by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -344,7 +351,7 @@ private fun BodyweightLogDialog(
             OutlinedTextField(
                 value = weightText,
                 onValueChange = { weightText = it.filter { c -> c.isDigit() || c == '.' } },
-                label = { Text("Weight (lb)") },
+                label = { Text(weightUnit.formatWeightFieldLabel()) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
             )

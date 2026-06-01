@@ -1,5 +1,7 @@
 package com.spotter.ai
 
+import com.spotter.data.local.dao.ChatMessageDao
+import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.PlannedExerciseIn
 import com.spotter.data.model.PlanOut
@@ -7,9 +9,15 @@ import com.spotter.data.model.SuggestedPlan
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.PlanRepository
 import com.spotter.ui.ai.AiChatViewModel
+import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
+import com.spotter.util.UserProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -27,12 +35,24 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
+// In-memory DAO for tests
+private class FakeChatMessageDao : ChatMessageDao {
+    private val _messages = MutableStateFlow<List<ChatMessageEntity>>(emptyList())
+    override fun getAllMessages(): Flow<List<ChatMessageEntity>> = _messages.asStateFlow()
+    override suspend fun insert(message: ChatMessageEntity) {
+        _messages.value = _messages.value + message
+    }
+    override suspend fun clearAll() { _messages.value = emptyList() }
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class AiChatViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var aiRepository: AiRepository
     private lateinit var planRepository: PlanRepository
+    private lateinit var appPreferences: AppPreferences
+    private lateinit var fakeChatDao: FakeChatMessageDao
     private lateinit var viewModel: AiChatViewModel
 
     @Before
@@ -40,7 +60,10 @@ class AiChatViewModelTest {
         Dispatchers.setMain(testDispatcher)
         aiRepository = mock()
         planRepository = mock()
-        viewModel = AiChatViewModel(aiRepository, planRepository)
+        appPreferences = mock()
+        fakeChatDao = FakeChatMessageDao()
+        whenever(appPreferences.userProfile).thenReturn(flowOf(UserProfile()))
+        viewModel = AiChatViewModel(aiRepository, planRepository, fakeChatDao, appPreferences)
     }
 
     @After
@@ -85,19 +108,6 @@ class AiChatViewModelTest {
     }
 
     @Test
-    fun `startIntake sends the standard onboarding message`() = runTest(testDispatcher) {
-        whenever(aiRepository.chat(any()))
-            .thenReturn(ChatResponse(reply = "Hi! I'm Spotter, your personal coach."))
-
-        viewModel.startIntake()
-        advanceTimeBy(200)
-
-        val firstMessage = viewModel.messages.value.firstOrNull()
-        assertEquals("Hi, I'm ready to get started.", firstMessage?.content)
-        assertEquals("user", firstMessage?.role)
-    }
-
-    @Test
     fun `clearError resets sendState to Idle`() = runTest(testDispatcher) {
         whenever(aiRepository.chat(any())).thenThrow(RuntimeException("timeout"))
         viewModel.send("test")
@@ -119,11 +129,7 @@ class AiChatViewModelTest {
         val plan = SuggestedPlan(
             name = "Upper Body Push",
             exercises = listOf(
-                PlannedExerciseIn(
-                    exerciseId = "ex-uuid-1",
-                    targetSets = 3,
-                    targetReps = 8,
-                )
+                PlannedExerciseIn(exerciseId = "ex-uuid-1", targetSets = 3, targetReps = 8)
             ),
         )
         whenever(aiRepository.chat(any()))
@@ -192,5 +198,18 @@ class AiChatViewModelTest {
         viewModel.dismissPlan()
 
         assertNull(viewModel.pendingPlan.value)
+    }
+
+    @Test
+    fun `clearHistory empties messages`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "Hi"))
+        viewModel.send("hello")
+        advanceTimeBy(200)
+        assertEquals(2, viewModel.messages.value.size)
+
+        viewModel.clearHistory()
+        advanceTimeBy(200)
+
+        assertEquals(0, viewModel.messages.value.size)
     }
 }

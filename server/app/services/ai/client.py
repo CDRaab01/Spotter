@@ -27,7 +27,7 @@ async def chat(req: ChatRequest, db: AsyncSession) -> ChatResponse:
         )
 
     history = [m.model_dump() for m in req.messages[:-1]]
-    messages = build_messages(history, last_user)
+    messages = build_messages(history, last_user, req.user_context)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:

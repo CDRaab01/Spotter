@@ -28,7 +28,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,6 +73,7 @@ fun AiChatScreen(
     val sendState by viewModel.sendState.collectAsState()
     val pendingPlan by viewModel.pendingPlan.collectAsState()
     var inputText by remember { mutableStateOf("") }
+    var overflowExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val isLoading = sendState is UiState.Loading
@@ -103,8 +107,33 @@ fun AiChatScreen(
             TopAppBar(
                 title = { Text("Spotter Coach") },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = {
+                        if (!navController.popBackStack()) {
+                            navController.navigate(com.spotter.ui.navigation.Screen.Home.route) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { overflowExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = overflowExpanded,
+                            onDismissRequest = { overflowExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Clear history") },
+                                onClick = {
+                                    overflowExpanded = false
+                                    viewModel.clearHistory()
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -124,30 +153,13 @@ fun AiChatScreen(
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Card(modifier = Modifier.padding(32.dp)) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                "Hey, I'm Spotter",
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                            Text(
-                                "Your personal gym coach. Let's build your first workout plan — tap below to get started.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Button(
-                                onClick = { viewModel.startIntake() },
-                                enabled = !isLoading,
-                            ) {
-                                Text("Get Started")
-                            }
-                        }
-                    }
+                    Text(
+                        "Ask your coach anything about training, form, or your plan.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(32.dp),
+                    )
                 }
             } else {
                 LazyColumn(

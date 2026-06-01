@@ -8,6 +8,7 @@ import com.spotter.data.model.PlannedExerciseIn
 import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.PlanRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,9 +16,12 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -33,7 +37,7 @@ data class DraftExercise(
 )
 
 @HiltViewModel
-@OptIn(FlowPreview::class)
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class CreatePlanViewModel @Inject constructor(
     private val planRepository: PlanRepository,
     private val exerciseRepository: ExerciseRepository,
@@ -47,19 +51,17 @@ class CreatePlanViewModel @Inject constructor(
     val searchQuery = MutableStateFlow("")
 
     val searchResults: StateFlow<List<ExerciseOut>> = searchQuery
+        .onStart { emit("") }
+        .distinctUntilChanged()
         .debounce(300)
         .flatMapLatest { q ->
             flow {
-                if (q.isBlank()) {
+                try {
+                    emit(exerciseRepository.search(q))
+                } catch (e: Exception) {
                     emit(emptyList())
-                } else {
-                    try {
-                        emit(exerciseRepository.search(q))
-                    } catch (e: Exception) {
-                        emit(emptyList())
-                    }
                 }
-            }
+            }.catch { emit(emptyList()) }
         }
         .stateIn(
             scope = viewModelScope,

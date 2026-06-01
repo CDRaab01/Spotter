@@ -60,5 +60,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): SpotterDatabase =
-        Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db").build()
+        Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db")
+            .fallbackToDestructiveMigration()
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideChatMessageDao(db: SpotterDatabase) = db.chatMessageDao()
 }

@@ -4,11 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.model.BodyMetricCreate
+import com.spotter.data.model.ChatMessage
+import com.spotter.data.model.ChatRequest
+import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.SessionCreate
+import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
 import com.spotter.data.repository.SessionRepository
+import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -16,7 +21,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -27,6 +34,8 @@ class HomeViewModel @Inject constructor(
     private val planRepository: PlanRepository,
     private val sessionRepository: SessionRepository,
     private val metricRepository: MetricRepository,
+    private val aiRepository: AiRepository,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val _plans = MutableStateFlow<UiState<List<WorkoutPlanEntity>>>(UiState.Loading)
@@ -41,6 +50,11 @@ class HomeViewModel @Inject constructor(
     private val _navigateToWorkout = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
 
+    private val _generatingPlan = MutableStateFlow(false)
+    val generatingPlan: StateFlow<Boolean> = _generatingPlan.asStateFlow()
+
+    private var autoGenerateTriggered = false
+
     init {
         observePlans()
         sync()
@@ -51,7 +65,16 @@ class HomeViewModel @Inject constructor(
             planRepository.plans
                 .onStart { _plans.value = UiState.Loading }
                 .catch { _plans.value = UiState.Error(it.message ?: "Unknown error") }
-                .collect { _plans.value = UiState.Success(it) }
+                .collect { localPlans ->
+                    _plans.value = UiState.Success(localPlans)
+                    if (!autoGenerateTriggered && localPlans.isEmpty()) {
+                        val onboardingDone = appPreferences.onboardingDone.first()
+                        if (onboardingDone) {
+                            autoGenerateTriggered = true
+                            generateInitialPlan()
+                        }
+                    }
+                }
         }
     }
 
@@ -61,6 +84,35 @@ class HomeViewModel @Inject constructor(
                 planRepository.sync()
             } catch (_: Exception) {
                 // offline — local data still shown
+            }
+        }
+    }
+
+    fun generateInitialPlan() {
+        viewModelScope.launch {
+            _generatingPlan.value = true
+            try {
+                val profile = appPreferences.userProfile.first()
+                val response = aiRepository.chat(
+                    ChatRequest(
+                        messages = listOf(
+                            ChatMessage(
+                                role = "user",
+                                content = "Based on my profile, generate a starter workout plan for me.",
+                            )
+                        ),
+                        userContext = profile.toContextString().ifBlank { null },
+                    )
+                )
+                response.suggestedPlan?.let { plan ->
+                    planRepository.createPlan(
+                        PlanCreate(name = plan.name, source = "ai", exercises = plan.exercises)
+                    )
+                }
+            } catch (_: Exception) {
+                // silent — user can still create a plan manually
+            } finally {
+                _generatingPlan.value = false
             }
         }
     }

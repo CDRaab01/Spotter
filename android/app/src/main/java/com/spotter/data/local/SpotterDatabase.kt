@@ -3,10 +3,12 @@ package com.spotter.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.spotter.data.local.dao.BodyMetricDao
+import com.spotter.data.local.dao.ChatMessageDao
 import com.spotter.data.local.dao.SetLogDao
 import com.spotter.data.local.dao.WorkoutPlanDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.BodyMetricEntity
+import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.local.entity.SetLogEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
@@ -17,8 +19,9 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         WorkoutSessionEntity::class,
         SetLogEntity::class,
         BodyMetricEntity::class,
+        ChatMessageEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -26,4 +29,5 @@ abstract class SpotterDatabase : RoomDatabase() {
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun setLogDao(): SetLogDao
     abstract fun bodyMetricDao(): BodyMetricDao
+    abstract fun chatMessageDao(): ChatMessageDao
 }

@@ -12,6 +12,7 @@ import com.spotter.ui.auth.RegisterScreen
 import com.spotter.ui.calendar.CalendarScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
+import com.spotter.ui.onboarding.OnboardingScreen
 import com.spotter.ui.plan.CreatePlanScreen
 import com.spotter.ui.plan.PlanDetailScreen
 import com.spotter.ui.progress.ProgressScreen
@@ -20,9 +21,9 @@ import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
 
 @Composable
-fun AppNavGraph() {
+fun AppNavGraph(startDestination: String = Screen.Login.route) {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = Screen.Login.route) {
+    NavHost(navController = navController, startDestination = startDestination) {
         composable(Screen.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
@@ -34,10 +35,13 @@ fun AppNavGraph() {
         composable(Screen.Register.route) {
             RegisterScreen(
                 onRegisterSuccess = {
-                    navController.navigate(Screen.AiChat.route) { popUpTo(0) { inclusive = true } }
+                    navController.navigate(Screen.Onboarding.route) { popUpTo(0) { inclusive = true } }
                 },
                 onNavigateToLogin = { navController.popBackStack() },
             )
+        }
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(navController = navController)
         }
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)

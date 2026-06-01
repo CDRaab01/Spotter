@@ -45,6 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeightLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -252,7 +254,7 @@ internal fun DraftExerciseRow(
                             weightText = v.filter { c -> c.isDigit() || c == '.' }
                             onUpdate(draft.copy(targetWeight = weightText.toDoubleOrNull()))
                         },
-                        label = { Text("lb") },
+                        label = { Text(LocalWeightUnit.current.formatWeightLabel()) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f),
                         singleLine = true,
