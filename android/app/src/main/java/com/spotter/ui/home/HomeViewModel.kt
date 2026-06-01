@@ -53,11 +53,38 @@ class HomeViewModel @Inject constructor(
     private val _generatingPlan = MutableStateFlow(false)
     val generatingPlan: StateFlow<Boolean> = _generatingPlan.asStateFlow()
 
+    private val _streak = MutableStateFlow(0)
+    val streak: StateFlow<Int> = _streak.asStateFlow()
+
+    private val _weeklyWorkouts = MutableStateFlow(0)
+    val weeklyWorkouts: StateFlow<Int> = _weeklyWorkouts.asStateFlow()
+
     private var autoGenerateTriggered = false
 
     init {
         observePlans()
         sync()
+        loadStats()
+    }
+
+    private fun loadStats() {
+        viewModelScope.launch {
+            try {
+                val sessions = sessionRepository.listSessions()
+                val completedDates = sessions
+                    .filter { it.status == "completed" }
+                    .mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }
+                    .toSet()
+
+                var streak = 0
+                var day = LocalDate.now()
+                while (completedDates.contains(day)) { streak++; day = day.minusDays(1) }
+                _streak.value = streak
+
+                val weekStart = LocalDate.now().minusDays(6)
+                _weeklyWorkouts.value = completedDates.count { !it.isBefore(weekStart) }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun observePlans() {

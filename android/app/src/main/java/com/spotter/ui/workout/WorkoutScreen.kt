@@ -1,5 +1,9 @@
 package com.spotter.ui.workout
 
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -83,6 +88,24 @@ fun WorkoutScreen(
 
     var editingSet by remember { mutableStateOf<SetLogOut?>(null) }
     var showFinishDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    LaunchedEffect(restTimerSeconds) {
+        if (restTimerSeconds == 0) {
+            @Suppress("DEPRECATION")
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (vibrator?.hasVibrator() == true) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(
+                        VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(longArrayOf(0, 300, 150, 300), -1)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(sessionId) { viewModel.loadSession(sessionId) }
     LaunchedEffect(Unit) {
@@ -301,6 +324,16 @@ private fun EditSetDialog(
     var weightText by remember {
         mutableStateOf(setLog.weight?.let { "%.0f".format(it) } ?: "")
     }
+    var showPlateCalc by remember { mutableStateOf(false) }
+    val weightUnit = LocalWeightUnit.current
+
+    if (showPlateCalc) {
+        PlateCalculatorDialog(
+            initialWeight = weightText.toFloatOrNull() ?: 0f,
+            weightUnit = weightUnit,
+            onDismiss = { showPlateCalc = false },
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -320,10 +353,16 @@ private fun EditSetDialog(
                         onValueChange = { new ->
                             weightText = new.filter { c -> c.isDigit() || c == '.' }
                         },
-                        label = { Text(LocalWeightUnit.current.formatWeightFieldLabel()) },
+                        label = { Text(weightUnit.formatWeightFieldLabel()) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                     )
+                    TextButton(
+                        onClick = { showPlateCalc = true },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text("Plate calculator")
+                    }
                 }
             }
         },

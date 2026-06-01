@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -66,6 +67,8 @@ fun HomeScreen(
     val plans by viewModel.plans.collectAsState()
     val startState by viewModel.startState.collectAsState()
     val generatingPlan by viewModel.generatingPlan.collectAsState()
+    val streak by viewModel.streak.collectAsState()
+    val weeklyWorkouts by viewModel.weeklyWorkouts.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
 
@@ -153,49 +156,78 @@ fun HomeScreen(
             ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
 
             is UiState.Success -> {
-                if (state.data.isEmpty() && !generatingPlan) {
-                    Box(
-                        Modifier.fillMaxSize().padding(padding),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No workout plans yet.")
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "Chat with AI Coach to create one →",
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable {
-                                    navController.navigate(Screen.AiChat.route)
-                                },
-                            )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                ) {
+                    if (weeklyWorkouts > 0 || streak >= 2) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (weeklyWorkouts > 0) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = {
+                                        Text("$weeklyWorkouts ${if (weeklyWorkouts == 1) "day" else "days"} this week")
+                                    },
+                                )
+                            }
+                            if (streak >= 2) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text("$streak day streak 🔥") },
+                                )
+                            }
                         }
                     }
-                } else if (generatingPlan && state.data.isEmpty()) {
-                    Box(
-                        Modifier.fillMaxSize().padding(padding),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Spacer(Modifier.height(16.dp))
-                            Text("Building your first plan…")
+                    if (state.data.isEmpty() && !generatingPlan) {
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("No workout plans yet.")
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "Chat with AI Coach to create one →",
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable {
+                                        navController.navigate(Screen.AiChat.route)
+                                    },
+                                )
+                            }
                         }
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(padding),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(state.data, key = { it.id }) { plan ->
-                            PlanCard(
-                                plan = plan,
-                                isStarting = isStarting,
-                                onStart = { viewModel.startSession(plan.id) },
-                                onDelete = { viewModel.deletePlan(plan.id) },
-                                onRename = { newName -> viewModel.renamePlan(plan.id, newName) },
-                                onTapCard = { navController.navigate(Screen.PlanDetail.createRoute(plan.id)) },
-                            )
+                    } else if (generatingPlan && state.data.isEmpty()) {
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Spacer(Modifier.height(16.dp))
+                                Text("Building your first plan…")
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(state.data, key = { it.id }) { plan ->
+                                PlanCard(
+                                    plan = plan,
+                                    isStarting = isStarting,
+                                    onStart = { viewModel.startSession(plan.id) },
+                                    onDelete = { viewModel.deletePlan(plan.id) },
+                                    onRename = { newName -> viewModel.renamePlan(plan.id, newName) },
+                                    onTapCard = { navController.navigate(Screen.PlanDetail.createRoute(plan.id)) },
+                                )
+                            }
                         }
                     }
                 }
