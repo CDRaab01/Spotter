@@ -60,6 +60,23 @@ class SessionOut(BaseModel):
     set_logs: list[SetLogOut] = []
 
 
+class ExerciseSummary(BaseModel):
+    exercise_name: str
+    completed_sets: int
+    total_sets: int
+
+
+class SessionSummary(BaseModel):
+    id: uuid.UUID
+    date: datetime.date
+    plan_name: str | None = None
+    status: str
+    duration_seconds: int | None = None
+    total_sets: int
+    completed_sets: int
+    exercises: list[ExerciseSummary] = []
+
+
 class ExercisePrior(BaseModel):
     exercise_id: uuid.UUID
     exercise_name: str | None = None

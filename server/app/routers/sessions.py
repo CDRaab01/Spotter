@@ -10,6 +10,7 @@ from app.schemas.session import (
     ExercisePrior,
     SessionCreate,
     SessionOut,
+    SessionSummary,
     SessionUpdate,
     SetLogCreate,
     SetLogOut,
@@ -21,11 +22,20 @@ from app.services.session_service import (
     create_session,
     get_prior_bests,
     get_session,
+    list_sessions,
     update_session,
     update_set_log,
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+@router.get("", response_model=list[SessionSummary])
+async def get_sessions(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await list_sessions(db, current_user.id)
 
 
 @router.post("", response_model=SessionOut, status_code=201)

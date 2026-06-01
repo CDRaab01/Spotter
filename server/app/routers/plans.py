@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.plan import PlanCreate, PlanOut, PlanUpdate
+from app.schemas.plan import PlanCreate, PlanOut, PlanUpdate, PlannedExercisesUpdate
 from app.security import get_current_user
 from app.services.plan_service import (
     create_plan,
@@ -14,6 +14,7 @@ from app.services.plan_service import (
     get_plan,
     get_user_plans,
     rename_plan,
+    update_plan_exercises,
 )
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -63,3 +64,13 @@ async def remove_plan(
 ):
     await delete_plan(db, current_user.id, plan_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{plan_id}/exercises", response_model=PlanOut)
+async def replace_plan_exercises(
+    plan_id: uuid.UUID,
+    req: PlannedExercisesUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await update_plan_exercises(db, current_user.id, plan_id, req)

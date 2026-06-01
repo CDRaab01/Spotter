@@ -13,8 +13,10 @@ from app.models.workout_plan import WorkoutPlan
 from app.models.workout_session import WorkoutSession
 from app.schemas.session import (
     ExercisePrior,
+    ExerciseSummary,
     SessionCreate,
     SessionOut,
+    SessionSummary,
     SessionUpdate,
     SetLogCreate,
     SetLogOut,
@@ -289,3 +291,79 @@ async def get_prior_bests(
             )
 
     return priors
+
+
+async def list_sessions(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[SessionSummary]:
+    result = await db.execute(
+        select(WorkoutSession)
+        .where(WorkoutSession.user_id == user_id)
+        .options(selectinload(WorkoutSession.set_logs))
+        .order_by(WorkoutSession.date.desc())
+    )
+    sessions = list(result.scalars().all())
+
+    if not sessions:
+        return []
+
+    # Bulk-load plan names
+    plan_ids = list({s.plan_id for s in sessions if s.plan_id is not None})
+    plan_names: dict[uuid.UUID, str] = {}
+    if plan_ids:
+        plan_result = await db.execute(
+            select(WorkoutPlan).where(WorkoutPlan.id.in_(plan_ids))
+        )
+        for p in plan_result.scalars().all():
+            plan_names[p.id] = p.name
+
+    # Bulk-load exercise names
+    all_exercise_ids: set[uuid.UUID] = set()
+    for s in sessions:
+        for sl in s.set_logs:
+            all_exercise_ids.add(sl.exercise_id)
+
+    exercise_names: dict[uuid.UUID, str] = {}
+    if all_exercise_ids:
+        ex_result = await db.execute(
+            select(Exercise).where(Exercise.id.in_(all_exercise_ids))
+        )
+        for ex in ex_result.scalars().all():
+            exercise_names[ex.id] = ex.name
+
+    summaries: list[SessionSummary] = []
+    for s in sessions:
+        # Group set_logs by exercise
+        exercise_sets: dict[uuid.UUID, list] = {}
+        for sl in s.set_logs:
+            exercise_sets.setdefault(sl.exercise_id, []).append(sl)
+
+        exercise_summaries: list[ExerciseSummary] = []
+        for ex_id, sets in exercise_sets.items():
+            exercise_summaries.append(
+                ExerciseSummary(
+                    exercise_name=exercise_names.get(ex_id, "Unknown"),
+                    completed_sets=sum(1 for sl in sets if sl.completed),
+                    total_sets=len(sets),
+                )
+            )
+
+        total_sets = sum(len(sets) for sets in exercise_sets.values())
+        completed_sets = sum(
+            1 for s2 in s.set_logs if s2.completed
+        )
+
+        summaries.append(
+            SessionSummary(
+                id=s.id,
+                date=s.date,
+                plan_name=plan_names.get(s.plan_id) if s.plan_id else None,
+                status=s.status,
+                duration_seconds=s.duration_seconds,
+                total_sets=total_sets,
+                completed_sets=completed_sets,
+                exercises=exercise_summaries,
+            )
+        )
+
+    return summaries
