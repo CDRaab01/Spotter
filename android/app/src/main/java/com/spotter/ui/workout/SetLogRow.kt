@@ -25,10 +25,21 @@ import com.spotter.ui.theme.formatWeightNullable
 @Composable
 fun SetLogRow(
     setLog: SetLogOut,
-    onToggle: () -> Unit,
+    isActive: Boolean,
+    currentReps: Int,
+    onTap: () -> Unit,
     onEditWeight: () -> Unit,
 ) {
     val weightUnit = LocalWeightUnit.current
+    val displayReps = if (isActive) currentReps else setLog.reps
+    val bgColor = when {
+        isActive         -> MaterialTheme.colorScheme.tertiary
+        setLog.completed -> MaterialTheme.colorScheme.primary
+        else             -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val textColor: Color = if (isActive || setLog.completed) Color.White
+                           else MaterialTheme.colorScheme.onSurfaceVariant
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -43,19 +54,18 @@ fun SetLogRow(
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
-                .background(
-                    if (setLog.completed) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant,
-                )
-                .clickable(onClick = onToggle),
+                .background(bgColor)
+                .then(
+                    if (!setLog.completed) Modifier.clickable(onClick = onTap)
+                    else Modifier
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "${setLog.reps}",
+                text = "$displayReps",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = if (setLog.completed) Color.White
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = textColor,
             )
         }
         Spacer(Modifier.height(4.dp))

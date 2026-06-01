@@ -20,7 +20,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -72,6 +74,31 @@ class WorkoutViewModel @Inject constructor(
     private val _priorBests = MutableStateFlow<Map<String, ExercisePrior>>(emptyMap())
     val priorBests: StateFlow<Map<String, ExercisePrior>> = _priorBests.asStateFlow()
 
+    // Active lift state — which set is currently being performed
+    private val _activeSetId = MutableStateFlow<String?>(null)
+    val activeSetId: StateFlow<String?> = _activeSetId.asStateFlow()
+
+    // Rep count for the active set (starts at targetReps, decremented on tap)
+    private val _activeSetReps = MutableStateFlow(0)
+    val activeSetReps: StateFlow<Int> = _activeSetReps.asStateFlow()
+
+    // Lift timer counts UP while a set is active. Uses flatMapLatest + WhileSubscribed
+    // so the infinite loop only runs while something is collecting — same pattern as
+    // elapsedSeconds, which prevents runTest's end-of-test drain from hanging.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val liftSeconds: StateFlow<Int> = _activeSetId
+        .flatMapLatest { activeId ->
+            if (activeId == null) flowOf(0)
+            else flow {
+                var sec = 0
+                while (true) {
+                    delay(1000)
+                    emit(++sec)
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     private var restTimerJob: Job? = null
 
     fun loadSession(sessionId: String) {
@@ -97,19 +124,31 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun toggleSet(sessionId: String, setLog: SetLogOut) {
-        val wasIncomplete = !setLog.completed
+    fun activateSet(setLog: SetLogOut) {
+        _activeSetId.value = setLog.id
+        _activeSetReps.value = setLog.targetReps ?: setLog.reps
+        // liftSeconds resets automatically: flatMapLatest re-subscribes to a fresh
+        // flow starting at 0 whenever _activeSetId changes to a new non-null value.
+    }
+
+    fun decrementActiveReps() {
+        if (_activeSetReps.value > 1) _activeSetReps.value--
+    }
+
+    fun completeActiveSet(sessionId: String) {
+        val setId = _activeSetId.value ?: return
+        val actualReps = _activeSetReps.value
+        val setLog = (_session.value as? UiState.Success)?.data
+            ?.setLogs?.find { it.id == setId } ?: return
+        _activeSetId.value = null   // flatMapLatest switches to flowOf(0), stopping the timer
         viewModelScope.launch {
             try {
                 sessionRepository.updateSet(
-                    sessionId,
-                    setLog.id,
-                    SetLogUpdate(completed = !setLog.completed),
+                    sessionId, setId,
+                    SetLogUpdate(completed = true, reps = actualReps),
                 )
                 loadSession(sessionId)
-                if (wasIncomplete) {
-                    startRestTimer(setLog.targetReps)
-                }
+                startRestTimer(setLog.targetReps, actualReps)
             } catch (_: Exception) {}
         }
     }
@@ -159,12 +198,14 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun startRestTimer(targetReps: Int?) {
-        val duration = when {
+    fun startRestTimer(targetReps: Int?, actualReps: Int? = null) {
+        val base = when {
             targetReps == null || targetReps <= 5 -> 180
             targetReps <= 12 -> 90
             else -> 60
         }
+        val failure = actualReps != null && targetReps != null && actualReps < targetReps
+        val duration = if (failure) base + 60 else base
         restTimerJob?.cancel()
         _restTimerSeconds.value = duration
         restTimerJob = viewModelScope.launch {

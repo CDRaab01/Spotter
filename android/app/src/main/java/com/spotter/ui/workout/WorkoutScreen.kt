@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -72,6 +73,9 @@ fun WorkoutScreen(
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val finishState by viewModel.finishState.collectAsState()
     val restTimerSeconds by viewModel.restTimerSeconds.collectAsState()
+    val activeSetId by viewModel.activeSetId.collectAsState()
+    val activeSetReps by viewModel.activeSetReps.collectAsState()
+    val liftSeconds by viewModel.liftSeconds.collectAsState()
     val exerciseNotes by viewModel.exerciseNotes.collectAsState()
     val priorBests by viewModel.priorBests.collectAsState()
     val timerText = "%02d:%02d".format(elapsed / 60, elapsed % 60)
@@ -179,40 +183,51 @@ fun WorkoutScreen(
                 }
             }
 
-            // Rest timer banner
-            AnimatedVisibility(visible = restTimerSeconds != null) {
-                restTimerSeconds?.let { seconds ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        ),
+            // Unified lift / rest timer overlay
+            val showTimer = activeSetId != null || restTimerSeconds != null
+            AnimatedVisibility(visible = showTimer) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                        val displayTime = if (activeSetId != null)
+                            "%d:%02d".format(liftSeconds / 60, liftSeconds % 60)
+                        else
+                            "%d:%02d".format(
+                                (restTimerSeconds ?: 0) / 60,
+                                (restTimerSeconds ?: 0) % 60,
+                            )
+                        Text(
+                            text = displayTime,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(80.dp),
+                        )
+                        Text(
+                            text = if (activeSetId != null) "Set equipment, then lift."
+                                   else "Rest — next set coming up.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        IconButton(
+                            onClick = {
+                                if (activeSetId != null) viewModel.completeActiveSet(sessionId)
+                                else viewModel.dismissRestTimer()
+                            },
                         ) {
-                            Column {
-                                Text(
-                                    "Rest Timer",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                                Text(
-                                    "%d:%02d".format(seconds / 60, seconds % 60),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
-                            IconButton(onClick = { viewModel.dismissRestTimer() }) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Dismiss timer",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
+                            Icon(Icons.Default.Close, contentDescription = "Done / dismiss")
                         }
                     }
                 }
@@ -252,7 +267,15 @@ fun WorkoutScreen(
                                     sets = sets,
                                     note = exerciseNotes[exerciseId] ?: "",
                                     priorBest = priorBests[exerciseId],
-                                    onToggle = { setLog -> viewModel.toggleSet(sessionId, setLog) },
+                                    activeSetId = activeSetId,
+                                    activeSetReps = activeSetReps,
+                                    onSetTap = { setLog ->
+                                        when {
+                                            setLog.completed -> { /* no-op; use edit dialog */ }
+                                            setLog.id == activeSetId -> viewModel.decrementActiveReps()
+                                            else -> viewModel.activateSet(setLog)
+                                        }
+                                    },
                                     onEditWeight = { setLog -> editingSet = setLog },
                                     onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
                                     onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
@@ -324,7 +347,9 @@ private fun ExerciseCard(
     sets: List<SetLogOut>,
     note: String,
     priorBest: ExercisePrior?,
-    onToggle: (SetLogOut) -> Unit,
+    activeSetId: String?,
+    activeSetReps: Int,
+    onSetTap: (SetLogOut) -> Unit,
     onEditWeight: (SetLogOut) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
     onNoteSave: (String) -> Unit,
@@ -398,7 +423,9 @@ private fun ExerciseCard(
                 sets.forEach { setLog ->
                     SetLogRow(
                         setLog = setLog,
-                        onToggle = { onToggle(setLog) },
+                        isActive = setLog.id == activeSetId,
+                        currentReps = if (setLog.id == activeSetId) activeSetReps else setLog.reps,
+                        onTap = { onSetTap(setLog) },
                         onEditWeight = { onEditWeight(setLog) },
                     )
                 }
