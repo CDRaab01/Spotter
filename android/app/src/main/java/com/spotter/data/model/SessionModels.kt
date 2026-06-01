@@ -36,6 +36,20 @@ data class SetLogOut(
 )
 
 @Serializable
+data class SessionUpdate(
+    val status: String? = null,
+    @SerialName("duration_seconds") val durationSeconds: Int? = null,
+    val note: String? = null,
+)
+
+@Serializable
+data class SetLogUpdate(
+    val reps: Int? = null,
+    val weight: Double? = null,
+    val completed: Boolean? = null,
+)
+
+@Serializable
 data class SessionOut(
     val id: String,
     @SerialName("user_id") val userId: String,

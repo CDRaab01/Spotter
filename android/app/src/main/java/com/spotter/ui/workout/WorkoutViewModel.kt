@@ -3,13 +3,17 @@ package com.spotter.ui.workout
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.SessionOut
+import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
+import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -26,6 +30,12 @@ class WorkoutViewModel @Inject constructor(
 
     private val _elapsedSeconds = MutableStateFlow(0)
     val elapsedSeconds: StateFlow<Int> = _elapsedSeconds.asStateFlow()
+
+    private val _finishState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
+    val finishState: StateFlow<UiState<Unit>> = _finishState
+
+    private val _navigateBack = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val navigateBack: SharedFlow<Unit> = _navigateBack
 
     init {
         viewModelScope.launch {
@@ -50,15 +60,23 @@ class WorkoutViewModel @Inject constructor(
     fun toggleSet(sessionId: String, setLog: SetLogOut) {
         viewModelScope.launch {
             try {
-                sessionRepository.logSet(
+                sessionRepository.updateSet(
                     sessionId,
-                    SetLogCreate(
-                        exerciseId = setLog.exerciseId,
-                        setNumber = setLog.setNumber,
-                        reps = setLog.reps,
-                        weight = setLog.weight,
-                        completed = !setLog.completed,
-                    ),
+                    setLog.id,
+                    SetLogUpdate(completed = !setLog.completed),
+                )
+                loadSession(sessionId)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun editSet(sessionId: String, setLog: SetLogOut, newReps: Int, newWeight: Double?) {
+        viewModelScope.launch {
+            try {
+                sessionRepository.updateSet(
+                    sessionId,
+                    setLog.id,
+                    SetLogUpdate(reps = newReps, weight = newWeight),
                 )
                 loadSession(sessionId)
             } catch (_: Exception) {}
@@ -80,6 +98,25 @@ class WorkoutViewModel @Inject constructor(
                 )
                 loadSession(sessionId)
             } catch (_: Exception) {}
+        }
+    }
+
+    fun finishSession(sessionId: String) {
+        viewModelScope.launch {
+            _finishState.value = UiState.Loading
+            try {
+                sessionRepository.updateSession(
+                    sessionId,
+                    SessionUpdate(
+                        status = "completed",
+                        durationSeconds = _elapsedSeconds.value,
+                    ),
+                )
+                _finishState.value = UiState.Success(Unit)
+                _navigateBack.emit(Unit)
+            } catch (e: Exception) {
+                _finishState.value = UiState.Error(e.message ?: "Failed to finish workout")
+            }
         }
     }
 }

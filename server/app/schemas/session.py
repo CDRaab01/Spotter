@@ -10,12 +10,24 @@ class SessionCreate(BaseModel):
     note: str | None = None
 
 
+class SessionUpdate(BaseModel):
+    status: str | None = None
+    duration_seconds: int | None = None
+    note: str | None = None
+
+
 class SetLogCreate(BaseModel):
     exercise_id: uuid.UUID
     set_number: int
     reps: int
     weight: float | None = None
     completed: bool = False
+
+
+class SetLogUpdate(BaseModel):
+    reps: int | None = None
+    weight: float | None = None
+    completed: bool | None = None
 
 
 class SetLogOut(BaseModel):

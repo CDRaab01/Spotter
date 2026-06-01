@@ -6,8 +6,10 @@ import com.spotter.data.local.entity.SetLogEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.SessionOut
+import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
+import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.remote.ApiService
 import javax.inject.Inject
 
@@ -29,8 +31,20 @@ class SessionRepository @Inject constructor(
         return result
     }
 
+    suspend fun updateSession(sessionId: String, req: SessionUpdate): SessionOut {
+        val result = api.updateSession(sessionId, req)
+        sessionDao.upsert(result.toEntity())
+        return result
+    }
+
     suspend fun logSet(sessionId: String, req: SetLogCreate): SetLogOut {
         val result = api.logSet(sessionId, req)
+        setLogDao.upsert(result.toEntity())
+        return result
+    }
+
+    suspend fun updateSet(sessionId: String, setId: String, req: SetLogUpdate): SetLogOut {
+        val result = api.updateSet(sessionId, setId, req)
         setLogDao.upsert(result.toEntity())
         return result
     }

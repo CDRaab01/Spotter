@@ -12,11 +12,14 @@ import com.spotter.data.model.RefreshRequest
 import com.spotter.data.model.RegisterRequest
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.SessionOut
+import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
+import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.TokenResponse
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -49,8 +52,18 @@ interface ApiService {
     @GET("sessions/{id}")
     suspend fun getSession(@Path("id") id: String): SessionOut
 
+    @PATCH("sessions/{id}")
+    suspend fun updateSession(@Path("id") id: String, @Body req: SessionUpdate): SessionOut
+
     @POST("sessions/{id}/sets")
     suspend fun logSet(@Path("id") id: String, @Body req: SetLogCreate): SetLogOut
+
+    @PATCH("sessions/{id}/sets/{setId}")
+    suspend fun updateSet(
+        @Path("id") id: String,
+        @Path("setId") setId: String,
+        @Body req: SetLogUpdate,
+    ): SetLogOut
 
     // Metrics
     @GET("metrics/weight")

@@ -24,14 +24,21 @@ import com.spotter.data.model.SetLogOut
 fun SetLogRow(
     setLog: SetLogOut,
     onToggle: () -> Unit,
+    onEditWeight: () -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
+        Text(
+            text = "Set ${setLog.setNumber}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(
                     if (setLog.completed) MaterialTheme.colorScheme.primary
@@ -50,9 +57,10 @@ fun SetLogRow(
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = if (setLog.weight != null) "${setLog.weight.toInt()}" else "BW",
+            text = if (setLog.weight != null) "${setLog.weight.toInt()} lb" else "BW",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onEditWeight),
         )
     }
 }
