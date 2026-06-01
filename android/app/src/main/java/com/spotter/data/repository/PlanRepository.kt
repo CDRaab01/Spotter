@@ -5,6 +5,8 @@ import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanOut
 import com.spotter.data.model.PlanUpdate
+import com.spotter.data.model.PlannedExerciseIn
+import com.spotter.data.model.PlannedExercisesUpdate
 import com.spotter.data.remote.ApiService
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -38,6 +40,9 @@ class PlanRepository @Inject constructor(
         api.deletePlan(id)
         dao.deleteById(id)
     }
+
+    suspend fun updateExercises(planId: String, exercises: List<PlannedExerciseIn>): PlanOut =
+        api.updatePlanExercises(planId, PlannedExercisesUpdate(exercises))
 
     private fun PlanOut.toEntity() = WorkoutPlanEntity(
         id = id,

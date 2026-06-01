@@ -7,6 +7,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.SessionOut
+import com.spotter.data.model.SessionSummary
 import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
@@ -58,6 +59,8 @@ class SessionRepository @Inject constructor(
 
     suspend fun getPriorBests(sessionId: String): List<ExercisePrior> =
         api.getPriorBests(sessionId)
+
+    suspend fun listSessions(): List<SessionSummary> = api.listSessions()
 
     private fun SessionOut.toEntity() = WorkoutSessionEntity(
         id = id, userId = userId, planId = planId, date = date,

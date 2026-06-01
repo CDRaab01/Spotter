@@ -15,4 +15,9 @@ sealed class Screen(val route: String) {
     data object Progress : Screen("progress")
     data object AiChat : Screen("ai_chat")
     data object CreatePlan : Screen("create_plan")
+    data object PlanDetail : Screen("plan_detail/{planId}") {
+        fun createRoute(planId: String) = "plan_detail/$planId"
+    }
+    data object SessionHistory : Screen("session_history")
+    data object Settings : Screen("settings")
 }

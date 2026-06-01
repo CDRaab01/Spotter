@@ -96,6 +96,31 @@ fun HomeScreen(
                     IconButton(onClick = { navController.navigate(Screen.AiChat.route) }) {
                         Icon(Icons.Default.Chat, contentDescription = "AI Coach")
                     }
+                    var overflowExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { overflowExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = overflowExpanded,
+                            onDismissRequest = { overflowExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("History") },
+                                onClick = {
+                                    overflowExpanded = false
+                                    navController.navigate(Screen.SessionHistory.route)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    overflowExpanded = false
+                                    navController.navigate(Screen.Settings.route)
+                                },
+                            )
+                        }
+                    }
                 },
             )
         },
@@ -155,6 +180,7 @@ fun HomeScreen(
                                 onStart = { viewModel.startSession(plan.id) },
                                 onDelete = { viewModel.deletePlan(plan.id) },
                                 onRename = { newName -> viewModel.renamePlan(plan.id, newName) },
+                                onTapCard = { navController.navigate(Screen.PlanDetail.createRoute(plan.id)) },
                             )
                         }
                     }
@@ -173,6 +199,7 @@ private fun PlanCard(
     onStart: () -> Unit,
     onDelete: () -> Unit,
     onRename: (String) -> Unit,
+    onTapCard: () -> Unit = {},
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -210,7 +237,11 @@ private fun PlanCard(
             modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable { onTapCard() },
+            ) {
                 Text(plan.name, style = MaterialTheme.typography.titleMedium)
                 Text(
                     plan.source,

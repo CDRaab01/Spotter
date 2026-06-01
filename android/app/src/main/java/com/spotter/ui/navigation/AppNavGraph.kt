@@ -10,9 +10,12 @@ import com.spotter.ui.ai.AiChatScreen
 import com.spotter.ui.auth.LoginScreen
 import com.spotter.ui.auth.RegisterScreen
 import com.spotter.ui.calendar.CalendarScreen
+import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
 import com.spotter.ui.plan.CreatePlanScreen
+import com.spotter.ui.plan.PlanDetailScreen
 import com.spotter.ui.progress.ProgressScreen
+import com.spotter.ui.settings.SettingsScreen
 import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
 
@@ -75,6 +78,19 @@ fun AppNavGraph() {
         }
         composable(Screen.CreatePlan.route) {
             CreatePlanScreen(navController = navController)
+        }
+        composable(
+            route = Screen.PlanDetail.route,
+            arguments = listOf(navArgument("planId") { type = NavType.StringType }),
+        ) { backStack ->
+            val planId = backStack.arguments?.getString("planId") ?: ""
+            PlanDetailScreen(planId = planId, navController = navController)
+        }
+        composable(Screen.SessionHistory.route) {
+            SessionHistoryScreen(navController = navController)
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen(navController = navController)
         }
     }
 }

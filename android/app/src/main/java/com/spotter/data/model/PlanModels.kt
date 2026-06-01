@@ -32,7 +32,11 @@ data class PlannedExerciseOut(
     @SerialName("target_weight") val targetWeight: Double? = null,
     @SerialName("is_bodyweight") val isBodyweight: Boolean = false,
     val order: Int = 0,
+    @SerialName("exercise_name") val exerciseName: String? = null,
 )
+
+@Serializable
+data class PlannedExercisesUpdate(val exercises: List<PlannedExerciseIn>)
 
 @Serializable
 data class PlanOut(

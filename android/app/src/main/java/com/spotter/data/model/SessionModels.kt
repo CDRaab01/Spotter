@@ -65,6 +65,25 @@ data class SessionOut(
 )
 
 @Serializable
+data class ExerciseSummary(
+    @SerialName("exercise_name") val exerciseName: String,
+    @SerialName("completed_sets") val completedSets: Int,
+    @SerialName("total_sets") val totalSets: Int,
+)
+
+@Serializable
+data class SessionSummary(
+    val id: String,
+    val date: String,
+    @SerialName("plan_name") val planName: String? = null,
+    val status: String,
+    @SerialName("duration_seconds") val durationSeconds: Int? = null,
+    @SerialName("total_sets") val totalSets: Int,
+    @SerialName("completed_sets") val completedSets: Int,
+    val exercises: List<ExerciseSummary> = emptyList(),
+)
+
+@Serializable
 data class ExercisePrior(
     @SerialName("exercise_id") val exerciseId: String,
     @SerialName("exercise_name") val exerciseName: String? = null,
