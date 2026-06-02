@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import uuid
 
 import httpx
 from fastapi import HTTPException, status
@@ -8,15 +9,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.limits import REPS_BOUNDS, SETS_BOUNDS, clamp_int, clamp_weight
 from app.models.exercise import Exercise
 from app.schemas.ai import AiPlanDraft, ChatRequest, ChatResponse, SuggestedPlan
 from app.schemas.plan import PlannedExerciseIn
+from app.services.ai.context_service import build_user_context
 from app.services.ai.prompts import build_messages, validate_request, validate_response
 
 logger = logging.getLogger(__name__)
 
 
-async def chat(req: ChatRequest, db: AsyncSession) -> ChatResponse:
+async def chat(
+    req: ChatRequest, db: AsyncSession, user_id: uuid.UUID | None = None
+) -> ChatResponse:
     last_user = next(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
@@ -27,7 +32,8 @@ async def chat(req: ChatRequest, db: AsyncSession) -> ChatResponse:
         )
 
     history = [m.model_dump() for m in req.messages[:-1]]
-    messages = build_messages(history, last_user, req.user_context)
+    user_context = await _merged_context(db, user_id, req.user_context)
+    messages = build_messages(history, last_user, user_context)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
@@ -58,6 +64,19 @@ async def chat(req: ChatRequest, db: AsyncSession) -> ChatResponse:
     return ChatResponse(reply=clean_reply, suggested_plan=suggested_plan)
 
 
+async def _merged_context(
+    db: AsyncSession, user_id: uuid.UUID | None, client_profile: str | None
+) -> str | None:
+    """Combine the server-derived (trusted) training history with the client's
+    self-reported profile. The DB history is authoritative; the client string is
+    treated as stated preferences only."""
+    history = await build_user_context(db, user_id) if user_id else None
+    profile = client_profile.strip() if client_profile else None
+    if history and profile:
+        return f"{history}\n\nAthlete-stated profile/preferences:\n{profile}"
+    return history or profile
+
+
 async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedPlan | None:
     # Look for a fenced JSON code block first
     match = re.search(r"```(?:json)?\s*(.*?)\s*```", raw_reply, re.DOTALL)
@@ -85,14 +104,16 @@ async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedPlan | Non
         if exercise_id is None:
             logger.info("Could not resolve exercise name: %r — skipping", ex.exercise_id)
             continue
+        # The LLM is untrusted — cap absurd values into the sanity bounds rather
+        # than letting one bad number reject the whole plan (per CLAUDE.md guardrails).
         resolved.append(
             PlannedExerciseIn(
                 exercise_id=exercise_id,
-                target_sets=ex.target_sets,
-                target_reps=ex.target_reps,
-                target_weight=ex.target_weight,
+                target_sets=clamp_int(ex.target_sets, SETS_BOUNDS),
+                target_reps=clamp_int(ex.target_reps, REPS_BOUNDS),
+                target_weight=None if ex.is_bodyweight else clamp_weight(ex.target_weight),
                 is_bodyweight=ex.is_bodyweight,
-                order=ex.order,
+                order=max(0, ex.order),
             )
         )
 

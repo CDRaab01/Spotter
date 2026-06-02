@@ -1,17 +1,21 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.limits import REPS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
 
 
 class PlannedExerciseIn(BaseModel):
     exercise_id: uuid.UUID
-    target_sets: int
-    target_reps: int
-    target_weight: float | None = None
+    target_sets: int = Field(ge=SETS_BOUNDS[0], le=SETS_BOUNDS[1])
+    target_reps: int = Field(ge=REPS_BOUNDS[0], le=REPS_BOUNDS[1])
+    target_weight: float | None = Field(
+        default=None, ge=WEIGHT_BOUNDS_LB[0], le=WEIGHT_BOUNDS_LB[1]
+    )
     is_bodyweight: bool = False
-    order: int = 0
-    superset_group: int | None = None
+    order: int = Field(default=0, ge=0)
+    superset_group: int | None = Field(default=None, ge=0)
 
 
 class PlanCreate(BaseModel):

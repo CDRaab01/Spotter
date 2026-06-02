@@ -42,7 +42,8 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(req: RefreshRequest):
+@limiter.limit("10/minute")
+async def refresh(request: Request, req: RefreshRequest):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
     )

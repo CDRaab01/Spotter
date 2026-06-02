@@ -1,7 +1,9 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.limits import REPS_BOUNDS, WEIGHT_BOUNDS_LB
 
 
 class SessionCreate(BaseModel):
@@ -12,22 +14,26 @@ class SessionCreate(BaseModel):
 
 class SessionUpdate(BaseModel):
     status: str | None = None
-    duration_seconds: int | None = None
+    duration_seconds: int | None = Field(default=None, ge=0)
     note: str | None = None
     exercise_notes: dict[str, str] | None = None
 
 
 class SetLogCreate(BaseModel):
     exercise_id: uuid.UUID
-    set_number: int
-    reps: int
-    weight: float | None = None
+    set_number: int = Field(ge=1)
+    reps: int = Field(ge=REPS_BOUNDS[0], le=REPS_BOUNDS[1])
+    weight: float | None = Field(
+        default=None, ge=WEIGHT_BOUNDS_LB[0], le=WEIGHT_BOUNDS_LB[1]
+    )
     completed: bool = False
 
 
 class SetLogUpdate(BaseModel):
-    reps: int | None = None
-    weight: float | None = None
+    reps: int | None = Field(default=None, ge=REPS_BOUNDS[0], le=REPS_BOUNDS[1])
+    weight: float | None = Field(
+        default=None, ge=WEIGHT_BOUNDS_LB[0], le=WEIGHT_BOUNDS_LB[1]
+    )
     completed: bool | None = None
 
 
@@ -92,3 +98,6 @@ class ExercisePrior(BaseModel):
     weight: float | None = None
     date: datetime.date
     last_sets: list[SetLogOut] = []
+    # Progression-aware suggestion for the upcoming session (None for bodyweight)
+    suggested_weight: float | None = None
+    suggested_reason: str | None = None

@@ -12,6 +12,7 @@ from app.models.planned_exercise import PlannedExercise
 from app.models.set_log import SetLog
 from app.models.workout_plan import WorkoutPlan
 from app.models.workout_session import WorkoutSession
+from app.limits import clamp_weight
 from app.schemas.session import (
     ExercisePrior,
     ExerciseSummary,
@@ -24,6 +25,36 @@ from app.schemas.session import (
     SetLogOut,
     SetLogUpdate,
 )
+
+# Muscle groups that take larger linear-progression jumps (bigger, stronger muscles).
+_LOWER_BODY_GROUPS = {"legs", "quads", "hamstrings", "glutes", "back"}
+
+
+def suggest_next_weight(
+    last_weight: float | None,
+    last_sets: list[SetLogOut],
+    muscle_group: str | None,
+) -> tuple[float | None, str | None]:
+    """Progression-aware next-weight suggestion from the prior session's sets.
+
+    Pure function (no I/O) so it can be unit-tested directly. Uses linear
+    progression: if every prior working set was completed, bump the load by one
+    step (+5 lb lower body / +2.5 lb upper); otherwise hold. Bodyweight returns
+    no weight suggestion. Result is clamped to the sanity bounds.
+    """
+    if last_weight is None or not last_sets:
+        return None, "Bodyweight — add reps before adding load." if last_weight is None else None
+
+    all_completed = all(sl.completed for sl in last_sets)
+    if not all_completed:
+        return last_weight, "Missed reps last time — repeat this weight before adding load."
+
+    group = (muscle_group or "").lower()
+    step = 5.0 if group in _LOWER_BODY_GROUPS else 2.5
+    suggested = clamp_weight(last_weight + step)
+    if suggested is not None and suggested <= last_weight:
+        return last_weight, "At the upper weight limit — hold and add reps."
+    return suggested, f"Completed all sets last time — add {step:g} lb."
 
 
 async def create_session(
@@ -291,13 +322,15 @@ async def get_prior_bests(
     if not exercise_ids:
         return []
 
-    # Load exercise names in one query
+    # Load exercise names + muscle groups in one query
     exercise_names: dict[uuid.UUID, str] = {}
+    exercise_muscle: dict[uuid.UUID, str | None] = {}
     ex_result = await db.execute(
         select(Exercise).where(Exercise.id.in_(exercise_ids))
     )
     for ex in ex_result.scalars().all():
         exercise_names[ex.id] = ex.name
+        exercise_muscle[ex.id] = ex.muscle_group
 
     priors: list[ExercisePrior] = []
     for exercise_id in exercise_ids:
@@ -358,6 +391,12 @@ async def get_prior_bests(
                 for sl in last_sets_result.scalars().all()
             ]
 
+        suggested_weight, suggested_reason = suggest_next_weight(
+            last_weight=row[1],
+            last_sets=last_sets,
+            muscle_group=exercise_muscle.get(exercise_id),
+        )
+
         priors.append(
             ExercisePrior(
                 exercise_id=exercise_id,
@@ -366,6 +405,8 @@ async def get_prior_bests(
                 weight=row[1],
                 date=row[2],
                 last_sets=last_sets,
+                suggested_weight=suggested_weight,
+                suggested_reason=suggested_reason,
             )
         )
 
