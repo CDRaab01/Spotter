@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     lm_studio_base_url: str = "http://localhost:1234/v1"
     lm_studio_model: str = "lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF"
+    # Seconds to wait for an LM Studio response. The first request after a cold start
+    # loads the model before inference, so allow generous headroom. The Android client's
+    # read timeout should stay above this so the server's error surfaces to the user.
+    lm_studio_timeout: float = 90.0
 
     # Security hardening for public (e.g. Cloudflare Tunnel) multi-user deployments.
     # When set, /auth/register requires a matching invite_code. Leave unset for an open
