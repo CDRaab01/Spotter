@@ -38,6 +38,7 @@ fun RegisterScreen(
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var inviteCode by remember { mutableStateOf("") }
 
     LaunchedEffect(authState) {
         if (authState is UiState.Success) onRegisterSuccess()
@@ -77,9 +78,17 @@ fun RegisterScreen(
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
         )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = inviteCode,
+            onValueChange = { inviteCode = it },
+            label = { Text("Invite code (if required)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
         Spacer(Modifier.height(24.dp))
         Button(
-            onClick = { viewModel.register(name, email, password) },
+            onClick = { viewModel.register(name, email, password, inviteCode.trim().ifBlank { null }) },
             modifier = Modifier.fillMaxWidth(),
             enabled = authState !is UiState.Loading,
         ) {

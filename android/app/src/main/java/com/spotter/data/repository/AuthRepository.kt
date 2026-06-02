@@ -13,8 +13,13 @@ class AuthRepository @Inject constructor(
     private val api: ApiService,
     private val tokenStore: TokenStore,
 ) {
-    suspend fun register(name: String, email: String, password: String): TokenResponse {
-        val response = api.register(RegisterRequest(name, email, password))
+    suspend fun register(
+        name: String,
+        email: String,
+        password: String,
+        inviteCode: String? = null,
+    ): TokenResponse {
+        val response = api.register(RegisterRequest(name, email, password, inviteCode))
         tokenStore.save(response.accessToken, response.refreshToken)
         return response
     }

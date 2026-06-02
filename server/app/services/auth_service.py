@@ -25,6 +25,16 @@ RESET_TOKEN_EXPIRY_MINUTES = 60
 
 
 async def register_user(db: AsyncSession, req: RegisterRequest) -> TokenResponse:
+    # Gate registration behind an invite code on public deployments. Checked before any DB
+    # lookup so an un-invited caller can't probe which emails are already registered.
+    required_code = settings.registration_invite_code
+    if required_code:
+        provided = req.invite_code or ""
+        if not secrets.compare_digest(provided, required_code):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="A valid invite code is required"
+            )
+
     result = await db.execute(select(User).where(User.email == req.email))
     if result.scalar_one_or_none():
         raise HTTPException(
