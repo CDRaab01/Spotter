@@ -19,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -29,9 +30,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.ui.navigation.Screen
@@ -50,10 +58,18 @@ fun SettingsScreen(
     val darkMode by viewModel.darkMode.collectAsState()
     val weightUnit by viewModel.weightUnit.collectAsState()
     val distanceUnit by viewModel.distanceUnit.collectAsState()
+    val serverUrl by viewModel.serverUrl.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.navigateToLogin.collect {
             navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.serverUrlMessage.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -140,6 +156,32 @@ fun SettingsScreen(
                 labelFor = { if (it == DistanceUnit.KM) "km" else "mi" },
                 onSelect = { viewModel.setDistanceUnit(it) },
             )
+
+            Spacer(Modifier.height(16.dp))
+
+            // Server
+            Text("Server", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
+            OutlinedTextField(
+                value = serverUrlInput,
+                onValueChange = { serverUrlInput = it },
+                label = { Text("Server URL") },
+                supportingText = {
+                    Text("e.g. http://100.x.y.z:8000/ (Tailscale) or https://spotter.example.com/")
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { viewModel.setServerUrl(serverUrlInput) },
+                enabled = serverUrlInput.isNotBlank() && serverUrlInput != serverUrl,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Save server URL")
+            }
 
             Spacer(Modifier.height(24.dp))
 

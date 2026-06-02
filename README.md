@@ -26,8 +26,34 @@ API docs: http://localhost:8000/docs
 ### 3. Android client
 Open `android/` in Android Studio, sync Gradle, run on emulator or device.
 
-> The emulator reaches the server at `http://10.0.2.2:8000/`.  
-> For a physical device, update `BASE_URL` in `di/AppModule.kt` to your machine's LAN IP.
+> The emulator reaches the server at `http://10.0.2.2:8000/` (the build-time default).
+> For a physical device or a remote server, set the address in-app under **Settings → Server**
+> instead of rebuilding. Changing it to a different host signs you out (tokens are per-server).
+
+## Remote access (off your LAN, e.g. phone on 5G)
+
+The server binds to `127.0.0.1:8000` and has no public listener, so a phone on a different
+network can't reach it directly. Pick one connectivity layer, then point the app at it via
+**Settings → Server** — the same single URL works on wifi and cellular, so there's nothing to
+change when you switch networks.
+
+**Tailscale (recommended for personal use — private, no certs, no port forwarding):**
+1. Install Tailscale on the server host and the phone; run `tailscale up` on both.
+2. Get the host's tailnet IP: `tailscale ip -4` → e.g. `100.x.y.z`.
+3. Run the server reachable on the tailnet: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+   (the tailnet is private — this is not public exposure).
+4. In the app, set the server URL to `http://100.x.y.z:8000/`.
+
+Tailscale automatically takes the direct LAN path when you're home (full speed) and a WAN path
+on 5G — same address throughout, no app-side switching.
+
+**Cloudflare Tunnel (public HTTPS hostname; needs a domain on Cloudflare):**
+1. Run `cloudflared` on the host, pointing the tunnel at `http://localhost:8000` (no uvicorn
+   bind change needed).
+2. In the app, set the server URL to your `https://spotter.<yourdomain>.com/` hostname.
+3. Because all traffic then arrives from Cloudflare, enable forwarded-IP handling so rate
+   limiting stays per-client: run uvicorn with `--proxy-headers --forwarded-allow-ips='*'`
+   (only behind a trusted proxy).
 
 ## API Surface
 

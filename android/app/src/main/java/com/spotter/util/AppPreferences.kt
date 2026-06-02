@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.spotter.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -49,6 +50,12 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val PROFILE_EQUIPMENT = stringPreferencesKey("pref_equipment")
         private val PROFILE_AGE_GROUP = stringPreferencesKey("pref_age_group")
         private val PROFILE_LIMITATIONS = stringPreferencesKey("pref_limitations")
+        private val SERVER_URL = stringPreferencesKey("pref_server_url")
+    }
+
+    /** Base URL of the Spotter server. Defaults to the build-time value when unset. */
+    val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SERVER_URL]?.takeIf { it.isNotBlank() } ?: BuildConfig.SERVER_URL
     }
 
     val darkMode: Flow<DarkModePreference> = context.dataStore.data.map { prefs ->
@@ -90,6 +97,10 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
 
     suspend fun setDistanceUnit(value: DistanceUnit) {
         context.dataStore.edit { it[DISTANCE_UNIT] = value.name }
+    }
+
+    suspend fun setServerUrl(value: String) {
+        context.dataStore.edit { it[SERVER_URL] = value }
     }
 
     suspend fun saveProfile(profile: UserProfile) {
