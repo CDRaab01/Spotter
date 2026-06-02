@@ -5,7 +5,6 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -54,20 +52,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.ExercisePrior
-import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight
-import com.spotter.ui.theme.formatWeightFieldLabel
+import com.spotter.ui.theme.formatWeightLabel
+import com.spotter.ui.theme.toDisplay
 import com.spotter.util.UiState
 import com.spotter.util.WeightUnit
-import com.spotter.util.estimatedOneRM
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,15 +77,12 @@ fun WorkoutScreen(
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val finishState by viewModel.finishState.collectAsState()
     val restTimerSeconds by viewModel.restTimerSeconds.collectAsState()
-    val activeSetId by viewModel.activeSetId.collectAsState()
-    val activeSetReps by viewModel.activeSetReps.collectAsState()
-    val liftSeconds by viewModel.liftSeconds.collectAsState()
+    val workSeconds by viewModel.workSeconds.collectAsState()
     val exerciseNotes by viewModel.exerciseNotes.collectAsState()
     val priorBests by viewModel.priorBests.collectAsState()
     val timerText = "%02d:%02d".format(elapsed / 60, elapsed % 60)
     val isFinishing = finishState is UiState.Loading
 
-    var editingSet by remember { mutableStateOf<SetLogOut?>(null) }
     var showFinishDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -146,17 +140,6 @@ fun WorkoutScreen(
         )
     }
 
-    editingSet?.let { setLog ->
-        EditSetDialog(
-            setLog = setLog,
-            onDismiss = { editingSet = null },
-            onConfirm = { reps, weight ->
-                viewModel.editSet(sessionId, setLog, reps, weight)
-                editingSet = null
-            },
-        )
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -208,15 +191,17 @@ fun WorkoutScreen(
                 }
             }
 
-            // Unified lift / rest timer overlay
-            val showTimer = activeSetId != null || restTimerSeconds != null
-            AnimatedVisibility(visible = showTimer) {
+            // Always-on work / rest timer. Counts up ("Working") between sets and flips
+            // to a "Rest" countdown right after a set is completed.
+            val resting = restTimerSeconds != null
+            AnimatedVisibility(visible = totalCount > 0) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        containerColor = if (resting) MaterialTheme.colorScheme.primaryContainer
+                                         else MaterialTheme.colorScheme.surfaceVariant,
                     ),
                     shape = MaterialTheme.shapes.large,
                 ) {
@@ -226,33 +211,23 @@ fun WorkoutScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val displayTime = if (activeSetId != null)
-                            "%d:%02d".format(liftSeconds / 60, liftSeconds % 60)
-                        else
-                            "%d:%02d".format(
-                                (restTimerSeconds ?: 0) / 60,
-                                (restTimerSeconds ?: 0) % 60,
-                            )
+                        val seconds = if (resting) (restTimerSeconds ?: 0) else workSeconds
                         Text(
-                            text = displayTime,
+                            text = "%d:%02d".format(seconds / 60, seconds % 60),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.width(80.dp),
                         )
                         Text(
-                            text = if (activeSetId != null) "Set equipment, then lift."
-                                   else "Rest — next set coming up.",
+                            text = if (resting) "Rest — next set coming up." else "Working",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        IconButton(
-                            onClick = {
-                                if (activeSetId != null) viewModel.completeActiveSet(sessionId)
-                                else viewModel.dismissRestTimer()
-                            },
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Done / dismiss")
+                        if (resting) {
+                            IconButton(onClick = { viewModel.dismissRestTimer() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Skip rest")
+                            }
                         }
                     }
                 }
@@ -292,16 +267,12 @@ fun WorkoutScreen(
                                     sets = sets,
                                     note = exerciseNotes[exerciseId] ?: "",
                                     priorBest = priorBests[exerciseId],
-                                    activeSetId = activeSetId,
-                                    activeSetReps = activeSetReps,
-                                    onSetTap = { setLog ->
-                                        when {
-                                            setLog.completed -> { /* no-op; use edit dialog */ }
-                                            setLog.id == activeSetId -> viewModel.decrementActiveReps()
-                                            else -> viewModel.activateSet(setLog)
-                                        }
+                                    onCommitValues = { setLog, reps, weight ->
+                                        viewModel.editSet(sessionId, setLog, reps, weight)
                                     },
-                                    onEditWeight = { setLog -> editingSet = setLog },
+                                    onToggleComplete = { setLog, reps, weight ->
+                                        viewModel.toggleComplete(sessionId, setLog, reps, weight)
+                                    },
                                     onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
                                     onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
                                 )
@@ -317,90 +288,12 @@ fun WorkoutScreen(
 }
 
 @Composable
-private fun EditSetDialog(
-    setLog: SetLogOut,
-    onDismiss: () -> Unit,
-    onConfirm: (reps: Int, weight: Double?) -> Unit,
-) {
-    var repsText by remember { mutableStateOf(setLog.reps.toString()) }
-    var weightText by remember {
-        mutableStateOf(setLog.weight?.let { "%.0f".format(it) } ?: "")
-    }
-    var showPlateCalc by remember { mutableStateOf(false) }
-    val weightUnit = LocalWeightUnit.current
-
-    if (showPlateCalc) {
-        PlateCalculatorDialog(
-            initialWeight = weightText.toFloatOrNull() ?: 0f,
-            weightUnit = weightUnit,
-            onDismiss = { showPlateCalc = false },
-        )
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Set ${setLog.setNumber}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = repsText,
-                    onValueChange = { repsText = it.filter { c -> c.isDigit() } },
-                    label = { Text("Reps") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                )
-                if (setLog.weight != null || setLog.targetWeight != null) {
-                    OutlinedTextField(
-                        value = weightText,
-                        onValueChange = { new ->
-                            weightText = new.filter { c -> c.isDigit() || c == '.' }
-                        },
-                        label = { Text(weightUnit.formatWeightFieldLabel()) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                    )
-                    val dialogReps = repsText.toIntOrNull()
-                    val dialogWeightLbs = weightText.toDoubleOrNull()
-                    if (dialogReps != null && dialogReps > 1 && dialogWeightLbs != null && dialogWeightLbs > 0) {
-                        Text(
-                            text = "≈ ${weightUnit.formatWeight(estimatedOneRM(dialogWeightLbs, dialogReps))} est. 1RM",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    TextButton(
-                        onClick = { showPlateCalc = true },
-                        modifier = Modifier.align(Alignment.End),
-                    ) {
-                        Text("Plate calculator")
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val reps = repsText.toIntOrNull() ?: setLog.reps
-                    val weight = weightText.toDoubleOrNull()
-                    onConfirm(reps, weight)
-                },
-            ) { Text("Save") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}
-
-@Composable
 private fun ExerciseCard(
     sets: List<SetLogOut>,
     note: String,
     priorBest: ExercisePrior?,
-    activeSetId: String?,
-    activeSetReps: Int,
-    onSetTap: (SetLogOut) -> Unit,
-    onEditWeight: (SetLogOut) -> Unit,
+    onCommitValues: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
+    onToggleComplete: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
     onNoteSave: (String) -> Unit,
 ) {
@@ -421,6 +314,14 @@ private fun ExerciseCard(
     var showWarmUp by remember { mutableStateOf(false) }
     if (showWarmUp && workingWeight != null) {
         WarmUpDialog(workingWeightLbs = workingWeight, onDismiss = { showWarmUp = false })
+    }
+    var showPlateCalc by remember { mutableStateOf(false) }
+    if (showPlateCalc) {
+        PlateCalculatorDialog(
+            initialWeight = weightUnit.toDisplay(workingWeight ?: 0.0).toFloat(),
+            weightUnit = weightUnit,
+            onDismiss = { showPlateCalc = false },
+        )
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -508,22 +409,49 @@ private fun ExerciseCard(
             }
 
             Spacer(Modifier.height(12.dp))
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                sets.forEach { setLog ->
-                    SetLogRow(
-                        setLog = setLog,
-                        isActive = setLog.id == activeSetId,
-                        currentReps = if (setLog.id == activeSetId) activeSetReps else setLog.reps,
-                        onTap = { onSetTap(setLog) },
-                        onEditWeight = { onEditWeight(setLog) },
-                    )
-                }
+            // Column header: aligns with each set's [N] [reps] [weight] [✓] row.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Set",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(36.dp),
+                )
+                Text(
+                    "Reps",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(76.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    weightUnit.formatWeightLabel().replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(96.dp),
+                )
+            }
+            sets.forEach { setLog ->
+                SetLogRow(
+                    setLog = setLog,
+                    onCommit = { reps, weight -> onCommitValues(setLog, reps, weight) },
+                    onToggleComplete = { reps, weight -> onToggleComplete(setLog, reps, weight) },
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
                 if (workingWeight != null && workingWeight > 0) {
+                    TextButton(onClick = { showPlateCalc = true }) {
+                        Text("Plates")
+                    }
                     TextButton(onClick = { showWarmUp = true }) {
                         Text("Warm-up")
                     }
