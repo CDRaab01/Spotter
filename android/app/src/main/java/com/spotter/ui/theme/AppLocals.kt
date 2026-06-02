@@ -13,6 +13,16 @@ fun WeightUnit.formatWeight(lbs: Double): String =
 fun WeightUnit.formatWeightNullable(lbs: Double?): String =
     if (lbs == null) "BW" else formatWeight(lbs)
 
+/** Converts a stored lbs value into the user's display unit (no suffix). */
+fun WeightUnit.toDisplay(lbs: Double): Double =
+    if (this == WeightUnit.KG) lbs * 0.453592 else lbs
+
+/** A bare, editable display-unit number for inline weight fields (trims a trailing .0). */
+fun WeightUnit.fieldValue(lbs: Double): String {
+    val v = toDisplay(lbs)
+    return if (v % 1.0 == 0.0) v.toInt().toString() else "%.1f".format(v)
+}
+
 fun WeightUnit.formatWeightFieldLabel(): String =
     if (this == WeightUnit.KG) "Weight (kg)" else "Weight (lb)"
 

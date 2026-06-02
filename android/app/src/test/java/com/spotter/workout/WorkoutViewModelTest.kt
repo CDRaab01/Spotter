@@ -74,104 +74,10 @@ class WorkoutViewModelTest {
         assertEquals("timeout", (viewModel.session.value as UiState.Error).message)
     }
 
-    // ── Activate set / lift timer ──────────────────────────────────────────────
+    // ── Complete / toggle set ───────────────────────────────────────────────────
 
     @Test
-    fun `activateSet sets activeSetId and initialises reps from targetReps`() = runTest(testDispatcher) {
-        val setLog = fakeSetLog(targetReps = 10)
-
-        viewModel.activateSet(setLog)
-
-        assertEquals(setLog.id, viewModel.activeSetId.value)
-        assertEquals(10, viewModel.activeSetReps.value)
-    }
-
-    @Test
-    fun `activateSet starts liftSeconds counting`() = runTest(testDispatcher) {
-        val setLog = fakeSetLog()
-        val job = launch { viewModel.liftSeconds.collect {} }
-
-        viewModel.activateSet(setLog)
-        advanceTimeBy(3500)
-
-        assertEquals(3, viewModel.liftSeconds.value)
-        job.cancel()
-    }
-
-    @Test
-    fun `activateSet falls back to reps when targetReps is null`() = runTest(testDispatcher) {
-        val setLog = fakeSetLog(reps = 6, targetReps = null)
-
-        viewModel.activateSet(setLog)
-
-        assertEquals(6, viewModel.activeSetReps.value)
-    }
-
-    // ── Decrement reps ─────────────────────────────────────────────────────────
-
-    @Test
-    fun `decrementActiveReps decrements from targetReps`() = runTest(testDispatcher) {
-        viewModel.activateSet(fakeSetLog(targetReps = 8))
-
-        viewModel.decrementActiveReps()
-
-        assertEquals(7, viewModel.activeSetReps.value)
-    }
-
-    @Test
-    fun `decrementActiveReps does not go below 1`() = runTest(testDispatcher) {
-        viewModel.activateSet(fakeSetLog(targetReps = 1))
-
-        viewModel.decrementActiveReps()
-        viewModel.decrementActiveReps()
-
-        assertEquals(1, viewModel.activeSetReps.value)
-    }
-
-    // ── Complete active set ────────────────────────────────────────────────────
-
-    @Test
-    fun `completeActiveSet calls updateSet with completed=true and actual reps`() = runTest(testDispatcher) {
-        val session = fakeSession()
-        val setLog = session.setLogs.first()
-        whenever(repository.getSession(session.id)).thenReturn(session)
-        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
-        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(completed = true))
-
-        viewModel.loadSession(session.id)
-        advanceTimeBy(200)
-        viewModel.activateSet(setLog)
-        viewModel.decrementActiveReps() // 8 → 7
-
-        viewModel.completeActiveSet(session.id)
-        advanceTimeBy(200)
-
-        verify(repository).updateSet(
-            session.id,
-            setLog.id,
-            SetLogUpdate(completed = true, reps = 7),
-        )
-    }
-
-    @Test
-    fun `completeActiveSet clears activeSetId`() = runTest(testDispatcher) {
-        val session = fakeSession()
-        val setLog = session.setLogs.first()
-        whenever(repository.getSession(session.id)).thenReturn(session)
-        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
-        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(completed = true))
-
-        viewModel.loadSession(session.id)
-        advanceTimeBy(200)
-        viewModel.activateSet(setLog)
-        viewModel.completeActiveSet(session.id)
-        advanceTimeBy(200)
-
-        assertNull(viewModel.activeSetId.value)
-    }
-
-    @Test
-    fun `completeActiveSet with full reps starts normal rest timer`() = runTest(testDispatcher) {
+    fun `toggleComplete marks set complete with reps and weight and starts rest`() = runTest(testDispatcher) {
         val session = fakeSession() // targetReps = 8 → 90s base
         val setLog = session.setLogs.first()
         whenever(repository.getSession(session.id)).thenReturn(session)
@@ -180,17 +86,48 @@ class WorkoutViewModelTest {
 
         viewModel.loadSession(session.id)
         advanceTimeBy(200)
-        viewModel.activateSet(setLog) // activeSetReps = 8 = targetReps → no failure
 
-        viewModel.completeActiveSet(session.id)
+        viewModel.toggleComplete(session.id, setLog, reps = 8, weightLbs = 135.0)
         advanceTimeBy(200)
 
+        verify(repository).updateSet(
+            session.id,
+            setLog.id,
+            SetLogUpdate(completed = true, reps = 8, weight = 135.0),
+        )
         assertEquals(90, viewModel.restTimerSeconds.value)
+        val updated = (viewModel.session.value as UiState.Success).data.setLogs.first()
+        assertEquals(true, updated.completed)
     }
 
     @Test
-    fun `completeActiveSet on failure starts extended rest timer`() = runTest(testDispatcher) {
-        val session = fakeSession() // targetReps = 8 → 90s base; failure → 90+60 = 150s
+    fun `toggleComplete on a completed set un-completes it and dismisses rest`() = runTest(testDispatcher) {
+        val completed = fakeSetLog(completed = true)
+        val session = fakeSession().copy(setLogs = listOf(completed))
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(completed.copy(completed = false))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.startRestTimer(8)
+        advanceTimeBy(200)
+        assertNotNull(viewModel.restTimerSeconds.value)
+
+        viewModel.toggleComplete(session.id, completed, reps = 8, weightLbs = 135.0)
+        advanceTimeBy(200)
+
+        verify(repository).updateSet(
+            session.id,
+            completed.id,
+            SetLogUpdate(completed = false, reps = 8, weight = 135.0),
+        )
+        assertNull(viewModel.restTimerSeconds.value)
+    }
+
+    @Test
+    fun `toggleComplete with reps below target starts extended rest timer`() = runTest(testDispatcher) {
+        val session = fakeSession() // targetReps = 8 → 90s base; failure → 150s
         val setLog = session.setLogs.first()
         whenever(repository.getSession(session.id)).thenReturn(session)
         whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
@@ -198,13 +135,30 @@ class WorkoutViewModelTest {
 
         viewModel.loadSession(session.id)
         advanceTimeBy(200)
-        viewModel.activateSet(setLog)
-        repeat(3) { viewModel.decrementActiveReps() } // 8 → 5 (< 8 = failure)
 
-        viewModel.completeActiveSet(session.id)
+        viewModel.toggleComplete(session.id, setLog, reps = 5, weightLbs = 135.0)
         advanceTimeBy(200)
 
         assertEquals(150, viewModel.restTimerSeconds.value)
+    }
+
+    // ── Work timer ───────────────────────────────────────────────────────────────
+
+    @Test
+    fun `workSeconds counts up while not resting`() = runTest(testDispatcher) {
+        val job = launch { viewModel.workSeconds.collect {} }
+        advanceTimeBy(3500)
+        assertEquals(3, viewModel.workSeconds.value)
+        job.cancel()
+    }
+
+    @Test
+    fun `workSeconds stays at zero while resting`() = runTest(testDispatcher) {
+        val job = launch { viewModel.workSeconds.collect {} }
+        viewModel.startRestTimer(8)
+        advanceTimeBy(3500)
+        assertEquals(0, viewModel.workSeconds.value)
+        job.cancel()
     }
 
     // ── Rest timer ─────────────────────────────────────────────────────────────
@@ -343,73 +297,6 @@ class WorkoutViewModelTest {
         advanceTimeBy(3500)
         assertEquals(3, viewModel.elapsedSeconds.value)
         job.cancel()
-    }
-
-    // ── Superset routing ───────────────────────────────────────────────────────
-
-    @Test
-    fun `completeActiveSet with superset activates next set instead of starting rest`() = runTest(testDispatcher) {
-        val set1 = fakeSetLog(id = "set-1", supersetGroup = 1)
-        val set2 = fakeSetLog(id = "set-2", supersetGroup = 1)
-        val session = SessionOut(
-            id = "s1", userId = "user-1", planId = null, date = "2026-06-01",
-            status = "in_progress", durationSeconds = null, note = null,
-            setLogs = listOf(set1, set2),
-        )
-        whenever(repository.getSession("s1")).thenReturn(session)
-        whenever(repository.getPriorBests("s1")).thenReturn(emptyList())
-        whenever(repository.updateSet(any(), any(), any())).thenReturn(set1.copy(completed = true))
-
-        viewModel.loadSession("s1")
-        advanceTimeBy(200)
-        viewModel.activateSet(set1)
-        viewModel.completeActiveSet("s1")
-        advanceTimeBy(200)
-
-        assertEquals("set-2", viewModel.activeSetId.value)
-        assertNull(viewModel.restTimerSeconds.value)
-    }
-
-    @Test
-    fun `completeActiveSet without superset starts rest timer normally`() = runTest(testDispatcher) {
-        val session = fakeSession()
-        val setLog = session.setLogs.first()
-        whenever(repository.getSession(session.id)).thenReturn(session)
-        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
-        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(completed = true))
-
-        viewModel.loadSession(session.id)
-        advanceTimeBy(200)
-        viewModel.activateSet(setLog)
-        viewModel.completeActiveSet(session.id)
-        advanceTimeBy(200)
-
-        assertNull(viewModel.activeSetId.value)
-        assertNotNull(viewModel.restTimerSeconds.value)
-    }
-
-    @Test
-    fun `completeActiveSet skips completed sets when looking for superset partner`() = runTest(testDispatcher) {
-        val set1 = fakeSetLog(id = "set-1", supersetGroup = 1)
-        val set2 = fakeSetLog(id = "set-2", supersetGroup = 1, completed = true)  // already done
-        val session = SessionOut(
-            id = "s1", userId = "user-1", planId = null, date = "2026-06-01",
-            status = "in_progress", durationSeconds = null, note = null,
-            setLogs = listOf(set1, set2),
-        )
-        whenever(repository.getSession("s1")).thenReturn(session)
-        whenever(repository.getPriorBests("s1")).thenReturn(emptyList())
-        whenever(repository.updateSet(any(), any(), any())).thenReturn(set1.copy(completed = true))
-
-        viewModel.loadSession("s1")
-        advanceTimeBy(200)
-        viewModel.activateSet(set1)
-        viewModel.completeActiveSet("s1")
-        advanceTimeBy(200)
-
-        // set2 is already completed so no superset partner → rest timer starts
-        assertNull(viewModel.activeSetId.value)
-        assertNotNull(viewModel.restTimerSeconds.value)
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

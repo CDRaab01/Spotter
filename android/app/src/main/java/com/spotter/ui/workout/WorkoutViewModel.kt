@@ -82,23 +82,19 @@ class WorkoutViewModel @Inject constructor(
     private val _priorBests = MutableStateFlow<Map<String, ExercisePrior>>(emptyMap())
     val priorBests: StateFlow<Map<String, ExercisePrior>> = _priorBests.asStateFlow()
 
-    // Active lift state — which set is currently being performed
-    private val _activeSetId = MutableStateFlow<String?>(null)
-    val activeSetId: StateFlow<String?> = _activeSetId.asStateFlow()
-
-    // Rep count for the active set (starts at targetReps, decremented on tap)
-    private val _activeSetReps = MutableStateFlow(0)
-    val activeSetReps: StateFlow<Int> = _activeSetReps.asStateFlow()
-
-    // Lift timer counts UP while a set is active. Uses flatMapLatest + WhileSubscribed
-    // so the infinite loop only runs while something is collecting — same pattern as
-    // elapsedSeconds, which prevents runTest's end-of-test drain from hanging.
+    // Work timer counts UP while NOT resting and resets to 0 each time a rest ends.
+    // Driven off the rest-timer flow so the screen always has a live timer: a "Rest"
+    // countdown right after a set, then a "Working" count-up until the next set is
+    // completed. Uses flatMapLatest + WhileSubscribed so the infinite loop only runs
+    // while something is collecting — same pattern as elapsedSeconds, which prevents
+    // runTest's end-of-test drain from hanging.
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val liftSeconds: StateFlow<Int> = _activeSetId
-        .flatMapLatest { activeId ->
-            if (activeId == null) flowOf(0)
+    val workSeconds: StateFlow<Int> = _restTimerSeconds
+        .flatMapLatest { rest ->
+            if (rest != null) flowOf(0)   // resting — work timer paused/hidden
             else flow {
                 var sec = 0
+                emit(0)
                 while (true) {
                     delay(1000)
                     emit(++sec)
@@ -132,49 +128,29 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun activateSet(setLog: SetLogOut) {
-        _activeSetId.value = setLog.id
-        _activeSetReps.value = setLog.targetReps ?: setLog.reps
-        // liftSeconds resets automatically: flatMapLatest re-subscribes to a fresh
-        // flow starting at 0 whenever _activeSetId changes to a new non-null value.
-    }
-
-    fun decrementActiveReps() {
-        if (_activeSetReps.value > 1) _activeSetReps.value--
-    }
-
-    fun completeActiveSet(sessionId: String) {
-        val setId = _activeSetId.value ?: return
-        val actualReps = _activeSetReps.value
-        val session = (_session.value as? UiState.Success)?.data ?: return
-        val setLog = session.setLogs.find { it.id == setId } ?: return
-        _activeSetId.value = null   // flatMapLatest switches to flowOf(0), stopping the timer
+    /**
+     * One-tap completion toggle. Persists the set with the reps/weight currently shown
+     * in its row, flips its completed flag, and drives the rest timer: completing a set
+     * starts the rest countdown; un-completing cancels it. The session state is patched
+     * in place (no full reload) so inline edits never flash the loading spinner.
+     */
+    fun toggleComplete(sessionId: String, setLog: SetLogOut, reps: Int, weightLbs: Double?) {
+        val nowCompleted = !setLog.completed
+        patchSet(setLog.id) { it.copy(completed = nowCompleted, reps = reps, weight = weightLbs ?: it.weight) }
+        if (nowCompleted) startRestTimer(setLog.targetReps, reps) else dismissRestTimer()
         viewModelScope.launch {
             try {
                 sessionRepository.updateSet(
-                    sessionId, setId,
-                    SetLogUpdate(completed = true, reps = actualReps),
+                    sessionId, setLog.id,
+                    SetLogUpdate(completed = nowCompleted, reps = reps, weight = weightLbs),
                 )
-                loadSession(sessionId)
-                // Check for superset continuation — find the next pending set in the same group
-                val supersetNext = findNextSupersetSet(session.setLogs, setLog)
-                if (supersetNext != null) {
-                    activateSet(supersetNext)
-                } else {
-                    startRestTimer(setLog.targetReps, actualReps)
-                }
             } catch (_: Exception) {}
         }
     }
 
-    private fun findNextSupersetSet(allSets: List<SetLogOut>, completedSet: SetLogOut): SetLogOut? {
-        val group = completedSet.supersetGroup ?: return null
-        return allSets.firstOrNull { sl ->
-            !sl.completed && sl.id != completedSet.id && sl.supersetGroup == group
-        }
-    }
-
+    /** Persists inline reps/weight edits for a single set (called on field commit). */
     fun editSet(sessionId: String, setLog: SetLogOut, newReps: Int, newWeight: Double?) {
+        patchSet(setLog.id) { it.copy(reps = newReps, weight = newWeight ?: it.weight) }
         viewModelScope.launch {
             try {
                 sessionRepository.updateSet(
@@ -182,9 +158,15 @@ class WorkoutViewModel @Inject constructor(
                     setLog.id,
                     SetLogUpdate(reps = newReps, weight = newWeight),
                 )
-                loadSession(sessionId)
             } catch (_: Exception) {}
         }
+    }
+
+    /** Replaces a single set in the in-memory session without re-fetching the whole session. */
+    private fun patchSet(setId: String, transform: (SetLogOut) -> SetLogOut) {
+        val current = (_session.value as? UiState.Success)?.data ?: return
+        val newLogs = current.setLogs.map { if (it.id == setId) transform(it) else it }
+        _session.value = UiState.Success(current.copy(setLogs = newLogs))
     }
 
     fun addSet(sessionId: String, exerciseId: String, lastSet: SetLogOut) {
