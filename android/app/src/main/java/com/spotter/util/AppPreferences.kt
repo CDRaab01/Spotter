@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.spotter.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -49,6 +50,12 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val PROFILE_EQUIPMENT = stringPreferencesKey("pref_equipment")
         private val PROFILE_AGE_GROUP = stringPreferencesKey("pref_age_group")
         private val PROFILE_LIMITATIONS = stringPreferencesKey("pref_limitations")
+        private val SERVER_URL = stringPreferencesKey("pref_server_url")
+    }
+
+    /** Base URL of the Spotter server. Defaults to the build-time value when unset. */
+    val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[SERVER_URL]?.takeIf { it.isNotBlank() } ?: BuildConfig.SERVER_URL
     }
 
     val darkMode: Flow<DarkModePreference> = context.dataStore.data.map { prefs ->
@@ -92,6 +99,10 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         context.dataStore.edit { it[DISTANCE_UNIT] = value.name }
     }
 
+    suspend fun setServerUrl(value: String) {
+        context.dataStore.edit { it[SERVER_URL] = value }
+    }
+
     suspend fun saveProfile(profile: UserProfile) {
         context.dataStore.edit { prefs ->
             prefs[PROFILE_EXPERIENCE] = profile.experience
@@ -100,6 +111,22 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
             prefs[PROFILE_AGE_GROUP] = profile.ageGroup
             prefs[PROFILE_LIMITATIONS] = profile.limitations
             prefs[ONBOARDING_DONE] = true
+        }
+    }
+
+    /**
+     * Clears the saved questionnaire profile and onboarding flag so the user is sent back
+     * through the onboarding questionnaire. Used by account reset. Leaves app preferences
+     * (theme, units, server URL) intact.
+     */
+    suspend fun clearOnboarding() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(ONBOARDING_DONE)
+            prefs.remove(PROFILE_EXPERIENCE)
+            prefs.remove(PROFILE_GOAL)
+            prefs.remove(PROFILE_EQUIPMENT)
+            prefs.remove(PROFILE_AGE_GROUP)
+            prefs.remove(PROFILE_LIMITATIONS)
         }
     }
 }

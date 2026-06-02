@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark counterpart to values/themes.xml. Picked automatically when the device
-         is in dark mode, so the startup/window background matches the Compose dark
-         theme instead of flashing light on the first screen. -->
-    <style name="Theme.Spotter" parent="android:Theme.Material.NoActionBar" />
+    <!-- Dark window for system night mode so the launch frame matches the dark theme
+         (Compose applies the in-app theme; this just covers the pre-Compose frame). -->
+    <style name="Theme.Spotter" parent="android:Theme.Material.NoActionBar">
+        <!-- Matches SpotterDarkBg. -->
+        <item name="android:windowBackground">#FF0F0F14</item>
+    </style>
 </resources>

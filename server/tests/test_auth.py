@@ -1,5 +1,7 @@
 import uuid
 
+from app.config import settings
+
 
 async def test_register_returns_tokens(client):
     uid = uuid.uuid4().hex[:8]
@@ -61,3 +63,55 @@ async def test_health_check(client):
     resp = await client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
+
+
+async def test_register_without_invite_code_rejected_when_required(client, monkeypatch):
+    monkeypatch.setattr(settings, "registration_invite_code", "let-me-in")
+    uid = uuid.uuid4().hex[:8]
+    resp = await client.post(
+        "/auth/register",
+        json={"name": "Eve", "email": f"eve_{uid}@test.com", "password": "secret123"},
+    )
+    assert resp.status_code == 403
+
+
+async def test_register_with_wrong_invite_code_rejected(client, monkeypatch):
+    monkeypatch.setattr(settings, "registration_invite_code", "let-me-in")
+    uid = uuid.uuid4().hex[:8]
+    resp = await client.post(
+        "/auth/register",
+        json={
+            "name": "Eve",
+            "email": f"eve_{uid}@test.com",
+            "password": "secret123",
+            "invite_code": "nope",
+        },
+    )
+    assert resp.status_code == 403
+
+
+async def test_register_with_correct_invite_code_succeeds(client, monkeypatch):
+    monkeypatch.setattr(settings, "registration_invite_code", "let-me-in")
+    uid = uuid.uuid4().hex[:8]
+    resp = await client.post(
+        "/auth/register",
+        json={
+            "name": "Adam",
+            "email": f"adam_{uid}@test.com",
+            "password": "secret123",
+            "invite_code": "let-me-in",
+        },
+    )
+    assert resp.status_code == 201
+    assert "access_token" in resp.json()
+
+
+async def test_hsts_header_emitted_when_enabled(client, monkeypatch):
+    monkeypatch.setattr(settings, "hsts_enabled", True)
+    resp = await client.get("/health")
+    assert "max-age" in resp.headers.get("strict-transport-security", "")
+
+
+async def test_hsts_header_absent_by_default(client):
+    resp = await client.get("/health")
+    assert "strict-transport-security" not in resp.headers

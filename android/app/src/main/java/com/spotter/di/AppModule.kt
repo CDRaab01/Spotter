@@ -9,6 +9,7 @@ import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
 import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_3_4
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
+import com.spotter.data.remote.HostSelectionInterceptor
 import com.spotter.util.TokenStore
 import dagger.Module
 import dagger.Provides
@@ -20,6 +21,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -37,9 +39,21 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttp(authInterceptor: AuthInterceptor): OkHttpClient =
+    fun provideOkHttp(
+        authInterceptor: AuthInterceptor,
+        hostSelectionInterceptor: HostSelectionInterceptor,
+    ): OkHttpClient =
         OkHttpClient.Builder()
+            // AI chat proxies to a local LLM; the first request triggers a cold model
+            // load + inference that can take well over OkHttp's 10s default read timeout,
+            // which surfaced to users as a "timeout" during initial setup. Allow a read
+            // window comfortably larger than the server's own LM Studio timeout so the
+            // server's meaningful error (502/503/504) reaches the client instead.
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
+            .addInterceptor(hostSelectionInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply {

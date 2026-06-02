@@ -5,9 +5,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import com.spotter.ui.navigation.AppNavGraph
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalDistanceUnit
@@ -59,7 +63,15 @@ class MainActivity : ComponentActivity() {
                     LocalWeightUnit provides weightUnit,
                     LocalDistanceUnit provides distanceUnit,
                 ) {
-                    AppNavGraph(startDestination = startDestination)
+                    // Paint a themed background behind every screen so screens without their
+                    // own Scaffold/Surface (e.g. Login, Register) follow the dark/light theme
+                    // and inherit a readable onBackground content color.
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        AppNavGraph(startDestination = startDestination)
+                    }
                 }
             }
         }
