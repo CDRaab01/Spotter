@@ -80,3 +80,28 @@ async def test_other_users_plan_not_accessible(auth_client, client, exercise):
 
     resp = await client.delete(f"/plans/{plan['id']}")
     assert resp.status_code == 404
+
+
+async def test_plan_exercise_superset_group_roundtrip(auth_client, exercise):
+    resp = await auth_client.post(
+        "/plans",
+        json={
+            "name": "Superset Test",
+            "exercises": [
+                {
+                    "exercise_id": str(exercise.id),
+                    "target_sets": 3,
+                    "target_reps": 8,
+                    "is_bodyweight": False,
+                    "order": 0,
+                    "superset_group": 2,
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    plan_id = resp.json()["id"]
+
+    detail = await auth_client.get(f"/plans/{plan_id}")
+    assert detail.status_code == 200
+    assert detail.json()["exercises"][0]["superset_group"] == 2

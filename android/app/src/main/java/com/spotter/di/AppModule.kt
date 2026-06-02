@@ -3,7 +3,10 @@ package com.spotter.di
 import android.content.Context
 import androidx.room.Room
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
+import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
+import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_3_4
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
 import com.spotter.util.TokenStore
@@ -39,9 +42,13 @@ object AppModule {
     fun provideOkHttp(authInterceptor: AuthInterceptor): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            })
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.BODY
+                    })
+                }
+            }
             .build()
 
     @Provides
@@ -60,5 +67,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): SpotterDatabase =
-        Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db").build()
+        Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db")
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideChatMessageDao(db: SpotterDatabase) = db.chatMessageDao()
 }

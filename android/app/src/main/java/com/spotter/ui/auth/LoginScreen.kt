@@ -32,6 +32,7 @@ import com.spotter.util.UiState
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit,
+    onNavigateToForgotPassword: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsState()
@@ -86,7 +87,11 @@ fun LoginScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onNavigateToForgotPassword) {
+            Text("Forgot password?")
+        }
+        Spacer(Modifier.height(8.dp))
         TextButton(onClick = onNavigateToRegister) {
             Text("Don't have an account? Create one")
         }

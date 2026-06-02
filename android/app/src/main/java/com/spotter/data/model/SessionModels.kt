@@ -33,6 +33,7 @@ data class SetLogOut(
     @SerialName("target_sets") val targetSets: Int? = null,
     @SerialName("target_reps") val targetReps: Int? = null,
     @SerialName("target_weight") val targetWeight: Double? = null,
+    @SerialName("superset_group") val supersetGroup: Int? = null,
 )
 
 @Serializable
@@ -51,6 +52,13 @@ data class SetLogUpdate(
 )
 
 @Serializable
+data class MuscleGroupSummary(
+    @SerialName("muscle_group") val muscleGroup: String,
+    val sets: Int,
+    val volume: Float,
+)
+
+@Serializable
 data class SessionOut(
     val id: String,
     @SerialName("user_id") val userId: String,
@@ -62,6 +70,7 @@ data class SessionOut(
     val note: String? = null,
     @SerialName("exercise_notes") val exerciseNotes: Map<String, String>? = null,
     @SerialName("set_logs") val setLogs: List<SetLogOut> = emptyList(),
+    @SerialName("muscle_groups") val muscleGroups: List<MuscleGroupSummary> = emptyList(),
 )
 
 @Serializable
@@ -90,4 +99,5 @@ data class ExercisePrior(
     val reps: Int,
     val weight: Double? = null,
     val date: String,
+    @SerialName("last_sets") val lastSets: List<SetLogOut> = emptyList(),
 )

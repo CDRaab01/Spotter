@@ -45,6 +45,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.PlannedExerciseOut
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -245,6 +247,7 @@ fun PlanDetailScreen(
 
 @Composable
 private fun ExerciseViewRow(exercise: PlannedExerciseOut) {
+    val weightUnit = LocalWeightUnit.current
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -260,7 +263,7 @@ private fun ExerciseViewRow(exercise: PlannedExerciseOut) {
                 val detail = if (exercise.isBodyweight) {
                     "${exercise.targetSets}×${exercise.targetReps} BW"
                 } else {
-                    val weight = exercise.targetWeight?.let { "×${it.toInt()}lb" } ?: ""
+                    val weight = exercise.targetWeight?.let { "×${weightUnit.formatWeight(it)}" } ?: ""
                     "${exercise.targetSets}×${exercise.targetReps}$weight"
                 }
                 Text(
@@ -268,6 +271,13 @@ private fun ExerciseViewRow(exercise: PlannedExerciseOut) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                exercise.supersetGroup?.let { group ->
+                    Text(
+                        "Superset ${('A' + group - 1).uppercaseChar()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
             }
         }
     }

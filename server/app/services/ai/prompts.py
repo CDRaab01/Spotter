@@ -310,9 +310,16 @@ def validate_request(user_message: str) -> str | None:
     return None
 
 
-def build_messages(history: list[dict], new_user_message: str) -> list[dict]:
-    """Prepend the system prompt and append the new user turn."""
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+def build_messages(
+    history: list[dict],
+    new_user_message: str,
+    user_context: str | None = None,
+) -> list[dict]:
+    """Prepend the system prompt (+ user profile context) and append the new user turn."""
+    system_content = SYSTEM_PROMPT
+    if user_context:
+        system_content = f"{SYSTEM_PROMPT}\n\n## User Profile\n{user_context}"
+    messages = [{"role": "system", "content": system_content}]
     messages.extend(history)
     messages.append({"role": "user", "content": new_user_message})
     return messages

@@ -19,6 +19,7 @@ class PlannedExercise(Base):
     target_weight: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_bodyweight: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
+    superset_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     plan = relationship("WorkoutPlan", back_populates="planned_exercises", lazy="raise")
     exercise = relationship("Exercise", lazy="raise")

@@ -1,5 +1,6 @@
 import datetime
 import uuid
+from collections import defaultdict
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from app.models.workout_session import WorkoutSession
 from app.schemas.session import (
     ExercisePrior,
     ExerciseSummary,
+    MuscleGroupSummary,
     SessionCreate,
     SessionOut,
     SessionSummary,
@@ -32,6 +34,15 @@ async def create_session(
     await db.flush()
 
     if req.plan_id:
+        plan_check = await db.execute(
+            select(WorkoutPlan).where(
+                WorkoutPlan.id == req.plan_id,
+                WorkoutPlan.user_id == user_id,
+            )
+        )
+        if plan_check.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
         pe_result = await db.execute(
             select(PlannedExercise)
             .where(PlannedExercise.plan_id == req.plan_id)
@@ -87,6 +98,8 @@ async def get_session(
                 pe.target_sets,
                 pe.target_reps,
                 pe.target_weight,
+                pe.exercise.muscle_group,
+                pe.superset_group,
             )
             exercise_order[pe.exercise_id] = pe.order
 
@@ -102,7 +115,7 @@ async def get_session(
         s.set_logs,
         key=lambda x: (exercise_order.get(x.exercise_id, 999), x.set_number),
     ):
-        ctx = exercise_context.get(sl.exercise_id, (None, None, None, None))
+        ctx = exercise_context.get(sl.exercise_id, (None, None, None, None, None, None))
         set_logs_out.append(
             SetLogOut(
                 id=sl.id,
@@ -117,8 +130,30 @@ async def get_session(
                 target_sets=ctx[1],
                 target_reps=ctx[2],
                 target_weight=ctx[3],
+                superset_group=ctx[5] if len(ctx) > 5 else None,
             )
         )
+
+    # Aggregate completed sets by muscle group (plan sessions only)
+    muscle_group_sets: dict[str, int] = defaultdict(int)
+    muscle_group_volume: dict[str, float] = defaultdict(float)
+    for sl in s.set_logs:
+        if sl.completed:
+            ctx = exercise_context.get(sl.exercise_id, (None, None, None, None, None, None))
+            mg = ctx[4] if len(ctx) > 4 else None
+            if mg:
+                muscle_group_sets[mg] += 1
+                if sl.weight:
+                    muscle_group_volume[mg] += sl.reps * (sl.weight * 0.453592)
+
+    muscle_groups_out = [
+        MuscleGroupSummary(
+            muscle_group=mg,
+            sets=muscle_group_sets[mg],
+            volume=round(muscle_group_volume.get(mg, 0.0), 1),
+        )
+        for mg in sorted(muscle_group_sets)
+    ]
 
     return SessionOut(
         id=s.id,
@@ -131,6 +166,7 @@ async def get_session(
         note=s.note,
         exercise_notes=s.exercise_notes,
         set_logs=set_logs_out,
+        muscle_groups=muscle_groups_out,
     )
 
 
@@ -279,16 +315,59 @@ async def get_prior_bests(
             .limit(1)
         )
         row = row_result.first()
-        if row:
-            priors.append(
-                ExercisePrior(
-                    exercise_id=exercise_id,
-                    exercise_name=exercise_names.get(exercise_id),
-                    reps=row[0],
-                    weight=row[1],
-                    date=row[2],
-                )
+        if not row:
+            continue
+
+        # Fetch the most recent prior session's full set list for this exercise
+        prior_session_result = await db.execute(
+            select(WorkoutSession.id)
+            .join(SetLog, SetLog.session_id == WorkoutSession.id)
+            .where(
+                WorkoutSession.user_id == user_id,
+                WorkoutSession.id != session_id,
+                SetLog.exercise_id == exercise_id,
+                SetLog.completed == True,  # noqa: E712
             )
+            .order_by(WorkoutSession.date.desc())
+            .limit(1)
+        )
+        prior_session_id = prior_session_result.scalar_one_or_none()
+
+        last_sets: list[SetLogOut] = []
+        if prior_session_id:
+            last_sets_result = await db.execute(
+                select(SetLog)
+                .where(
+                    SetLog.session_id == prior_session_id,
+                    SetLog.exercise_id == exercise_id,
+                    SetLog.completed == True,  # noqa: E712
+                )
+                .order_by(SetLog.set_number)
+            )
+            last_sets = [
+                SetLogOut(
+                    id=sl.id,
+                    session_id=sl.session_id,
+                    exercise_id=sl.exercise_id,
+                    set_number=sl.set_number,
+                    reps=sl.reps,
+                    weight=sl.weight,
+                    completed=sl.completed,
+                    completed_at=sl.completed_at,
+                )
+                for sl in last_sets_result.scalars().all()
+            ]
+
+        priors.append(
+            ExercisePrior(
+                exercise_id=exercise_id,
+                exercise_name=exercise_names.get(exercise_id),
+                reps=row[0],
+                weight=row[1],
+                date=row[2],
+                last_sets=last_sets,
+            )
+        )
 
     return priors
 

@@ -14,6 +14,7 @@ data class PlannedExerciseIn(
     @SerialName("target_weight") val targetWeight: Double? = null,
     @SerialName("is_bodyweight") val isBodyweight: Boolean = false,
     val order: Int = 0,
+    @SerialName("superset_group") val supersetGroup: Int? = null,
 )
 
 @Serializable
@@ -33,6 +34,7 @@ data class PlannedExerciseOut(
     @SerialName("is_bodyweight") val isBodyweight: Boolean = false,
     val order: Int = 0,
     @SerialName("exercise_name") val exerciseName: String? = null,
+    @SerialName("superset_group") val supersetGroup: Int? = null,
 )
 
 @Serializable

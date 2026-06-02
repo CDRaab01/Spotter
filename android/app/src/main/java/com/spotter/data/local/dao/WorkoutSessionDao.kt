@@ -20,4 +20,13 @@ interface WorkoutSessionDao {
 
     @Query("DELETE FROM workout_sessions WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT * FROM workout_sessions")
+    suspend fun getAll(): List<WorkoutSessionEntity>
+
+    @Query("SELECT * FROM workout_sessions WHERE serverId IS NULL")
+    suspend fun getUnsynced(): List<WorkoutSessionEntity>
+
+    @Query("SELECT * FROM workout_sessions WHERE syncPending = 1 AND serverId IS NOT NULL")
+    suspend fun getSyncPendingSessions(): List<WorkoutSessionEntity>
 }

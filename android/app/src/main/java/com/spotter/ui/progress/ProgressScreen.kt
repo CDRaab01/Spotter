@@ -3,12 +3,11 @@ package com.spotter.ui.progress
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +56,10 @@ import androidx.navigation.NavController
 import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.TrackedExercise
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
+import com.spotter.ui.theme.formatWeightFieldLabel
+import com.spotter.ui.theme.formatWeightNullable
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +72,7 @@ fun ProgressScreen(
     val trackedExercises by viewModel.trackedExercises.collectAsState()
     val exerciseProgress by viewModel.exerciseProgress.collectAsState()
     val selectedExerciseId by viewModel.selectedExerciseId.collectAsState()
+    val chartRange by viewModel.chartRange.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var showBodyweightDialog by remember { mutableStateOf(false) }
@@ -115,20 +121,55 @@ fun ProgressScreen(
             }
 
             when (selectedTab) {
-                0 -> BodyWeightTab(metrics = metrics)
+                0 -> BodyWeightTab(
+                    metrics = metrics,
+                    chartRange = chartRange,
+                    onRangeSelect = { viewModel.setChartRange(it) },
+                )
                 1 -> StrengthTab(
                     trackedExercises = trackedExercises,
                     exerciseProgress = exerciseProgress,
                     selectedExerciseId = selectedExerciseId,
                     onSelectExercise = { id -> viewModel.selectExercise(id) },
+                    chartRange = chartRange,
+                    onRangeSelect = { viewModel.setChartRange(it) },
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BodyWeightTab(metrics: UiState<List<BodyMetricEntity>>) {
+private fun RangeSelector(
+    selected: ChartRange,
+    onSelect: (ChartRange) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ChartRange.entries.forEach { range ->
+            FilterChip(
+                selected = selected == range,
+                onClick = { onSelect(range) },
+                label = { Text(range.label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BodyWeightTab(
+    metrics: UiState<List<BodyMetricEntity>>,
+    chartRange: ChartRange,
+    onRangeSelect: (ChartRange) -> Unit,
+) {
+    val weightUnit = LocalWeightUnit.current
     when (metrics) {
         is UiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -143,6 +184,7 @@ private fun BodyWeightTab(metrics: UiState<List<BodyMetricEntity>>) {
                 }
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
+                    RangeSelector(selected = chartRange, onSelect = onRangeSelect)
                     val points = metrics.data.map { it.weight.toFloat() }
                     val chartColor = MaterialTheme.colorScheme.primary
                     LineChart(
@@ -164,7 +206,7 @@ private fun BodyWeightTab(metrics: UiState<List<BodyMetricEntity>>) {
                                 Text(metric.date, style = MaterialTheme.typography.bodyMedium)
                                 val bodyfatText = metric.bodyfat?.let { " · ${it}% bf" } ?: ""
                                 Text(
-                                    "${metric.weight} lb$bodyfatText",
+                                    "${weightUnit.formatWeight(metric.weight)}$bodyfatText",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -184,7 +226,10 @@ private fun StrengthTab(
     exerciseProgress: UiState<List<ExerciseProgressPoint>>,
     selectedExerciseId: String?,
     onSelectExercise: (String?) -> Unit,
+    chartRange: ChartRange,
+    onRangeSelect: (ChartRange) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     Column(modifier = Modifier.fillMaxSize()) {
         when (trackedExercises) {
             is UiState.Loading -> Box(
@@ -198,7 +243,6 @@ private fun StrengthTab(
                         Text("Complete workouts to see strength progress.")
                     }
                 } else {
-                    // Horizontal scrollable exercise chips
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -243,10 +287,11 @@ private fun StrengthTab(
                 val data = exerciseProgress.data
                 if (data.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No completed sets recorded yet.")
+                        Text("No data for this range — try a wider window.")
                     }
                 } else {
                     Column {
+                        RangeSelector(selected = chartRange, onSelect = onRangeSelect)
                         val points = data.mapNotNull { it.maxWeight?.toFloat() }
                         if (points.size >= 2) {
                             val chartColor = MaterialTheme.colorScheme.primary
@@ -268,7 +313,7 @@ private fun StrengthTab(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(point.date, style = MaterialTheme.typography.bodyMedium)
-                                    val wt = point.maxWeight?.let { "${it.toInt()} lb" } ?: "BW"
+                                    val wt = weightUnit.formatWeightNullable(point.maxWeight)
                                     Text(
                                         "${point.maxReps} reps · $wt",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -317,14 +362,12 @@ private fun LineChart(
         fun xOf(i: Int) = padX + i * stepX
         fun yOf(v: Float) = padY + chartH - ((v - minVal) / range) * chartH
 
-        // Draw line
         val path = Path()
         points.forEachIndexed { i, v ->
             if (i == 0) path.moveTo(xOf(i), yOf(v)) else path.lineTo(xOf(i), yOf(v))
         }
         drawPath(path, color = color, style = Stroke(width = 2.dp.toPx()))
 
-        // Draw dots
         points.forEachIndexed { i, v ->
             drawCircle(color = color, radius = 4.dp.toPx(), center = Offset(xOf(i), yOf(v)))
         }
@@ -336,6 +379,7 @@ private fun BodyweightLogDialog(
     onDismiss: () -> Unit,
     onConfirm: (Double) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     var weightText by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -344,7 +388,7 @@ private fun BodyweightLogDialog(
             OutlinedTextField(
                 value = weightText,
                 onValueChange = { weightText = it.filter { c -> c.isDigit() || c == '.' } },
-                label = { Text("Weight (lb)") },
+                label = { Text(weightUnit.formatWeightFieldLabel()) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
             )

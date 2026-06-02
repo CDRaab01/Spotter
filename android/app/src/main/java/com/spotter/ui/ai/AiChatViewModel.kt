@@ -2,19 +2,26 @@ package com.spotter.ui.ai
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.local.dao.ChatMessageDao
+import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.SuggestedPlan
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.PlanRepository
+import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -22,10 +29,13 @@ import javax.inject.Inject
 class AiChatViewModel @Inject constructor(
     private val aiRepository: AiRepository,
     private val planRepository: PlanRepository,
+    private val chatMessageDao: ChatMessageDao,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
-    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
-    val messages: StateFlow<List<ChatMessage>> = _messages
+    val messages: StateFlow<List<ChatMessage>> = chatMessageDao.getAllMessages()
+        .map { entities -> entities.map { ChatMessage(it.role, it.content) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _sendState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val sendState: StateFlow<UiState<Unit>> = _sendState
@@ -38,13 +48,20 @@ class AiChatViewModel @Inject constructor(
 
     fun send(userText: String) {
         if (userText.isBlank() || _sendState.value is UiState.Loading) return
-        val newMessages = _messages.value + ChatMessage("user", userText)
-        _messages.value = newMessages
         viewModelScope.launch {
+            val historySnapshot = messages.value.toList()
+            val allMessages = historySnapshot + ChatMessage("user", userText)
+            chatMessageDao.insert(ChatMessageEntity(role = "user", content = userText))
             _sendState.value = UiState.Loading
             try {
-                val response = aiRepository.chat(ChatRequest(newMessages))
-                _messages.value = newMessages + ChatMessage("assistant", response.reply)
+                val profile = appPreferences.userProfile.first()
+                val response = aiRepository.chat(
+                    ChatRequest(
+                        messages = allMessages,
+                        userContext = profile.toContextString().ifBlank { null },
+                    )
+                )
+                chatMessageDao.insert(ChatMessageEntity(role = "assistant", content = response.reply))
                 response.suggestedPlan?.let { _pendingPlan.value = it }
                 _sendState.value = UiState.Success(Unit)
             } catch (e: Exception) {
@@ -76,8 +93,10 @@ class AiChatViewModel @Inject constructor(
         _pendingPlan.value = null
     }
 
-    fun startIntake() {
-        send("Hi, I'm ready to get started.")
+    fun clearHistory() {
+        viewModelScope.launch {
+            chatMessageDao.clearAll()
+        }
     }
 
     fun clearError() {

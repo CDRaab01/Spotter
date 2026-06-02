@@ -7,37 +7,60 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spotter.ui.ai.AiChatScreen
+import com.spotter.ui.auth.ForgotPasswordScreen
 import com.spotter.ui.auth.LoginScreen
 import com.spotter.ui.auth.RegisterScreen
+import com.spotter.ui.auth.ResetPasswordScreen
 import com.spotter.ui.calendar.CalendarScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
+import com.spotter.ui.onboarding.OnboardingScreen
 import com.spotter.ui.plan.CreatePlanScreen
 import com.spotter.ui.plan.PlanDetailScreen
 import com.spotter.ui.progress.ProgressScreen
 import com.spotter.ui.settings.SettingsScreen
+import com.spotter.ui.program.ProgramScreen
 import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
+import com.spotter.ui.workout.WorkoutSummaryStore
 
 @Composable
-fun AppNavGraph() {
+fun AppNavGraph(startDestination: String = Screen.Login.route) {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = Screen.Login.route) {
+    NavHost(navController = navController, startDestination = startDestination) {
         composable(Screen.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
                     navController.navigate(Screen.Home.route) { popUpTo(0) { inclusive = true } }
                 },
                 onNavigateToRegister = { navController.navigate(Screen.Register.route) },
+                onNavigateToForgotPassword = { navController.navigate(Screen.ForgotPassword.route) },
+            )
+        }
+        composable(Screen.ForgotPassword.route) {
+            ForgotPasswordScreen(
+                onBack = { navController.popBackStack() },
+                onCodeSent = { navController.navigate(Screen.ResetPassword.route) },
+            )
+        }
+        composable(Screen.ResetPassword.route) {
+            ResetPasswordScreen(
+                onBack = { navController.popBackStack() },
+                onResetSuccess = {
+                    navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
+                },
             )
         }
         composable(Screen.Register.route) {
             RegisterScreen(
                 onRegisterSuccess = {
-                    navController.navigate(Screen.AiChat.route) { popUpTo(0) { inclusive = true } }
+                    navController.navigate(Screen.Onboarding.route) { popUpTo(0) { inclusive = true } }
                 },
                 onNavigateToLogin = { navController.popBackStack() },
             )
+        }
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(navController = navController)
         }
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
@@ -64,6 +87,7 @@ fun AppNavGraph() {
                 doneSets = doneSets,
                 totalSets = totalSets,
                 totalVolumeLb = volume,
+                muscleGroups = WorkoutSummaryStore.muscleGroups,
                 navController = navController,
             )
         }
@@ -91,6 +115,9 @@ fun AppNavGraph() {
         }
         composable(Screen.Settings.route) {
             SettingsScreen(navController = navController)
+        }
+        composable(Screen.Programs.route) {
+            ProgramScreen(navController = navController)
         }
     }
 }

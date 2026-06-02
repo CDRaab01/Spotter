@@ -3,7 +3,7 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.workout_session import WorkoutSession
 from app.schemas.calendar import CalendarEntry
@@ -23,11 +23,11 @@ async def get_calendar(
             WorkoutSession.date <= to_date,
         )
         .options(
+            joinedload(WorkoutSession.plan),
             selectinload(WorkoutSession.set_logs),
-            selectinload(WorkoutSession.plan),
         )
     )
-    sessions = result.scalars().all()
+    sessions = result.unique().scalars().all()
     return [
         CalendarEntry(
             session_id=s.id,

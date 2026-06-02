@@ -1,8 +1,10 @@
 package com.spotter.ui.workout
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
@@ -11,6 +13,7 @@ import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,7 +23,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -32,9 +37,14 @@ data class WorkoutSummaryData(
     val totalVolumeLb: Int,
 )
 
+object WorkoutSummaryStore {
+    var muscleGroups: List<MuscleGroupSummary> = emptyList()
+}
+
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _session = MutableStateFlow<UiState<SessionOut>>(UiState.Loading)
@@ -72,6 +82,31 @@ class WorkoutViewModel @Inject constructor(
     private val _priorBests = MutableStateFlow<Map<String, ExercisePrior>>(emptyMap())
     val priorBests: StateFlow<Map<String, ExercisePrior>> = _priorBests.asStateFlow()
 
+    // Active lift state — which set is currently being performed
+    private val _activeSetId = MutableStateFlow<String?>(null)
+    val activeSetId: StateFlow<String?> = _activeSetId.asStateFlow()
+
+    // Rep count for the active set (starts at targetReps, decremented on tap)
+    private val _activeSetReps = MutableStateFlow(0)
+    val activeSetReps: StateFlow<Int> = _activeSetReps.asStateFlow()
+
+    // Lift timer counts UP while a set is active. Uses flatMapLatest + WhileSubscribed
+    // so the infinite loop only runs while something is collecting — same pattern as
+    // elapsedSeconds, which prevents runTest's end-of-test drain from hanging.
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val liftSeconds: StateFlow<Int> = _activeSetId
+        .flatMapLatest { activeId ->
+            if (activeId == null) flowOf(0)
+            else flow {
+                var sec = 0
+                while (true) {
+                    delay(1000)
+                    emit(++sec)
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     private var restTimerJob: Job? = null
 
     fun loadSession(sessionId: String) {
@@ -97,20 +132,45 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun toggleSet(sessionId: String, setLog: SetLogOut) {
-        val wasIncomplete = !setLog.completed
+    fun activateSet(setLog: SetLogOut) {
+        _activeSetId.value = setLog.id
+        _activeSetReps.value = setLog.targetReps ?: setLog.reps
+        // liftSeconds resets automatically: flatMapLatest re-subscribes to a fresh
+        // flow starting at 0 whenever _activeSetId changes to a new non-null value.
+    }
+
+    fun decrementActiveReps() {
+        if (_activeSetReps.value > 1) _activeSetReps.value--
+    }
+
+    fun completeActiveSet(sessionId: String) {
+        val setId = _activeSetId.value ?: return
+        val actualReps = _activeSetReps.value
+        val session = (_session.value as? UiState.Success)?.data ?: return
+        val setLog = session.setLogs.find { it.id == setId } ?: return
+        _activeSetId.value = null   // flatMapLatest switches to flowOf(0), stopping the timer
         viewModelScope.launch {
             try {
                 sessionRepository.updateSet(
-                    sessionId,
-                    setLog.id,
-                    SetLogUpdate(completed = !setLog.completed),
+                    sessionId, setId,
+                    SetLogUpdate(completed = true, reps = actualReps),
                 )
                 loadSession(sessionId)
-                if (wasIncomplete) {
-                    startRestTimer(setLog.targetReps)
+                // Check for superset continuation — find the next pending set in the same group
+                val supersetNext = findNextSupersetSet(session.setLogs, setLog)
+                if (supersetNext != null) {
+                    activateSet(supersetNext)
+                } else {
+                    startRestTimer(setLog.targetReps, actualReps)
                 }
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun findNextSupersetSet(allSets: List<SetLogOut>, completedSet: SetLogOut): SetLogOut? {
+        val group = completedSet.supersetGroup ?: return null
+        return allSets.firstOrNull { sl ->
+            !sl.completed && sl.id != completedSet.id && sl.supersetGroup == group
         }
     }
 
@@ -159,14 +219,17 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun startRestTimer(targetReps: Int?) {
-        val duration = when {
+    fun startRestTimer(targetReps: Int?, actualReps: Int? = null) {
+        val base = when {
             targetReps == null || targetReps <= 5 -> 180
             targetReps <= 12 -> 90
             else -> 60
         }
+        val failure = actualReps != null && targetReps != null && actualReps < targetReps
+        val duration = if (failure) base + 60 else base
         restTimerJob?.cancel()
         _restTimerSeconds.value = duration
+        context.startService(RestTimerService.startIntent(context, duration))
         restTimerJob = viewModelScope.launch {
             var remaining = duration
             while (remaining > 0) {
@@ -181,13 +244,14 @@ class WorkoutViewModel @Inject constructor(
     fun dismissRestTimer() {
         restTimerJob?.cancel()
         _restTimerSeconds.value = null
+        context.startService(RestTimerService.cancelIntent(context))
     }
 
     fun finishSession(sessionId: String) {
         viewModelScope.launch {
             _finishState.value = UiState.Loading
             try {
-                sessionRepository.updateSession(
+                val updated = sessionRepository.updateSession(
                     sessionId,
                     SessionUpdate(
                         status = "completed",
@@ -195,8 +259,8 @@ class WorkoutViewModel @Inject constructor(
                     ),
                 )
                 _finishState.value = UiState.Success(Unit)
-                val data = (_session.value as? UiState.Success)?.data
-                val setLogs = data?.setLogs ?: emptyList()
+                WorkoutSummaryStore.muscleGroups = updated.muscleGroups
+                val setLogs = updated.setLogs
                 val doneSets = setLogs.count { it.completed }
                 val totalSets = setLogs.size
                 val volumeLb = setLogs

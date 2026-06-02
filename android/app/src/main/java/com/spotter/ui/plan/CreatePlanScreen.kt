@@ -45,6 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeightLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,6 +201,9 @@ internal fun DraftExerciseRow(
     var weightText by remember(draft.exerciseId) {
         mutableStateOf(draft.targetWeight?.toString() ?: "")
     }
+    var supersetText by remember(draft.exerciseId) {
+        mutableStateOf(draft.supersetGroup?.toString() ?: "")
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -252,7 +257,7 @@ internal fun DraftExerciseRow(
                             weightText = v.filter { c -> c.isDigit() || c == '.' }
                             onUpdate(draft.copy(targetWeight = weightText.toDoubleOrNull()))
                         },
-                        label = { Text("lb") },
+                        label = { Text(LocalWeightUnit.current.formatWeightLabel()) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f),
                         singleLine = true,
@@ -269,6 +274,17 @@ internal fun DraftExerciseRow(
                         )
                     }
                 }
+                OutlinedTextField(
+                    value = supersetText,
+                    onValueChange = { v ->
+                        supersetText = v.filter { it.isDigit() }
+                        onUpdate(draft.copy(supersetGroup = supersetText.toIntOrNull()))
+                    },
+                    label = { Text("SS#") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(0.6f),
+                    singleLine = true,
+                )
             }
         }
     }

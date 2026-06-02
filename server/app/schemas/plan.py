@@ -11,6 +11,7 @@ class PlannedExerciseIn(BaseModel):
     target_weight: float | None = None
     is_bodyweight: bool = False
     order: int = 0
+    superset_group: int | None = None
 
 
 class PlanCreate(BaseModel):

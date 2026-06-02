@@ -20,6 +20,7 @@ def _plan_to_out(plan: WorkoutPlan) -> PlanOut:
             target_weight=pe.target_weight,
             is_bodyweight=pe.is_bodyweight,
             order=pe.order,
+            superset_group=pe.superset_group,
             exercise_name=pe.exercise.name if pe.exercise else None,
         )
         for pe in plan.planned_exercises

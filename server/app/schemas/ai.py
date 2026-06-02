@@ -10,6 +10,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    user_context: str | None = None
 
 
 class AiPlanExercise(BaseModel):

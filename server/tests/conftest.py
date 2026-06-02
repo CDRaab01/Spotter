@@ -6,8 +6,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.database import AsyncSessionLocal, Base, engine
+from app.limiter import limiter
 from app.main import app
 from app.models.exercise import Exercise
+
+# Disable rate limiting for the test suite so rapid registrations don't
+# trigger the 5/minute cap on /auth/register.
+limiter.enabled = False
 
 
 @pytest.fixture(scope="session")

@@ -1,5 +1,9 @@
 package com.spotter.ui.workout
 
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -53,9 +59,15 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
+import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
+import com.spotter.util.WeightUnit
+import com.spotter.util.estimatedOneRM
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +80,9 @@ fun WorkoutScreen(
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val finishState by viewModel.finishState.collectAsState()
     val restTimerSeconds by viewModel.restTimerSeconds.collectAsState()
+    val activeSetId by viewModel.activeSetId.collectAsState()
+    val activeSetReps by viewModel.activeSetReps.collectAsState()
+    val liftSeconds by viewModel.liftSeconds.collectAsState()
     val exerciseNotes by viewModel.exerciseNotes.collectAsState()
     val priorBests by viewModel.priorBests.collectAsState()
     val timerText = "%02d:%02d".format(elapsed / 60, elapsed % 60)
@@ -75,6 +90,24 @@ fun WorkoutScreen(
 
     var editingSet by remember { mutableStateOf<SetLogOut?>(null) }
     var showFinishDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    LaunchedEffect(restTimerSeconds) {
+        if (restTimerSeconds == 0) {
+            @Suppress("DEPRECATION")
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (vibrator?.hasVibrator() == true) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(
+                        VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(longArrayOf(0, 300, 150, 300), -1)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(sessionId) { viewModel.loadSession(sessionId) }
     LaunchedEffect(Unit) {
@@ -175,40 +208,51 @@ fun WorkoutScreen(
                 }
             }
 
-            // Rest timer banner
-            AnimatedVisibility(visible = restTimerSeconds != null) {
-                restTimerSeconds?.let { seconds ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                        ),
+            // Unified lift / rest timer overlay
+            val showTimer = activeSetId != null || restTimerSeconds != null
+            AnimatedVisibility(visible = showTimer) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                        val displayTime = if (activeSetId != null)
+                            "%d:%02d".format(liftSeconds / 60, liftSeconds % 60)
+                        else
+                            "%d:%02d".format(
+                                (restTimerSeconds ?: 0) / 60,
+                                (restTimerSeconds ?: 0) % 60,
+                            )
+                        Text(
+                            text = displayTime,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(80.dp),
+                        )
+                        Text(
+                            text = if (activeSetId != null) "Set equipment, then lift."
+                                   else "Rest — next set coming up.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        IconButton(
+                            onClick = {
+                                if (activeSetId != null) viewModel.completeActiveSet(sessionId)
+                                else viewModel.dismissRestTimer()
+                            },
                         ) {
-                            Column {
-                                Text(
-                                    "Rest Timer",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                                Text(
-                                    "%d:%02d".format(seconds / 60, seconds % 60),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
-                            IconButton(onClick = { viewModel.dismissRestTimer() }) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Dismiss timer",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
+                            Icon(Icons.Default.Close, contentDescription = "Done / dismiss")
                         }
                     }
                 }
@@ -248,7 +292,15 @@ fun WorkoutScreen(
                                     sets = sets,
                                     note = exerciseNotes[exerciseId] ?: "",
                                     priorBest = priorBests[exerciseId],
-                                    onToggle = { setLog -> viewModel.toggleSet(sessionId, setLog) },
+                                    activeSetId = activeSetId,
+                                    activeSetReps = activeSetReps,
+                                    onSetTap = { setLog ->
+                                        when {
+                                            setLog.completed -> { /* no-op; use edit dialog */ }
+                                            setLog.id == activeSetId -> viewModel.decrementActiveReps()
+                                            else -> viewModel.activateSet(setLog)
+                                        }
+                                    },
                                     onEditWeight = { setLog -> editingSet = setLog },
                                     onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
                                     onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
@@ -274,6 +326,16 @@ private fun EditSetDialog(
     var weightText by remember {
         mutableStateOf(setLog.weight?.let { "%.0f".format(it) } ?: "")
     }
+    var showPlateCalc by remember { mutableStateOf(false) }
+    val weightUnit = LocalWeightUnit.current
+
+    if (showPlateCalc) {
+        PlateCalculatorDialog(
+            initialWeight = weightText.toFloatOrNull() ?: 0f,
+            weightUnit = weightUnit,
+            onDismiss = { showPlateCalc = false },
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -293,10 +355,25 @@ private fun EditSetDialog(
                         onValueChange = { new ->
                             weightText = new.filter { c -> c.isDigit() || c == '.' }
                         },
-                        label = { Text("Weight (lb)") },
+                        label = { Text(weightUnit.formatWeightFieldLabel()) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                     )
+                    val dialogReps = repsText.toIntOrNull()
+                    val dialogWeightLbs = weightText.toDoubleOrNull()
+                    if (dialogReps != null && dialogReps > 1 && dialogWeightLbs != null && dialogWeightLbs > 0) {
+                        Text(
+                            text = "≈ ${weightUnit.formatWeight(estimatedOneRM(dialogWeightLbs, dialogReps))} est. 1RM",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        onClick = { showPlateCalc = true },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text("Plate calculator")
+                    }
                 }
             }
         },
@@ -320,21 +397,33 @@ private fun ExerciseCard(
     sets: List<SetLogOut>,
     note: String,
     priorBest: ExercisePrior?,
-    onToggle: (SetLogOut) -> Unit,
+    activeSetId: String?,
+    activeSetReps: Int,
+    onSetTap: (SetLogOut) -> Unit,
     onEditWeight: (SetLogOut) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
     onNoteSave: (String) -> Unit,
 ) {
+    val weightUnit = LocalWeightUnit.current
     val first = sets.first()
     val name = first.exerciseName ?: first.exerciseId
-    val targetHeader = buildTargetHeader(first)
+    val targetHeader = buildTargetHeader(first, weightUnit)
     val done = sets.count { it.completed }
+    val supersetGroup = first.supersetGroup
     var showNote by remember { mutableStateOf(note.isNotEmpty()) }
     var noteText by remember(note) { mutableStateOf(note) }
     val focusManager = LocalFocusManager.current
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
+            if (supersetGroup != null) {
+                Text(
+                    text = "Superset ${('A' + supersetGroup - 1).uppercaseChar()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -349,12 +438,25 @@ private fun ExerciseCard(
                         )
                     }
                     if (priorBest != null) {
-                        val weightStr = priorBest.weight?.let { " @ ${it.toInt()} lb" } ?: ""
-                        Text(
-                            "Last: ${priorBest.reps} reps$weightStr",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
+                        if (priorBest.lastSets.isNotEmpty()) {
+                            val lastSetsText = priorBest.lastSets.joinToString(" · ") { sl ->
+                                val wt = sl.weight
+                                if (wt != null) "${sl.reps}×${weightUnit.formatWeight(wt)}"
+                                else "${sl.reps} reps"
+                            }
+                            Text(
+                                "Last: $lastSetsText",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        } else {
+                            val weightStr = priorBest.weight?.let { " @ ${weightUnit.formatWeight(it)}" } ?: ""
+                            Text(
+                                "Best: ${priorBest.reps} reps$weightStr",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
                     }
                 }
                 IconButton(onClick = { showNote = !showNote }) {
@@ -393,7 +495,9 @@ private fun ExerciseCard(
                 sets.forEach { setLog ->
                     SetLogRow(
                         setLog = setLog,
-                        onToggle = { onToggle(setLog) },
+                        isActive = setLog.id == activeSetId,
+                        currentReps = if (setLog.id == activeSetId) activeSetReps else setLog.reps,
+                        onTap = { onSetTap(setLog) },
                         onEditWeight = { onEditWeight(setLog) },
                     )
                 }
@@ -408,12 +512,12 @@ private fun ExerciseCard(
     }
 }
 
-private fun buildTargetHeader(set: SetLogOut): String {
+private fun buildTargetHeader(set: SetLogOut, weightUnit: WeightUnit): String {
     val targetSets = set.targetSets ?: return ""
     val targetReps = set.targetReps ?: return ""
     return if (set.targetWeight == null) {
         "$targetSets × $targetReps  BW"
     } else {
-        "$targetSets × $targetReps @ ${set.targetWeight.toInt()} lb"
+        "$targetSets × $targetReps @ ${weightUnit.formatWeight(set.targetWeight)}"
     }
 }
