@@ -45,6 +45,7 @@ class SettingsViewModelTest {
         whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
         whenever(appPreferences.weightUnit).thenReturn(flowOf(WeightUnit.LBS))
         whenever(appPreferences.distanceUnit).thenReturn(flowOf(DistanceUnit.MI))
+        whenever(appPreferences.serverUrl).thenReturn(flowOf("http://10.0.2.2:8000/"))
     }
 
     @After

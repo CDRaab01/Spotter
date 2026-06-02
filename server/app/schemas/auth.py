@@ -5,6 +5,8 @@ class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
+    # Required only when the server sets REGISTRATION_INVITE_CODE (public deployments).
+    invite_code: str | None = None
 
     @field_validator("password")
     @classmethod

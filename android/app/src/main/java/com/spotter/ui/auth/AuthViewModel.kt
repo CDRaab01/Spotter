@@ -30,11 +30,11 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun register(name: String, email: String, password: String) {
+    fun register(name: String, email: String, password: String, inviteCode: String? = null) {
         viewModelScope.launch {
             _authState.value = UiState.Loading
             _authState.value = try {
-                authRepository.register(name, email, password)
+                authRepository.register(name, email, password, inviteCode)
                 UiState.Success(Unit)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Registration failed")

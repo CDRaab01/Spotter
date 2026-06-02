@@ -4,7 +4,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class RegisterRequest(val name: String, val email: String, val password: String)
+data class RegisterRequest(
+    val name: String,
+    val email: String,
+    val password: String,
+    // Only sent when the user supplies one; omitted otherwise (encodeDefaults is off).
+    @SerialName("invite_code") val inviteCode: String? = null,
+)
 
 @Serializable
 data class LoginRequest(val email: String, val password: String)

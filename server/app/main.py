@@ -3,10 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.config import settings
 from app.limiter import limiter
 from app.routers import ai, auth, calendar, exercises, metrics, plans, progress, programs, sessions, users
 
-app = FastAPI(title="Spotter API", version="0.1.0")
+# Interactive docs are handy locally but are an unnecessary surface on a public deployment.
+app = FastAPI(
+    title="Spotter API",
+    version="0.1.0",
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -28,6 +36,8 @@ async def security_headers(request: Request, call_next) -> Response:
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if settings.hsts_enabled:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 

@@ -9,6 +9,7 @@ import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
 import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_3_4
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
+import com.spotter.data.remote.HostSelectionInterceptor
 import com.spotter.util.TokenStore
 import dagger.Module
 import dagger.Provides
@@ -37,9 +38,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttp(authInterceptor: AuthInterceptor): OkHttpClient =
+    fun provideOkHttp(
+        authInterceptor: AuthInterceptor,
+        hostSelectionInterceptor: HostSelectionInterceptor,
+    ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(hostSelectionInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply {
