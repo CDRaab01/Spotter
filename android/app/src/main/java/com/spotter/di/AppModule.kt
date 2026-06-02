@@ -21,6 +21,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -43,6 +44,14 @@ object AppModule {
         hostSelectionInterceptor: HostSelectionInterceptor,
     ): OkHttpClient =
         OkHttpClient.Builder()
+            // AI chat proxies to a local LLM; the first request triggers a cold model
+            // load + inference that can take well over OkHttp's 10s default read timeout,
+            // which surfaced to users as a "timeout" during initial setup. Allow a read
+            // window comfortably larger than the server's own LM Studio timeout so the
+            // server's meaningful error (502/503/504) reaches the client instead.
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
             .addInterceptor(hostSelectionInterceptor)
             .apply {

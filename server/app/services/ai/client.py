@@ -35,7 +35,7 @@ async def chat(
     user_context = await _merged_context(db, user_id, req.user_context)
     messages = build_messages(history, last_user, user_context)
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=settings.lm_studio_timeout) as client:
         try:
             resp = await client.post(
                 f"{settings.lm_studio_base_url}/chat/completions",
@@ -50,6 +50,13 @@ async def chat(
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"LM Studio returned {e.response.status_code}",
+            )
+        except httpx.TimeoutException:
+            # Distinct from "unreachable": LM Studio answered the connection but didn't
+            # finish in time (commonly a cold-start model load on the first request).
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="LM Studio timed out — the model may still be loading. Try again.",
             )
         except httpx.RequestError:
             raise HTTPException(

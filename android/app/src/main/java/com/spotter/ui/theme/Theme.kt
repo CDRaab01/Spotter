@@ -23,6 +23,7 @@ private val DarkColors = darkColorScheme(
     background = SpotterDarkBg,
     surface = SpotterDarkSurface,
     surfaceVariant = SpotterDarkSurfaceVariant,
+    onBackground = SpotterDarkOnSurface,
     onSurface = SpotterDarkOnSurface,
     onSurfaceVariant = SpotterDarkOnSurfaceVariant,
     error = SpotterRed,

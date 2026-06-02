@@ -1,5 +1,6 @@
 package com.spotter.settings
 
+import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
 import com.spotter.ui.settings.SettingsViewModel
@@ -34,6 +35,7 @@ class SettingsViewModelTest {
     private lateinit var api: ApiService
     private lateinit var tokenStore: TokenStore
     private lateinit var appPreferences: AppPreferences
+    private lateinit var database: SpotterDatabase
     private lateinit var viewModel: SettingsViewModel
 
     @Before
@@ -42,11 +44,15 @@ class SettingsViewModelTest {
         api = mock()
         tokenStore = mock()
         appPreferences = mock()
+        database = mock()
         whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
         whenever(appPreferences.weightUnit).thenReturn(flowOf(WeightUnit.LBS))
         whenever(appPreferences.distanceUnit).thenReturn(flowOf(DistanceUnit.MI))
         whenever(appPreferences.serverUrl).thenReturn(flowOf("http://10.0.2.2:8000/"))
     }
+
+    private fun createViewModel() =
+        SettingsViewModel(api, tokenStore, appPreferences, database, testDispatcher)
 
     @After
     fun tearDown() {
@@ -58,7 +64,7 @@ class SettingsViewModelTest {
         val user = UserOut(id = "u-1", name = "Alice", email = "alice@example.com")
         whenever(api.getMe()).thenReturn(user)
 
-        viewModel = SettingsViewModel(api, tokenStore, appPreferences)
+        viewModel = createViewModel()
         advanceTimeBy(200)
 
         assertIs<UiState.Success<UserOut>>(viewModel.user.value)
@@ -70,7 +76,7 @@ class SettingsViewModelTest {
         val user = UserOut(id = "u-1", name = "Alice", email = "alice@example.com")
         whenever(api.getMe()).thenReturn(user)
 
-        viewModel = SettingsViewModel(api, tokenStore, appPreferences)
+        viewModel = createViewModel()
         advanceTimeBy(200)
 
         val events = mutableListOf<Unit>()
@@ -81,6 +87,30 @@ class SettingsViewModelTest {
 
         verify(tokenStore).clear()
         assertEquals(1, events.size)
+        job.cancel()
+    }
+
+    @Test
+    fun `resetAccount wipes server and local state then navigates to login`() = runTest(testDispatcher) {
+        val user = UserOut(id = "u-1", name = "Alice", email = "alice@example.com")
+        whenever(api.getMe()).thenReturn(user)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val events = mutableListOf<Unit>()
+        val job = launch { viewModel.navigateToLogin.collect { events.add(it) } }
+
+        viewModel.resetAccount()
+        advanceTimeBy(200)
+
+        // Server wipe must happen while still authenticated, before local state is cleared.
+        verify(api).resetAccount()
+        verify(database).clearAllTables()
+        verify(appPreferences).clearOnboarding()
+        verify(tokenStore).clear()
+        assertEquals(1, events.size)
+        assertEquals(false, viewModel.resetting.value)
         job.cancel()
     }
 }

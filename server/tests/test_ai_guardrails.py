@@ -89,3 +89,18 @@ async def test_llm_unavailable_returns_503(auth_client):
         )
 
     assert resp.status_code == 503
+
+
+async def test_llm_timeout_returns_504(auth_client):
+    import httpx
+
+    with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__.return_value.post = AsyncMock(
+            side_effect=httpx.ReadTimeout("timed out")
+        )
+        resp = await auth_client.post(
+            "/ai/chat",
+            json={"messages": [{"role": "user", "content": "what's a good squat program?"}]},
+        )
+
+    assert resp.status_code == 504
