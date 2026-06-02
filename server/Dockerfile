@@ -14,7 +14,9 @@ COPY alembic.ini ./
 RUN pip install --no-cache-dir .
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Strip any CR so a Windows (CRLF) checkout doesn't break the shebang (exit 127).
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["docker-entrypoint.sh"]
