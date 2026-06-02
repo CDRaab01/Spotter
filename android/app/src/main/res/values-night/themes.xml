@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark counterpart to values/themes.xml. Picked automatically when the device
+         is in dark mode, so the startup/window background matches the Compose dark
+         theme instead of flashing light on the first screen. -->
+    <style name="Theme.Spotter" parent="android:Theme.Material.NoActionBar" />
+</resources>

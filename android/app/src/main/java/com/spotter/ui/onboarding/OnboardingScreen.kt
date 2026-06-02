@@ -118,9 +118,13 @@ fun OnboardingScreen(
                 4 -> OptionStep(
                     question = "What's your age group?",
                     options = listOf(
-                        "UNDER_30" to "Under 30",
-                        "30_40" to "30–40",
-                        "OVER_40" to "Over 40",
+                        "13_17" to "13–17",
+                        "18_24" to "18–24",
+                        "25_34" to "25–34",
+                        "35_44" to "35–44",
+                        "45_54" to "45–54",
+                        "55_64" to "55–64",
+                        "65_PLUS" to "65+",
                     ),
                     selected = draft.ageGroup,
                     onSelect = { viewModel.setAgeGroup(it) },
@@ -179,24 +183,36 @@ private fun OptionStepWithOther(
     onSelect: (String) -> Unit,
 ) {
     val presets = options.map { it.first }.toSet()
-    val isOther = selected.isNotBlank() && selected !in presets
-    var otherText by remember(isOther) { mutableStateOf(if (isOther) selected else "") }
+    // A non-preset, non-blank draft value means we're resuming on the "Other" choice
+    // (e.g. after navigating back to this step).
+    val startedOnOther = selected.isNotBlank() && selected !in presets
+    // Track the "Other" selection explicitly rather than inferring it from the draft
+    // value: tapping "Other" before typing leaves the value blank, and a blank value
+    // is indistinguishable from "nothing selected".
+    var otherSelected by remember { mutableStateOf(startedOnOther) }
+    var otherText by remember { mutableStateOf(if (startedOnOther) selected else "") }
 
     Text(question, style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(4.dp))
     options.forEach { (value, label) ->
         OptionCard(
             label = label,
-            selected = selected == value,
-            onClick = { onSelect(value) },
+            selected = !otherSelected && selected == value,
+            onClick = {
+                otherSelected = false
+                onSelect(value)
+            },
         )
     }
     OptionCard(
         label = "Other / write your own",
-        selected = isOther,
-        onClick = { onSelect(otherText.ifBlank { " " }) },
+        selected = otherSelected,
+        onClick = {
+            otherSelected = true
+            onSelect(otherText)
+        },
     )
-    if (isOther) {
+    if (otherSelected) {
         OutlinedTextField(
             value = otherText,
             onValueChange = { otherText = it; onSelect(it) },
