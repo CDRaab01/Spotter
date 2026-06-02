@@ -14,9 +14,15 @@ docker-compose up -d
 ### 2. Start the server
 ```bash
 cd server
+cp .env.example .env          # edit SECRET_KEY
+./run.sh                      # sets up .venv, runs migrations, starts uvicorn
+```
+`run.sh` honours `HOST`, `PORT`, and `RELOAD` env vars (e.g. `HOST=0.0.0.0 ./run.sh`
+to expose on the LAN/tailnet, `RELOAD=1 ./run.sh` for development), and adds
+`--proxy-headers` automatically when `.env` has `TRUST_PROXY=true`. To run it manually instead:
+```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env          # edit SECRET_KEY
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
