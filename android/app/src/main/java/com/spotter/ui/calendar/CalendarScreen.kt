@@ -1,6 +1,7 @@
 package com.spotter.ui.calendar
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -43,8 +46,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.CalendarEntry
+import com.spotter.ui.components.ExercisePreviewRow
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.SpotterBlue
 import com.spotter.util.UiState
+import com.spotter.util.UpcomingWorkout
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -57,7 +63,14 @@ fun CalendarScreen(
 ) {
     val displayedMonth by viewModel.displayedMonth.collectAsState()
     val entries by viewModel.entries.collectAsState()
+    val projected by viewModel.projected.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateToWorkout.collect { sessionId ->
+            navController.navigate(Screen.Workout.createRoute(sessionId))
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -132,20 +145,24 @@ fun CalendarScreen(
                     val entryMap: Map<LocalDate, CalendarEntry> = state.data.associate {
                         LocalDate.parse(it.date) to it
                     }
+                    val projectedMap: Map<LocalDate, UpcomingWorkout> = projected.associateBy { it.date }
 
                     MonthGrid(
                         month = displayedMonth,
                         entryMap = entryMap,
+                        projectedMap = projectedMap,
                         selectedDate = selectedDate,
                         onDayClick = { date -> viewModel.selectDate(date) },
                     )
 
                     Spacer(Modifier.height(8.dp))
 
-                    if (selectedDate != null) {
-                        val entry = entryMap[selectedDate]
-                        if (entry != null) {
-                            SessionDetailCard(
+                    val selected = selectedDate
+                    if (selected != null) {
+                        val entry = entryMap[selected]
+                        val projection = projectedMap[selected]
+                        when {
+                            entry != null -> SessionDetailCard(
                                 entry = entry,
                                 onResume = {
                                     navController.navigate(
@@ -153,8 +170,15 @@ fun CalendarScreen(
                                     )
                                 },
                             )
-                        } else {
-                            Box(
+
+                            projection != null -> UpcomingDetailCard(
+                                workout = projection,
+                                onStart = {
+                                    projection.planId?.let { viewModel.startProjectedSession(it) }
+                                },
+                            )
+
+                            else -> Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(16.dp),
@@ -162,9 +186,7 @@ fun CalendarScreen(
                             ) {
                                 Text(
                                     text = "No workout on ${
-                                        selectedDate!!.format(
-                                            DateTimeFormatter.ofPattern("MMMM d")
-                                        )
+                                        selected.format(DateTimeFormatter.ofPattern("MMMM d"))
                                     }",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -184,6 +206,7 @@ fun CalendarScreen(
 private fun MonthGrid(
     month: YearMonth,
     entryMap: Map<LocalDate, CalendarEntry>,
+    projectedMap: Map<LocalDate, UpcomingWorkout>,
     selectedDate: LocalDate?,
     onDayClick: (LocalDate) -> Unit,
 ) {
@@ -206,6 +229,7 @@ private fun MonthGrid(
                             isToday = date == today,
                             isSelected = date == selectedDate,
                             entry = entryMap[date],
+                            isProjected = projectedMap.containsKey(date),
                             onClick = { onDayClick(date) },
                             modifier = Modifier.weight(1f),
                         )
@@ -224,6 +248,7 @@ private fun DayCell(
     isToday: Boolean,
     isSelected: Boolean,
     entry: CalendarEntry?,
+    isProjected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -237,11 +262,13 @@ private fun DayCell(
         isToday -> MaterialTheme.colorScheme.onPrimaryContainer
         else -> MaterialTheme.colorScheme.onSurface
     }
+    // A real session always wins over a projection on the same date.
     val dotColor = when {
         entry?.status == "completed" -> MaterialTheme.colorScheme.primary
         entry != null -> MaterialTheme.colorScheme.outline
         else -> Color.Transparent
     }
+    val showProjectedRing = entry == null && isProjected
 
     Column(
         modifier = modifier
@@ -267,7 +294,13 @@ private fun DayCell(
         Box(
             modifier = Modifier
                 .size(5.dp)
-                .background(color = dotColor, shape = CircleShape),
+                .then(
+                    if (showProjectedRing) {
+                        Modifier.border(1.dp, SpotterBlue, CircleShape)
+                    } else {
+                        Modifier.background(color = dotColor, shape = CircleShape)
+                    },
+                ),
         )
     }
 }
@@ -316,6 +349,43 @@ private fun SessionDetailCard(
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = onResume) {
                     Text("Resume")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpcomingDetailCard(
+    workout: UpcomingWorkout,
+    onStart: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = workout.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = workout.planName ?: workout.dayLabel,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (workout.lifts.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                workout.lifts.forEach { lift ->
+                    ExercisePreviewRow(lift)
+                    Spacer(Modifier.height(2.dp))
+                }
+            }
+            if (workout.planId != null) {
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
+                    Text("Start workout now")
                 }
             }
         }

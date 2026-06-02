@@ -52,6 +52,13 @@ class SettingsViewModel @Inject constructor(
     val distanceUnit: StateFlow<DistanceUnit> = appPreferences.distanceUnit
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DistanceUnit.MI)
 
+    val workoutCadenceDays: StateFlow<Int> = appPreferences.workoutCadenceDays
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            AppPreferences.DEFAULT_CADENCE_DAYS,
+        )
+
     val serverUrl: StateFlow<String> = appPreferences.serverUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
@@ -90,6 +97,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setDistanceUnit(value: DistanceUnit) {
         viewModelScope.launch { appPreferences.setDistanceUnit(value) }
+    }
+
+    fun setWorkoutCadenceDays(value: Int) {
+        viewModelScope.launch { appPreferences.setWorkoutCadenceDays(value) }
     }
 
     /**
