@@ -1,5 +1,6 @@
 package com.spotter.ui.program
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,6 +108,11 @@ fun ProgramScreen(
                         items(state.data, key = { it.id }) { program ->
                             ProgramCard(
                                 program = program,
+                                onOpen = {
+                                    navController.navigate(
+                                        Screen.ProgramDetail.createRoute(program.id)
+                                    )
+                                },
                                 onActivate = { viewModel.activateProgram(program.id) },
                                 onDelete = { viewModel.deleteProgram(program.id) },
                             )
@@ -122,6 +129,7 @@ fun ProgramScreen(
 @Composable
 private fun ProgramCard(
     program: WorkoutProgramEntity,
+    onOpen: () -> Unit,
     onActivate: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -143,7 +151,11 @@ private fun ProgramCard(
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -152,13 +164,12 @@ private fun ProgramCard(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(program.name, style = MaterialTheme.typography.titleMedium)
-                if (program.isActive) {
-                    Text(
-                        "Active",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    if (program.isActive) "Active · tap to edit days" else "Tap to edit days",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (program.isActive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (!program.isActive) {
                 IconButton(onClick = onActivate) {

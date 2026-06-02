@@ -8,6 +8,7 @@ import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.ExerciseProgressPoint
+import com.spotter.data.model.PersonalRecord
 import com.spotter.data.model.LoginRequest
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanOut
@@ -139,6 +140,9 @@ interface ApiService {
 
     @GET("progress/exercises/{exerciseId}")
     suspend fun getExerciseProgress(@Path("exerciseId") exerciseId: String): List<ExerciseProgressPoint>
+
+    @GET("progress/records")
+    suspend fun getPersonalRecords(): List<PersonalRecord>
 
     // Programs
     @GET("programs")

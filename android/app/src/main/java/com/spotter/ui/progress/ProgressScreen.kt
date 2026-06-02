@@ -55,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.ExerciseProgressPoint
+import com.spotter.data.model.PersonalRecord
 import com.spotter.data.model.TrackedExercise
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight
@@ -73,6 +74,7 @@ fun ProgressScreen(
     val exerciseProgress by viewModel.exerciseProgress.collectAsState()
     val selectedExerciseId by viewModel.selectedExerciseId.collectAsState()
     val chartRange by viewModel.chartRange.collectAsState()
+    val personalRecords by viewModel.personalRecords.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var showBodyweightDialog by remember { mutableStateOf(false) }
@@ -118,6 +120,11 @@ fun ProgressScreen(
                     onClick = { selectedTab = 1 },
                     text = { Text("Strength") },
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text("Records") },
+                )
             }
 
             when (selectedTab) {
@@ -134,6 +141,7 @@ fun ProgressScreen(
                     chartRange = chartRange,
                     onRangeSelect = { viewModel.setChartRange(it) },
                 )
+                2 -> RecordsTab(records = personalRecords)
             }
         }
     }
@@ -339,6 +347,54 @@ private fun StrengthTab(
 
             else -> Unit
         }
+    }
+}
+
+@Composable
+private fun RecordsTab(records: UiState<List<PersonalRecord>>) {
+    val weightUnit = LocalWeightUnit.current
+    when (records) {
+        is UiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        is UiState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(records.message, color = MaterialTheme.colorScheme.error)
+        }
+        is UiState.Success -> {
+            if (records.data.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Complete weighted sets to earn personal records.")
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(records.data) { pr ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Text(pr.exerciseName, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "🏆 Top weight: ${weightUnit.formatWeight(pr.maxWeight)} × ${pr.maxWeightReps}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Est. 1RM ${weightUnit.formatWeight(pr.bestEst1rm)} · " +
+                                    "Best set volume ${weightUnit.formatWeight(pr.bestVolume)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        else -> Unit
     }
 }
 

@@ -73,7 +73,7 @@ The AI assists with workout planning only. The server enforces these — never r
 - `GET/POST /metrics/weight`
 - `GET /calendar?from=&to=`
 - `GET /exercises?search=`, `GET /users/me`
-- `GET /progress/exercises`, `GET /progress/exercises/{id}`
+- `GET /progress/exercises`, `GET /progress/exercises/{id}`, `GET /progress/records` (per-exercise PRs: top weight, est. 1RM, best set volume)
 - `GET/POST /programs`, `GET/PATCH/DELETE /programs/{id}`, `PUT /programs/{id}/days`, `GET /programs/active/next`
 
 ## Security

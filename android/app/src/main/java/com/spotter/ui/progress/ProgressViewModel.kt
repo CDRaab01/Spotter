@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.ExerciseProgressPoint
+import com.spotter.data.model.PersonalRecord
 import com.spotter.data.model.TrackedExercise
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.MetricRepository
@@ -51,6 +52,9 @@ class ProgressViewModel @Inject constructor(
     private val _trackedExercises = MutableStateFlow<UiState<List<TrackedExercise>>>(UiState.Loading)
     val trackedExercises: StateFlow<UiState<List<TrackedExercise>>> = _trackedExercises
 
+    private val _personalRecords = MutableStateFlow<UiState<List<PersonalRecord>>>(UiState.Loading)
+    val personalRecords: StateFlow<UiState<List<PersonalRecord>>> = _personalRecords
+
     val selectedExerciseId = MutableStateFlow<String?>(null)
 
     private val _chartRange = MutableStateFlow(ChartRange.SIX_MONTHS)
@@ -88,6 +92,7 @@ class ProgressViewModel @Inject constructor(
         observeMetrics()
         sync()
         loadTrackedExercises()
+        loadPersonalRecords()
     }
 
     private fun observeMetrics() {
@@ -114,6 +119,16 @@ class ProgressViewModel @Inject constructor(
                 _trackedExercises.value = UiState.Success(exercises)
             } catch (e: Exception) {
                 _trackedExercises.value = UiState.Error(e.message ?: "Failed to load exercises")
+            }
+        }
+    }
+
+    private fun loadPersonalRecords() {
+        viewModelScope.launch {
+            try {
+                _personalRecords.value = UiState.Success(api.getPersonalRecords())
+            } catch (e: Exception) {
+                _personalRecords.value = UiState.Error(e.message ?: "Failed to load records")
             }
         }
     }

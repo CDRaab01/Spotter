@@ -61,6 +61,12 @@ class ProgramRepository @Inject constructor(
 
     suspend fun getNextProgramDay(): ProgramDayOut? =
         try { api.getNextProgramDay() } catch (_: Exception) { null }
+
+    suspend fun daysFor(programId: String): List<ProgramDayEntity> =
+        dayDao.getByProgram(programId)
+
+    suspend fun programName(programId: String): String? =
+        programDao.getById(programId)?.name
 }
 
 private fun ProgramOut.toEntity() = WorkoutProgramEntity(

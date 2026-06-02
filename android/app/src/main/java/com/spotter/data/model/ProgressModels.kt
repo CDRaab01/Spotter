@@ -15,3 +15,14 @@ data class ExerciseProgressPoint(
     @SerialName("max_weight") val maxWeight: Double? = null,
     @SerialName("max_reps") val maxReps: Int,
 )
+
+@Serializable
+data class PersonalRecord(
+    @SerialName("exercise_id") val exerciseId: String,
+    @SerialName("exercise_name") val exerciseName: String,
+    @SerialName("max_weight") val maxWeight: Double,
+    @SerialName("max_weight_reps") val maxWeightReps: Int,
+    @SerialName("best_est_1rm") val bestEst1rm: Double,
+    @SerialName("best_volume") val bestVolume: Double,
+    @SerialName("achieved_on") val achievedOn: String,
+)
