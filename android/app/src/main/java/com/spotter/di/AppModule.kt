@@ -26,8 +26,6 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    // 10.0.2.2 routes to the host machine from the Android emulator
-    private const val BASE_URL = "http://10.0.2.2:8000/"
 
     @Provides
     @Singleton
@@ -55,7 +53,7 @@ object AppModule {
     @Singleton
     fun provideRetrofit(json: Json, okHttpClient: OkHttpClient): Retrofit =
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(BuildConfig.SERVER_URL)
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
