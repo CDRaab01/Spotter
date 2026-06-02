@@ -35,7 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -48,15 +48,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.ui.components.ExercisePreviewRow
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
+import com.spotter.util.UpcomingWorkout
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +74,9 @@ fun HomeScreen(
     val generatingPlan by viewModel.generatingPlan.collectAsState()
     val streak by viewModel.streak.collectAsState()
     val weeklyWorkouts by viewModel.weeklyWorkouts.collectAsState()
-    val nextProgramDay by viewModel.nextProgramDay.collectAsState()
+    val upcoming by viewModel.upcoming.collectAsState()
+    val greeting by viewModel.greeting.collectAsState()
+    val bodyweight by viewModel.bodyweight.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
 
@@ -171,77 +178,39 @@ fun HomeScreen(
             ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
 
             is UiState.Success -> {
-                Column(
+                val upcomingList = (upcoming as? UiState.Success)?.data.orEmpty()
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (weeklyWorkouts > 0 || streak >= 2 || nextProgramDay != null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (weeklyWorkouts > 0) {
-                                SuggestionChip(
-                                    onClick = {},
-                                    label = {
-                                        Text("$weeklyWorkouts ${if (weeklyWorkouts == 1) "day" else "days"} this week")
-                                    },
-                                )
-                            }
-                            if (streak >= 2) {
-                                SuggestionChip(
-                                    onClick = {},
-                                    label = { Text("$streak day streak 🔥") },
-                                )
-                            }
-                            nextProgramDay?.let { day ->
-                                val label = day.planName?.let { "Next: $it" } ?: "Next: ${day.label}"
-                                SuggestionChip(
-                                    onClick = {
-                                        day.planId?.let { viewModel.startSession(it) }
-                                    },
-                                    label = { Text(label) },
-                                )
-                            }
+                    item { GreetingHeader(greeting) }
+                    item { StatsBand(streak = streak, weeklyWorkouts = weeklyWorkouts, bodyweight = bodyweight) }
+
+                    if (upcomingList.isNotEmpty()) {
+                        item { SectionHeader("Upcoming workouts") }
+                        items(upcomingList, key = { "${it.date}-${it.planId}-${it.dayLabel}" }) { workout ->
+                            UpcomingWorkoutCard(
+                                workout = workout,
+                                isStarting = isStarting,
+                                onStart = { workout.planId?.let { viewModel.startSession(it) } },
+                            )
                         }
                     }
-                    if (state.data.isEmpty() && !generatingPlan) {
-                        Box(
-                            Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("No workout plans yet.")
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    "Chat with AI Coach to create one →",
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.clickable {
-                                        navController.navigate(Screen.AiChat.route)
-                                    },
-                                )
-                            }
+
+                    when {
+                        state.data.isEmpty() && !generatingPlan -> item {
+                            EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.route) })
                         }
-                    } else if (generatingPlan && state.data.isEmpty()) {
-                        Box(
-                            Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator()
-                                Spacer(Modifier.height(16.dp))
-                                Text("Building your first plan…")
-                            }
+
+                        generatingPlan && state.data.isEmpty() -> item {
+                            GeneratingPlaceholder()
                         }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+
+                        else -> {
+                            item { SectionHeader("Your plans") }
                             items(state.data, key = { it.id }) { plan ->
                                 PlanCard(
                                     plan = plan,
@@ -259,6 +228,139 @@ fun HomeScreen(
 
             else -> Unit
         }
+    }
+}
+
+@Composable
+private fun GreetingHeader(greeting: String) {
+    Text(
+        text = greeting,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
+    val weightUnit = LocalWeightUnit.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatCard(
+            modifier = Modifier.weight(1f),
+            value = if (streak > 0) "$streak 🔥" else "0",
+            label = "day streak",
+        )
+        StatCard(
+            modifier = Modifier.weight(1f),
+            value = "$weeklyWorkouts",
+            label = "this week",
+        )
+        if (bodyweight != null) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                value = weightUnit.formatWeight(bodyweight),
+                label = "bodyweight",
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
+    Card(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpcomingWorkoutCard(
+    workout: UpcomingWorkout,
+    isStarting: Boolean,
+    onStart: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = workout.date.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = workout.planName ?: workout.dayLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                if (workout.planId != null) {
+                    Button(onClick = onStart, enabled = !isStarting) {
+                        Text(if (isStarting) "Starting…" else "Start")
+                    }
+                }
+            }
+            if (workout.lifts.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                workout.lifts.forEach { lift ->
+                    ExercisePreviewRow(lift)
+                    Spacer(Modifier.height(2.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyPlansPrompt(onChat: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("No workout plans yet.")
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Chat with AI Coach to create one →",
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable { onChat() },
+        )
+    }
+}
+
+@Composable
+private fun GeneratingPlaceholder() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator()
+        Spacer(Modifier.height(16.dp))
+        Text("Building your first plan…")
     }
 }
 

@@ -3,6 +3,7 @@ package com.spotter.util
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.spotter.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -41,9 +42,13 @@ data class UserProfile(
 class AppPreferences @Inject constructor(@ApplicationContext private val context: Context) {
 
     companion object {
+        /** Default workout cadence (train every N days) when the user hasn't set one. */
+        const val DEFAULT_CADENCE_DAYS = 2
+
         private val DARK_MODE = stringPreferencesKey("pref_dark_mode")
         private val WEIGHT_UNIT = stringPreferencesKey("pref_weight_unit")
         private val DISTANCE_UNIT = stringPreferencesKey("pref_distance_unit")
+        private val WORKOUT_CADENCE_DAYS = intPreferencesKey("pref_workout_cadence_days")
         private val ONBOARDING_DONE = booleanPreferencesKey("pref_onboarding_done")
         private val PROFILE_EXPERIENCE = stringPreferencesKey("pref_experience")
         private val PROFILE_GOAL = stringPreferencesKey("pref_goal")
@@ -73,6 +78,11 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
             ?: DistanceUnit.MI
     }
 
+    /** Days between workouts (every N days), used to project upcoming workout dates. */
+    val workoutCadenceDays: Flow<Int> = context.dataStore.data.map { prefs ->
+        (prefs[WORKOUT_CADENCE_DAYS] ?: DEFAULT_CADENCE_DAYS).coerceIn(1, 14)
+    }
+
     val onboardingDone: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[ONBOARDING_DONE] ?: false
     }
@@ -97,6 +107,10 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
 
     suspend fun setDistanceUnit(value: DistanceUnit) {
         context.dataStore.edit { it[DISTANCE_UNIT] = value.name }
+    }
+
+    suspend fun setWorkoutCadenceDays(value: Int) {
+        context.dataStore.edit { it[WORKOUT_CADENCE_DAYS] = value.coerceIn(1, 14) }
     }
 
     suspend fun setServerUrl(value: String) {

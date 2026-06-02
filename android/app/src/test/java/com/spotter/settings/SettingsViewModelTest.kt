@@ -48,6 +48,7 @@ class SettingsViewModelTest {
         whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
         whenever(appPreferences.weightUnit).thenReturn(flowOf(WeightUnit.LBS))
         whenever(appPreferences.distanceUnit).thenReturn(flowOf(DistanceUnit.MI))
+        whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(appPreferences.serverUrl).thenReturn(flowOf("http://10.0.2.2:8000/"))
     }
 
@@ -69,6 +70,19 @@ class SettingsViewModelTest {
 
         assertIs<UiState.Success<UserOut>>(viewModel.user.value)
         assertEquals(user, (viewModel.user.value as UiState.Success).data)
+    }
+
+    @Test
+    fun `setWorkoutCadenceDays delegates to appPreferences`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        viewModel.setWorkoutCadenceDays(3)
+        advanceTimeBy(200)
+
+        verify(appPreferences).setWorkoutCadenceDays(3)
     }
 
     @Test

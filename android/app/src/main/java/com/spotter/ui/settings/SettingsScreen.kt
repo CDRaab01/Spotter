@@ -3,11 +3,13 @@ package com.spotter.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
@@ -61,6 +64,7 @@ fun SettingsScreen(
     val darkMode by viewModel.darkMode.collectAsState()
     val weightUnit by viewModel.weightUnit.collectAsState()
     val distanceUnit by viewModel.distanceUnit.collectAsState()
+    val cadenceDays by viewModel.workoutCadenceDays.collectAsState()
     val serverUrl by viewModel.serverUrl.collectAsState()
     val resetting by viewModel.resetting.collectAsState()
     val context = LocalContext.current
@@ -201,6 +205,21 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // Schedule
+            Text("Schedule", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            CadenceStepper(
+                cadenceDays = cadenceDays,
+                onChange = { viewModel.setWorkoutCadenceDays(it) },
+            )
+            Text(
+                "How often upcoming workouts are spaced on Home and the calendar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(16.dp))
+
             // Server
             Text("Server", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
@@ -255,6 +274,39 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun CadenceStepper(
+    cadenceDays: Int,
+    onChange: (Int) -> Unit,
+    minDays: Int = 1,
+    maxDays: Int = 14,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Train every",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedButton(
+            onClick = { onChange((cadenceDays - 1).coerceAtLeast(minDays)) },
+            enabled = cadenceDays > minDays,
+        ) { Text("−") }
+        Text(
+            text = "$cadenceDays ${if (cadenceDays == 1) "day" else "days"}",
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(72.dp),
+        )
+        OutlinedButton(
+            onClick = { onChange((cadenceDays + 1).coerceAtMost(maxDays)) },
+            enabled = cadenceDays < maxDays,
+        ) { Text("+") }
     }
 }
 

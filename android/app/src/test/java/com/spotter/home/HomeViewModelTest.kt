@@ -1,5 +1,13 @@
 package com.spotter.home
 
+import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.dao.ProgramDayDao
+import com.spotter.data.local.dao.WorkoutProgramDao
+import com.spotter.data.local.dao.WorkoutSessionDao
+import com.spotter.data.local.entity.PlannedExerciseEntity
+import com.spotter.data.local.entity.ProgramDayEntity
+import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.PlanOut
@@ -12,6 +20,7 @@ import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.home.HomeViewModel
 import com.spotter.util.AppPreferences
+import com.spotter.util.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
@@ -30,8 +39,11 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
@@ -43,6 +55,10 @@ class HomeViewModelTest {
     private lateinit var aiRepository: AiRepository
     private lateinit var programRepository: ProgramRepository
     private lateinit var appPreferences: AppPreferences
+    private lateinit var sessionDao: WorkoutSessionDao
+    private lateinit var programDao: WorkoutProgramDao
+    private lateinit var programDayDao: ProgramDayDao
+    private lateinit var plannedExerciseDao: PlannedExerciseDao
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -54,10 +70,29 @@ class HomeViewModelTest {
         aiRepository = mock()
         programRepository = mock()
         appPreferences = mock()
+        sessionDao = mock()
+        programDao = mock()
+        programDayDao = mock()
+        plannedExerciseDao = mock()
         whenever(planRepository.plans).thenReturn(emptyFlow())
         whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
-        viewModel = HomeViewModel(planRepository, sessionRepository, metricRepository, aiRepository, programRepository, appPreferences)
+        whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
+        whenever(metricRepository.metrics).thenReturn(emptyFlow())
+        viewModel = createViewModel()
     }
+
+    private fun createViewModel() = HomeViewModel(
+        planRepository,
+        sessionRepository,
+        metricRepository,
+        aiRepository,
+        programRepository,
+        appPreferences,
+        sessionDao,
+        programDao,
+        programDayDao,
+        plannedExerciseDao,
+    )
 
     @After
     fun tearDown() {
@@ -142,5 +177,57 @@ class HomeViewModelTest {
         advanceTimeBy(200)
         // sync() is also called from init, so verify at least one call total
         verify(programRepository, atLeast(1)).sync()
+    }
+
+    @Test
+    fun `upcoming is empty when there is no active program`() = runTest(testDispatcher) {
+        whenever(programDao.getActive()).thenReturn(null)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val state = viewModel.upcoming.value
+        assertIs<UiState.Success<List<*>>>(state)
+        assertTrue(state.data.isEmpty())
+    }
+
+    @Test
+    fun `upcoming projects two workouts with limited lifts when a program is active`() = runTest(testDispatcher) {
+        whenever(programDao.getActive()).thenReturn(WorkoutProgramEntity("prog-1", "PPL", isActive = true))
+        whenever(programDayDao.getByProgram(any())).thenReturn(
+            listOf(
+                ProgramDayEntity("d1", "prog-1", "plan-A", "Push", 0, "Push"),
+                ProgramDayEntity("d2", "prog-1", "plan-B", "Pull", 1, "Pull"),
+            )
+        )
+        whenever(sessionDao.getAll()).thenReturn(
+            listOf(
+                WorkoutSessionEntity(
+                    id = "s1", userId = "u1", planId = "plan-A",
+                    date = LocalDate.now().toString(), status = "completed",
+                    durationSeconds = null, note = null,
+                )
+            )
+        )
+        whenever(plannedExerciseDao.getByPlanId(any())).thenReturn(
+            (1..6).map {
+                PlannedExerciseEntity("plan-B", "ex-$it", "Lift $it", 3, 8, 100.0, false, it)
+            }
+        )
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val state = viewModel.upcoming.value
+        assertIs<UiState.Success<List<com.spotter.util.UpcomingWorkout>>>(state)
+        assertEquals(2, state.data.size)
+        // Completed Push -> next slot is Pull, capped at 4 lifts.
+        assertEquals("plan-B", state.data[0].planId)
+        assertEquals(4, state.data[0].lifts.size)
+    }
+
+    @Test
+    fun `greeting is non-blank`() {
+        assertTrue(viewModel.greeting.value.isNotBlank())
     }
 }
