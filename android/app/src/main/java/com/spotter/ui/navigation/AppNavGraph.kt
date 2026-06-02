@@ -12,6 +12,7 @@ import com.spotter.ui.auth.LoginScreen
 import com.spotter.ui.auth.RegisterScreen
 import com.spotter.ui.auth.ResetPasswordScreen
 import com.spotter.ui.calendar.CalendarScreen
+import com.spotter.ui.exercise.ExerciseLibraryScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
 import com.spotter.ui.onboarding.OnboardingScreen
@@ -118,6 +119,9 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
         }
         composable(Screen.Programs.route) {
             ProgramScreen(navController = navController)
+        }
+        composable(Screen.ExerciseLibrary.route) {
+            ExerciseLibraryScreen(navController = navController)
         }
     }
 }

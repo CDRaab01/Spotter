@@ -104,6 +104,42 @@ async def test_plan_with_unknown_exercise_returns_none(auth_client):
     assert resp.json()["suggested_plan"] is None
 
 
+async def test_absurd_ai_values_are_clamped_not_dropped(auth_client, exercise):
+    """The LLM is untrusted: out-of-bounds sets/reps/weight are clamped into the
+    sanity bounds rather than rejecting the whole plan."""
+    plan_json = json.dumps(
+        {
+            "name": "Absurd Plan",
+            "source": "ai",
+            "exercises": [
+                {
+                    "exercise_id": exercise.name,
+                    "target_sets": 999,
+                    "target_reps": 9999,
+                    "target_weight": 100000.0,
+                    "is_bodyweight": False,
+                    "order": 0,
+                }
+            ],
+        }
+    )
+    lm_response = f"```json\n{plan_json}\n```\nProgress linearly."
+    mock_resp = _mock_lm_response(lm_response)
+    with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
+        resp = await auth_client.post(
+            "/ai/chat",
+            json={"messages": [{"role": "user", "content": "give me a plan"}]},
+        )
+    assert resp.status_code == 200
+    plan = resp.json()["suggested_plan"]
+    assert plan is not None
+    ex = plan["exercises"][0]
+    assert ex["target_sets"] == 10       # SETS_BOUNDS max
+    assert ex["target_reps"] == 50       # REPS_BOUNDS max
+    assert ex["target_weight"] == 600.0  # WEIGHT_BOUNDS_LB max
+
+
 async def test_plan_reply_still_includes_text(auth_client, exercise):
     """When a plan is extracted, the reply field still contains the text portion."""
     plan_json = json.dumps(

@@ -5,6 +5,13 @@ All LLM interactions must pass through this module.
 
 import re
 
+from app.limits import (  # noqa: F401  re-exported for callers importing from prompts
+    CALORIE_BOUNDS,
+    REPS_BOUNDS,
+    SETS_BOUNDS,
+    WEIGHT_BOUNDS_LB,
+)
+
 SYSTEM_PROMPT = """\
 You are Spotter, a personal gym coach built into the Spotter fitness app.
 You're direct, experienced, and motivating — like a seasoned PT who gives practical advice without the fluff.
@@ -289,11 +296,8 @@ _BLOCKED_PATTERNS = [
     r"\b(steroid|anabolic|testosterone\s+enanthate|ped\b)",
 ]
 
-# Sanity bounds — server enforces regardless of LLM output
-WEIGHT_BOUNDS_LB = (0.5, 600.0)
-CALORIE_BOUNDS = (1200, 6000)
-SETS_BOUNDS = (1, 10)
-REPS_BOUNDS = (1, 50)
+# Sanity bounds (SETS_BOUNDS, REPS_BOUNDS, WEIGHT_BOUNDS_LB, CALORIE_BOUNDS) live in
+# app.limits and are imported above — the server enforces them regardless of LLM output.
 
 
 def validate_request(user_message: str) -> str | None:

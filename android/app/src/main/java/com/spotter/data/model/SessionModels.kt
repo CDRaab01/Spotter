@@ -100,4 +100,6 @@ data class ExercisePrior(
     val weight: Double? = null,
     val date: String,
     @SerialName("last_sets") val lastSets: List<SetLogOut> = emptyList(),
+    @SerialName("suggested_weight") val suggestedWeight: Double? = null,
+    @SerialName("suggested_reason") val suggestedReason: String? = null,
 )

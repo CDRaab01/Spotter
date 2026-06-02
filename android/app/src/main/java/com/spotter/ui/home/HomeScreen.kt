@@ -127,6 +127,13 @@ fun HomeScreen(
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text("Exercise Library") },
+                                onClick = {
+                                    overflowExpanded = false
+                                    navController.navigate(Screen.ExerciseLibrary.route)
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {
                                     overflowExpanded = false

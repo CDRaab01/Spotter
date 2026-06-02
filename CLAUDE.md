@@ -38,15 +38,19 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, and an inline edit mode. Must work offline.
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
+5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home.
+6. **Exercise library** — searchable list of seeded exercises (`/exercises`), browsable from Home.
+7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
 
-## Data Model (initial)
-- `User` — id, name, settings.
+## Data Model
+- `User` — id, name, settings, password-reset token fields.
 - `Exercise` — id, name, muscle_group, equipment.
 - `WorkoutPlan` — id, user_id, name, source (manual | ai), created_at.
-- `PlannedExercise` — plan_id, exercise_id, target_sets, target_reps, target_weight, is_bodyweight, order.
-- `WorkoutSession` — id, user_id, plan_id, date, status, duration_seconds, note.
+- `PlannedExercise` — plan_id, exercise_id, target_sets, target_reps, target_weight, is_bodyweight, order, superset_group (nullable).
+- `WorkoutSession` — id, user_id, plan_id, date, status, duration_seconds, note, exercise_notes (JSON).
 - `SetLog` — id, session_id, exercise_id, set_number, reps, weight (nullable for bodyweight), completed (bool), completed_at. Each set stores its own reps AND weight — they vary set-to-set (e.g. 7×125, 8×115, 8×115).
 - `BodyMetric` — id, user_id, date, weight, (optional bodyfat, etc.).
+- `WorkoutProgram` — id, user_id, name, active. `ProgramDay` — program_id, plan_id, label, order.
 
 ## AI Guardrails (critical)
 The AI assists with workout planning only. The server enforces these — never rely on the client.
@@ -56,23 +60,28 @@ The AI assists with workout planning only. The server enforces these — never r
 - **Safety framing:** include a non-medical-advice disclaimer; advise consulting a doctor before new programs; encourage proper form, warmups, and rest.
 - **Structured output:** when generating a plan, require the model to return JSON matching the `WorkoutPlan`/`PlannedExercise` schema. Validate with Pydantic before persisting; reject and re-prompt on malformed output.
 - **Input handling:** treat user chat as untrusted. Guard against prompt injection (e.g. "ignore previous instructions") — the system prompt and validation layer take precedence.
-- **Sanity bounds:** server-side validation caps absurd values (e.g. reps, sets, weight ranges) regardless of what the model returns.
+- **Sanity bounds:** the canonical bounds live in `app/limits.py` and are enforced two ways — Pydantic `Field(ge/le)` constraints on the write schemas (`PlannedExerciseIn`, `SetLogCreate/Update`) reject out-of-range client input (422), and the AI plan-extraction layer (`client._extract_plan`) *clamps* whatever the model returns into bounds rather than dropping the plan.
+- **Trusted context:** `app/services/ai/context_service.build_user_context` derives a short training-history summary from the DB (recent sessions, last weights, current plan, bodyweight trend) and injects it into the system prompt as trusted context. Any client-supplied profile string is appended as stated preferences only — it never overrides the DB-derived data.
 - **No tool/system access:** the LLM proxy has no file, shell, or DB write access; it only returns text/JSON that the server validates and stores.
-- Keep the prompt + guardrail logic in one module so it's auditable in isolation.
+- Keep the prompt + guardrail logic in one module (`app/services/ai/`) so it's auditable in isolation.
 
-## API Surface (sketch)
-- `POST /auth/...`
-- `GET/POST /plans`, `GET /plans/{id}`
-- `POST /ai/chat` — proxies to LM Studio, applies guardrails, returns reply (+ optional validated plan)
-- `POST /sessions`, `POST /sessions/{id}/sets`
+## API Surface
+- `POST /auth/register|login|refresh|forgot-password|reset-password`
+- `GET/POST /plans`, `GET /plans/{id}`, `PATCH/DELETE /plans/{id}`, `PUT /plans/{id}/exercises`
+- `GET/POST /sessions`, `GET/PATCH /sessions/{id}`, `POST/PATCH /sessions/{id}/sets[/{set_id}]`, `GET /sessions/{id}/prior-bests` (includes progression-aware `suggested_weight`)
+- `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated plan)
 - `GET/POST /metrics/weight`
 - `GET /calendar?from=&to=`
+- `GET /exercises?search=`, `GET /users/me`
+- `GET /progress/exercises`, `GET /progress/exercises/{id}`
+- `GET/POST /programs`, `GET/PATCH/DELETE /programs/{id}`, `PUT /programs/{id}/days`, `GET /programs/active/next`
 
 ## Security
 - Auth on every endpoint (token-based); no anonymous access to user data.
+- **Rate limiting** (slowapi): `/auth/register` 5/min, `/auth/login` 10/min, `/auth/refresh` 10/min, forgot/reset 5/min, `/ai/chat` 20/min. Security headers added via middleware.
 - LM Studio bound to localhost; only FastAPI reaches it.
 - Secrets in env vars / `.env` (gitignored), never committed.
-- HTTPS between Android and server (self-signed/reverse-proxy is fine for personal use, but use TLS).
+- HTTPS between Android and server: terminate TLS at a reverse proxy for real deployments. (The debug client currently allows cleartext for localhost dev — not for production.)
 
 ## Testing
 - Server: pytest for routers + the AI guardrail/validation layer (mock the LLM; assert malformed/out-of-bounds output is rejected).
