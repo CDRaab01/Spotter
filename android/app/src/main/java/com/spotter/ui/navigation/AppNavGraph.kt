@@ -20,6 +20,7 @@ import com.spotter.ui.plan.CreatePlanScreen
 import com.spotter.ui.plan.PlanDetailScreen
 import com.spotter.ui.progress.ProgressScreen
 import com.spotter.ui.settings.SettingsScreen
+import com.spotter.ui.program.ProgramDetailScreen
 import com.spotter.ui.program.ProgramScreen
 import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
@@ -119,6 +120,13 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
         }
         composable(Screen.Programs.route) {
             ProgramScreen(navController = navController)
+        }
+        composable(
+            route = Screen.ProgramDetail.route,
+            arguments = listOf(navArgument("programId") { type = NavType.StringType }),
+        ) { backStack ->
+            val programId = backStack.arguments?.getString("programId") ?: ""
+            ProgramDetailScreen(programId = programId, navController = navController)
         }
         composable(Screen.ExerciseLibrary.route) {
             ExerciseLibraryScreen(navController = navController)

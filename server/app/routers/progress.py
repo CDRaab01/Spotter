@@ -6,9 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.progress import ExerciseProgressPoint, TrackedExercise
+from app.schemas.progress import (
+    ExerciseProgressPoint,
+    PersonalRecord,
+    TrackedExercise,
+)
 from app.security import get_current_user
-from app.services.progress_service import get_exercise_progress, get_tracked_exercises
+from app.services.progress_service import (
+    get_exercise_progress,
+    get_personal_records,
+    get_tracked_exercises,
+)
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 
@@ -19,6 +27,14 @@ async def list_tracked_exercises(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await get_tracked_exercises(db, current_user.id)
+
+
+@router.get("/records", response_model=list[PersonalRecord])
+async def personal_records(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    return await get_personal_records(db, current_user.id)
 
 
 @router.get("/exercises/{exercise_id}", response_model=list[ExerciseProgressPoint])

@@ -22,6 +22,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -201,9 +203,6 @@ internal fun DraftExerciseRow(
     var weightText by remember(draft.exerciseId) {
         mutableStateOf(draft.targetWeight?.toString() ?: "")
     }
-    var supersetText by remember(draft.exerciseId) {
-        mutableStateOf(draft.supersetGroup?.toString() ?: "")
-    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -274,16 +273,53 @@ internal fun DraftExerciseRow(
                         )
                     }
                 }
-                OutlinedTextField(
-                    value = supersetText,
-                    onValueChange = { v ->
-                        supersetText = v.filter { it.isDigit() }
-                        onUpdate(draft.copy(supersetGroup = supersetText.toIntOrNull()))
-                    },
-                    label = { Text("SS#") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(0.6f),
-                    singleLine = true,
+                SupersetSelector(
+                    group = draft.supersetGroup,
+                    onChange = { onUpdate(draft.copy(supersetGroup = it)) },
+                    modifier = Modifier.weight(0.9f),
+                )
+            }
+        }
+    }
+}
+
+/** Renders a superset group number as its workout-screen letter (1 -> "A"). */
+internal fun supersetLabel(group: Int?): String =
+    if (group == null || group < 1) "" else ('A' + group - 1).toString()
+
+/**
+ * Letter-based picker for the superset group, mapping None/A/B/C/D to the
+ * nullable Int the API expects. Matches the "Superset A" rendering used in
+ * workout mode ([com.spotter.ui.workout.WorkoutScreen]).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SupersetSelector(
+    group: Int?,
+    onChange: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf<Int?>(null, 1, 2, 3, 4)
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier,
+    ) {
+        OutlinedTextField(
+            value = if (group == null) "None" else supersetLabel(group),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Superset") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            singleLine = true,
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { opt ->
+                DropdownMenuItem(
+                    text = { Text(if (opt == null) "None" else "Group ${supersetLabel(opt)}") },
+                    onClick = { onChange(opt); expanded = false },
                 )
             }
         }
