@@ -113,4 +113,20 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
             prefs[ONBOARDING_DONE] = true
         }
     }
+
+    /**
+     * Clears the saved questionnaire profile and onboarding flag so the user is sent back
+     * through the onboarding questionnaire. Used by account reset. Leaves app preferences
+     * (theme, units, server URL) intact.
+     */
+    suspend fun clearOnboarding() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(ONBOARDING_DONE)
+            prefs.remove(PROFILE_EXPERIENCE)
+            prefs.remove(PROFILE_GOAL)
+            prefs.remove(PROFILE_EQUIPMENT)
+            prefs.remove(PROFILE_AGE_GROUP)
+            prefs.remove(PROFILE_LIMITATIONS)
+        }
+    }
 }

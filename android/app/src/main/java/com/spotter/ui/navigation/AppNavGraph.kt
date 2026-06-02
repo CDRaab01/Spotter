@@ -31,8 +31,9 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Screen.Login.route) {
             LoginScreen(
-                onLoginSuccess = {
-                    navController.navigate(Screen.Home.route) { popUpTo(0) { inclusive = true } }
+                onLoginSuccess = { onboardingDone ->
+                    val dest = if (onboardingDone) Screen.Home.route else Screen.Onboarding.route
+                    navController.navigate(dest) { popUpTo(0) { inclusive = true } }
                 },
                 onNavigateToRegister = { navController.navigate(Screen.Register.route) },
                 onNavigateToForgotPassword = { navController.navigate(Screen.ForgotPassword.route) },

@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,12 +20,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,7 +62,9 @@ fun SettingsScreen(
     val weightUnit by viewModel.weightUnit.collectAsState()
     val distanceUnit by viewModel.distanceUnit.collectAsState()
     val serverUrl by viewModel.serverUrl.collectAsState()
+    val resetting by viewModel.resetting.collectAsState()
     val context = LocalContext.current
+    var showResetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToLogin.collect {
@@ -71,6 +76,43 @@ fun SettingsScreen(
         viewModel.serverUrlMessage.collect { msg ->
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.resetError.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!resetting) showResetDialog = false },
+            title = { Text("Reset account?") },
+            text = {
+                Text(
+                    "This permanently deletes all your workouts, sessions, progress, " +
+                        "programs, and chat history. Your account and login are kept. " +
+                        "You'll be signed out and asked to set up again.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.resetAccount() },
+                    enabled = !resetting,
+                ) {
+                    Text(
+                        if (resetting) "Resetting…" else "Reset",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResetDialog = false },
+                    enabled = !resetting,
+                ) { Text("Cancel") }
+            },
+        )
     }
 
     Scaffold(
@@ -194,6 +236,24 @@ fun SettingsScreen(
             ) {
                 Text("Sign out")
             }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = { showResetDialog = true },
+                enabled = !resetting,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text("Reset account")
+            }
+            Text(
+                "Erase all your data and start fresh. Your login is kept.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

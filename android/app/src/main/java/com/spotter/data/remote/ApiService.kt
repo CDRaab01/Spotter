@@ -129,6 +129,10 @@ interface ApiService {
     @GET("users/me")
     suspend fun getMe(): UserOut
 
+    /** Wipes all of the current user's server data; the account (login) is kept. */
+    @POST("users/reset")
+    suspend fun resetAccount()
+
     // Progress
     @GET("progress/exercises")
     suspend fun getTrackedExercises(): List<TrackedExercise>

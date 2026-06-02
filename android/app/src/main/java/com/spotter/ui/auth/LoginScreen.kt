@@ -30,7 +30,7 @@ import com.spotter.util.UiState
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (onboardingDone: Boolean) -> Unit,
     onNavigateToRegister: () -> Unit,
     onNavigateToForgotPassword: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
@@ -40,7 +40,7 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
 
     LaunchedEffect(authState) {
-        if (authState is UiState.Success) onLoginSuccess()
+        if (authState is UiState.Success) onLoginSuccess(viewModel.isOnboardingDone())
     }
 
     Column(
