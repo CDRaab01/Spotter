@@ -6,8 +6,13 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.database import AsyncSessionLocal, Base, engine
+from app.limiter import limiter
 from app.main import app
 from app.models.exercise import Exercise
+
+# Give every test request a unique rate-limit key so the auth endpoint's
+# 5/minute cap never fires during the test suite.
+limiter._key_func = lambda request: uuid.uuid4().hex
 
 
 @pytest.fixture(scope="session")

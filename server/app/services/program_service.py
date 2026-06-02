@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.program_day import ProgramDay
-from app.models.workout_plan import WorkoutPlan
 from app.models.workout_program import WorkoutProgram
 from app.models.workout_session import WorkoutSession
 from app.schemas.program import (
