@@ -144,6 +144,7 @@ async def replace_days(
         db.add(ProgramDay(program_id=program_id, **d.model_dump()))
 
     await db.commit()
+    db.expire_all()
     return await get_program(db, user_id, program_id)
 
 

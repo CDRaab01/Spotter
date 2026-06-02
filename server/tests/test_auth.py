@@ -26,8 +26,8 @@ async def test_register_duplicate_email_returns_409(client):
 async def test_login_success(client):
     uid = uuid.uuid4().hex[:8]
     email = f"login_{uid}@test.com"
-    await client.post("/auth/register", json={"name": "Alice", "email": email, "password": "mypass"})
-    resp = await client.post("/auth/login", json={"email": email, "password": "mypass"})
+    await client.post("/auth/register", json={"name": "Alice", "email": email, "password": "mypassword"})
+    resp = await client.post("/auth/login", json={"email": email, "password": "mypassword"})
     assert resp.status_code == 200
     assert "access_token" in resp.json()
 
