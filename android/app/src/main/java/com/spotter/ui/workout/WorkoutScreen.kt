@@ -414,6 +414,15 @@ private fun ExerciseCard(
     var noteText by remember(note) { mutableStateOf(note) }
     val focusManager = LocalFocusManager.current
 
+    // Weight to warm up into: planned target, else the AI suggestion / last load.
+    val workingWeight = first.targetWeight
+        ?: priorBest?.suggestedWeight
+        ?: priorBest?.weight
+    var showWarmUp by remember { mutableStateOf(false) }
+    if (showWarmUp && workingWeight != null) {
+        WarmUpDialog(workingWeightLbs = workingWeight, onDismiss = { showWarmUp = false })
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             if (supersetGroup != null) {
@@ -455,6 +464,14 @@ private fun ExerciseCard(
                                 "Best: ${priorBest.reps} reps$weightStr",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
+                        priorBest.suggestedWeight?.let { suggested ->
+                            Text(
+                                "Suggested: ${weightUnit.formatWeight(suggested)}" +
+                                    (priorBest.suggestedReason?.let { " — $it" } ?: ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
                             )
                         }
                     }
@@ -502,11 +519,18 @@ private fun ExerciseCard(
                     )
                 }
             }
-            TextButton(
-                onClick = { onAddSet(sets.last()) },
-                modifier = Modifier.align(Alignment.End),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
             ) {
-                Text("+ Add Set")
+                if (workingWeight != null && workingWeight > 0) {
+                    TextButton(onClick = { showWarmUp = true }) {
+                        Text("Warm-up")
+                    }
+                }
+                TextButton(onClick = { onAddSet(sets.last()) }) {
+                    Text("+ Add Set")
+                }
             }
         }
     }
