@@ -10,9 +10,9 @@ from app.limiter import limiter
 from app.main import app
 from app.models.exercise import Exercise
 
-# Give every test request a unique rate-limit key so the auth endpoint's
-# 5/minute cap never fires during the test suite.
-limiter._key_func = lambda request: uuid.uuid4().hex
+# Disable rate limiting for the test suite so rapid registrations don't
+# trigger the 5/minute cap on /auth/register.
+limiter.enabled = False
 
 
 @pytest.fixture(scope="session")
