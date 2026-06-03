@@ -92,6 +92,9 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // Confetti (celebration moments)
+    implementation(libs.konfetti.compose)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockito.kotlin)

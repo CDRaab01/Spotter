@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Spotter" parent="android:Theme.Material.Light.NoActionBar">
-        <!-- Matches SpotterBackground (light) so the launch frame isn't a white flash. -->
-        <item name="android:windowBackground">#FFF5F6FA</item>
+        <!-- Matches LightBackground so the launch frame isn't a white flash. -->
+        <item name="android:windowBackground">#FFF4F6FB</item>
     </style>
 </resources>
