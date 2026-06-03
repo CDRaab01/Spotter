@@ -22,9 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,9 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.CalendarEntry
+import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
+import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.PulsingDots
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.navigation.Screen
-import com.spotter.ui.theme.SpotterBlue
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
 import java.time.LocalDate
@@ -132,14 +132,12 @@ fun CalendarScreen(
                         .fillMaxWidth()
                         .height(200.dp),
                     contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+                ) { PulsingDots() }
 
-                is UiState.Error -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
+                is UiState.Error -> ErrorState(
+                    message = state.message,
+                    modifier = Modifier.height(240.dp),
+                )
 
                 is UiState.Success -> {
                     val entryMap: Map<LocalDate, CalendarEntry> = state.data.associate {
@@ -264,10 +262,11 @@ private fun DayCell(
     }
     // A real session always wins over a projection on the same date.
     val dotColor = when {
-        entry?.status == "completed" -> MaterialTheme.colorScheme.primary
+        entry?.status == "completed" -> MaterialTheme.colorScheme.secondary
         entry != null -> MaterialTheme.colorScheme.outline
         else -> Color.Transparent
     }
+    val projectedRingColor = MaterialTheme.colorScheme.tertiary
     val showProjectedRing = entry == null && isProjected
 
     Column(
@@ -296,7 +295,7 @@ private fun DayCell(
                 .size(5.dp)
                 .then(
                     if (showProjectedRing) {
-                        Modifier.border(1.dp, SpotterBlue, CircleShape)
+                        Modifier.border(1.dp, projectedRingColor, CircleShape)
                     } else {
                         Modifier.background(color = dotColor, shape = CircleShape)
                     },
@@ -310,15 +309,13 @@ private fun SessionDetailCard(
     entry: CalendarEntry,
     onResume: () -> Unit,
 ) {
-    Card(
+    SpotterCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -360,34 +357,34 @@ private fun UpcomingDetailCard(
     workout: UpcomingWorkout,
     onStart: () -> Unit,
 ) {
-    Card(
+    SpotterCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = workout.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = workout.planName ?: workout.dayLabel,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            if (workout.lifts.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                workout.lifts.forEach { lift ->
-                    ExercisePreviewRow(lift)
-                    Spacer(Modifier.height(2.dp))
-                }
+        Text(
+            text = workout.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = workout.planName ?: workout.dayLabel,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        if (workout.lifts.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            workout.lifts.forEach { lift ->
+                ExercisePreviewRow(lift)
+                Spacer(Modifier.height(2.dp))
             }
-            if (workout.planId != null) {
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-                    Text("Start workout now")
-                }
-            }
+        }
+        if (workout.planId != null) {
+            Spacer(Modifier.height(12.dp))
+            GradientButton(
+                text = "Start workout now",
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
