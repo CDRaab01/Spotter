@@ -6,6 +6,7 @@ import com.spotter.data.local.dao.PlannedExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
+import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.ChatMessage
@@ -83,6 +84,9 @@ class HomeViewModel @Inject constructor(
 
     private val _greeting = MutableStateFlow(greetingForTime(LocalTime.now()))
     val greeting: StateFlow<String> = _greeting.asStateFlow()
+
+    private val _planExercises = MutableStateFlow<Map<String, List<PlannedExerciseEntity>>>(emptyMap())
+    val planExercises: StateFlow<Map<String, List<PlannedExerciseEntity>>> = _planExercises.asStateFlow()
 
     /** Latest logged bodyweight in pounds, or null when none has been recorded. */
     private val _bodyweight = MutableStateFlow<Double?>(null)
@@ -176,6 +180,7 @@ class HomeViewModel @Inject constructor(
                 .catch { _plans.value = UiState.Error(it.message ?: "Unknown error") }
                 .collect { localPlans ->
                     _plans.value = UiState.Success(localPlans)
+                    loadPlanExercises(localPlans)
                     if (!autoGenerateTriggered && localPlans.isEmpty()) {
                         val onboardingDone = appPreferences.onboardingDone.first()
                         if (onboardingDone) {
@@ -184,6 +189,15 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                 }
+        }
+    }
+
+    private fun loadPlanExercises(plans: List<WorkoutPlanEntity>) {
+        viewModelScope.launch {
+            val map = plans.associate { plan ->
+                plan.id to plannedExerciseDao.getByPlanId(plan.id).take(4)
+            }
+            _planExercises.value = map
         }
     }
 
