@@ -1,7 +1,9 @@
 package com.spotter.ui.progress
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -46,8 +52,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -57,7 +66,12 @@ import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.PersonalRecord
 import com.spotter.data.model.TrackedExercise
+import com.spotter.ui.components.EmptyState
+import com.spotter.ui.components.ErrorState
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.ui.theme.formatWeightNullable
@@ -179,30 +193,29 @@ private fun BodyWeightTab(
 ) {
     val weightUnit = LocalWeightUnit.current
     when (metrics) {
-        is UiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        is UiState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(metrics.message, color = MaterialTheme.colorScheme.error)
-        }
+        is UiState.Loading -> LoadingState()
+        is UiState.Error -> ErrorState(message = metrics.message)
         is UiState.Success -> {
             if (metrics.data.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No weight entries yet. Use the + button to log.")
-                }
+                EmptyState(
+                    icon = Icons.Default.MonitorWeight,
+                    title = "No weigh-ins yet",
+                    subtitle = "Tap + to log your bodyweight and watch the trend build.",
+                )
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
                     RangeSelector(selected = chartRange, onSelect = onRangeSelect)
                     val points = metrics.data.map { it.weight.toFloat() }
                     val chartColor = MaterialTheme.colorScheme.primary
-                    LineChart(
-                        points = points,
-                        color = chartColor,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .padding(16.dp),
-                    )
+                    ChartCard {
+                        LineChart(
+                            points = points,
+                            color = chartColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp),
+                        )
+                    }
                     LazyColumn {
                         items(metrics.data.reversed()) { metric ->
                             Row(
@@ -247,9 +260,11 @@ private fun StrengthTab(
 
             is UiState.Success -> {
                 if (trackedExercises.data.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-                        Text("Complete workouts to see strength progress.")
-                    }
+                    EmptyState(
+                        icon = Icons.Default.FitnessCenter,
+                        title = "No strength data yet",
+                        subtitle = "Finish a few weighted workouts and your lifts will chart here.",
+                    )
                 } else {
                     Row(
                         modifier = Modifier
@@ -286,31 +301,31 @@ private fun StrengthTab(
         }
 
         when (exerciseProgress) {
-            is UiState.Loading -> Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            is UiState.Loading -> LoadingState()
 
             is UiState.Success -> {
                 val data = exerciseProgress.data
                 if (data.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No data for this range — try a wider window.")
-                    }
+                    EmptyState(
+                        icon = Icons.Default.FitnessCenter,
+                        title = "No data for this range",
+                        subtitle = "Try a wider window to see your progress.",
+                    )
                 } else {
                     Column {
                         RangeSelector(selected = chartRange, onSelect = onRangeSelect)
                         val points = data.mapNotNull { it.maxWeight?.toFloat() }
                         if (points.size >= 2) {
                             val chartColor = MaterialTheme.colorScheme.primary
-                            LineChart(
-                                points = points,
-                                color = chartColor,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(200.dp)
-                                    .padding(16.dp),
-                            )
+                            ChartCard {
+                                LineChart(
+                                    points = points,
+                                    color = chartColor,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp),
+                                )
+                            }
                         }
                         LazyColumn {
                             items(data.reversed()) { point ->
@@ -336,12 +351,11 @@ private fun StrengthTab(
 
             is UiState.Idle -> {
                 if (selectedExerciseId == null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            "Select an exercise above to view progress.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    EmptyState(
+                        icon = Icons.Default.FitnessCenter,
+                        title = "Pick an exercise",
+                        subtitle = "Select one above to see its strength curve.",
+                    )
                 }
             }
 
@@ -354,41 +368,45 @@ private fun StrengthTab(
 private fun RecordsTab(records: UiState<List<PersonalRecord>>) {
     val weightUnit = LocalWeightUnit.current
     when (records) {
-        is UiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        is UiState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(records.message, color = MaterialTheme.colorScheme.error)
-        }
+        is UiState.Loading -> LoadingState()
+        is UiState.Error -> ErrorState(message = records.message)
         is UiState.Success -> {
             if (records.data.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Complete weighted sets to earn personal records.")
-                }
+                EmptyState(
+                    icon = Icons.Default.EmojiEvents,
+                    title = "No records yet",
+                    subtitle = "Complete weighted sets to start banking personal records.",
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(records.data) { pr ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                        ) {
-                            Text(pr.exerciseName, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "🏆 Top weight: ${weightUnit.formatWeight(pr.maxWeight)} × ${pr.maxWeightReps}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                "Est. 1RM ${weightUnit.formatWeight(pr.bestEst1rm)} · " +
-                                    "Best set volume ${weightUnit.formatWeight(pr.bestVolume)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        SpotterCard(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.EmojiEvents,
+                                    contentDescription = null,
+                                    tint = SpotterTheme.brand.streak,
+                                    modifier = Modifier.padding(end = 12.dp),
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(pr.exerciseName, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        "Top: ${weightUnit.formatWeight(pr.maxWeight)} × ${pr.maxWeightReps}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        "Est. 1RM ${weightUnit.formatWeight(pr.bestEst1rm)} · " +
+                                            "Best volume ${weightUnit.formatWeight(pr.bestVolume)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -398,6 +416,20 @@ private fun RecordsTab(records: UiState<List<PersonalRecord>>) {
     }
 }
 
+/** Frames a chart in the standard card so it sits on a clean surface with breathing room. */
+@Composable
+private fun ChartCard(content: @Composable () -> Unit) {
+    SpotterCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+    ) { content() }
+}
+
+/**
+ * A line chart that "rises" into place on load, with a soft gradient fill under the curve and
+ * rounded joins/caps. The points animate up from the baseline whenever the dataset changes.
+ */
 @Composable
 private fun LineChart(
     points: List<Float>,
@@ -405,27 +437,63 @@ private fun LineChart(
     modifier: Modifier = Modifier,
 ) {
     if (points.size < 2) return
-    Canvas(modifier = modifier.background(MaterialTheme.colorScheme.surface)) {
+    var play by remember(points) { mutableStateOf(false) }
+    LaunchedEffect(points) { play = true }
+    val anim by animateFloatAsState(
+        targetValue = if (play) 1f else 0f,
+        animationSpec = tween(700, easing = FastOutSlowInEasing),
+        label = "chartReveal",
+    )
+    val dotColor = MaterialTheme.colorScheme.surface
+    Canvas(modifier = modifier) {
         val minVal = points.min()
         val maxVal = points.max()
         val range = (maxVal - minVal).coerceAtLeast(1f)
         val padX = 16.dp.toPx()
-        val padY = 12.dp.toPx()
+        val padY = 16.dp.toPx()
         val chartW = size.width - padX * 2
         val chartH = size.height - padY * 2
         val stepX = chartW / (points.size - 1)
+        val baseline = padY + chartH
 
         fun xOf(i: Int) = padX + i * stepX
-        fun yOf(v: Float) = padY + chartH - ((v - minVal) / range) * chartH
-
-        val path = Path()
-        points.forEachIndexed { i, v ->
-            if (i == 0) path.moveTo(xOf(i), yOf(v)) else path.lineTo(xOf(i), yOf(v))
+        fun yOf(v: Float): Float {
+            val target = padY + chartH - ((v - minVal) / range) * chartH
+            return baseline - anim * (baseline - target)
         }
-        drawPath(path, color = color, style = Stroke(width = 2.dp.toPx()))
 
+        // Filled area under the curve.
+        val fill = Path().apply {
+            moveTo(xOf(0), baseline)
+            points.forEachIndexed { i, v -> lineTo(xOf(i), yOf(v)) }
+            lineTo(xOf(points.size - 1), baseline)
+            close()
+        }
+        drawPath(
+            fill,
+            brush = Brush.verticalGradient(
+                colors = listOf(color.copy(alpha = 0.30f), color.copy(alpha = 0f)),
+                startY = padY,
+                endY = baseline,
+            ),
+        )
+
+        // The line itself.
+        val line = Path().apply {
+            points.forEachIndexed { i, v ->
+                if (i == 0) moveTo(xOf(i), yOf(v)) else lineTo(xOf(i), yOf(v))
+            }
+        }
+        drawPath(
+            line,
+            color = color,
+            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+
+        // Data points: filled dot with a surface-colored core for a "ringed" look.
         points.forEachIndexed { i, v ->
-            drawCircle(color = color, radius = 4.dp.toPx(), center = Offset(xOf(i), yOf(v)))
+            drawCircle(color = color, radius = 4.5.dp.toPx(), center = Offset(xOf(i), yOf(v)))
+            drawCircle(color = dotColor, radius = 2.dp.toPx(), center = Offset(xOf(i), yOf(v)))
         }
     }
 }
