@@ -1,6 +1,7 @@
 package com.spotter.screenshot
 
 import android.app.Application
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -41,13 +43,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.spotter.R
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.components.AnimatedCounter
 import com.spotter.ui.components.BrandLogo
@@ -112,6 +116,7 @@ class ScreenshotTest {
     @Test fun calendar_light() = capture("calendar_light", dark = false) { CalendarScene() }
     @Test fun settings_light() = capture("settings_light", dark = false) { SettingsScene() }
     @Test fun summary_pr_dark() = capture("summary_pr_dark", dark = true) { SummaryScene(prCount = 2, perfect = false) }
+    @Test fun app_icon() = capture("app_icon", dark = false) { IconPreviewScene() }
 }
 
 @Composable
@@ -414,6 +419,45 @@ private fun OptionCardPreview(label: String, selected: Boolean) {
             )
             if (selected) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
         }
+    }
+}
+
+/** Composites the real adaptive-icon layers (gradient bg + dumbbell fg) in squircle + round masks. */
+@Composable
+private fun IconPreviewScene() {
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("App icon", style = MaterialTheme.typography.headlineMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            IconMask(RoundedCornerShape(45)) // round / circle
+            IconMask(RoundedCornerShape(28)) // squircle
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconMask(RoundedCornerShape(28), size = 96.dp)
+            IconMask(RoundedCornerShape(28), size = 64.dp)
+            IconMask(RoundedCornerShape(28), size = 48.dp)
+        }
+    }
+}
+
+@Composable
+private fun IconMask(shape: androidx.compose.ui.graphics.Shape, size: androidx.compose.ui.unit.Dp = 144.dp) {
+    Box(Modifier.size(size).clip(shape)) {
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_background),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = "Spotter app icon",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
     }
 }
 
