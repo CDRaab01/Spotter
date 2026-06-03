@@ -173,10 +173,15 @@ async def get_next_day(
     if not last_session or not last_session.plan_id:
         next_day = days[0]
     else:
-        matching_index = next(
-            (i for i, d in enumerate(days) if d.plan_id == last_session.plan_id),
-            None,
-        )
+        # Find the last day whose plan matches. When multiple days share a plan
+        # (e.g. two "Full Body" days) we pick the last matching occurrence so the
+        # rotation advances past the most recently used position, not always from
+        # the first occurrence. This is a best-effort heuristic; a future improvement
+        # is to store program_day_id on WorkoutSession for exact tracking.
+        matching_index = None
+        for i, d in enumerate(days):
+            if d.plan_id == last_session.plan_id:
+                matching_index = i
         if matching_index is None:
             next_day = days[0]
         else:

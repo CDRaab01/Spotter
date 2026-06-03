@@ -88,19 +88,21 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
                 navArgument("doneSets") { type = NavType.IntType },
                 navArgument("totalSets") { type = NavType.IntType },
                 navArgument("volume") { type = NavType.IntType },
+                navArgument("newPrCount") { type = NavType.IntType },
             ),
         ) { backStack ->
             val duration = backStack.arguments?.getInt("duration") ?: 0
             val doneSets = backStack.arguments?.getInt("doneSets") ?: 0
             val totalSets = backStack.arguments?.getInt("totalSets") ?: 0
             val volume = backStack.arguments?.getInt("volume") ?: 0
+            val newPrCount = backStack.arguments?.getInt("newPrCount") ?: 0
             WorkoutSummaryScreen(
                 durationSeconds = duration,
                 doneSets = doneSets,
                 totalSets = totalSets,
                 totalVolumeLb = volume,
                 muscleGroups = WorkoutSummaryStore.muscleGroups,
-                newPrCount = WorkoutSummaryStore.newPrCount,
+                newPrCount = newPrCount,
                 navController = navController,
             )
         }

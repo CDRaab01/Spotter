@@ -29,4 +29,8 @@ interface SetLogDao {
 
     @Query("SELECT * FROM set_logs WHERE syncPending = 1 AND serverId IS NOT NULL")
     suspend fun getSyncPendingLogs(): List<SetLogEntity>
+
+    /** Sets created offline that have never been POSTed (no serverId yet). */
+    @Query("SELECT * FROM set_logs WHERE syncPending = 1 AND serverId IS NULL")
+    suspend fun getUnsyncedNewLogs(): List<SetLogEntity>
 }

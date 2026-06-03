@@ -20,6 +20,7 @@ from app.security import get_current_user
 from app.services.session_service import (
     add_set,
     create_session,
+    delete_session,
     get_prior_bests,
     get_session,
     list_sessions,
@@ -86,6 +87,15 @@ async def update_set(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await update_set_log(db, current_user.id, session_id, set_id, req)
+
+
+@router.delete("/{session_id}", status_code=204)
+async def delete_one_session(
+    session_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    await delete_session(db, current_user.id, session_id)
 
 
 @router.get("/{session_id}/prior-bests", response_model=list[ExercisePrior])

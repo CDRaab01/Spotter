@@ -120,7 +120,7 @@ fun WorkoutScreen(
         viewModel.navigateToSummary.collect { data ->
             navController.navigate(
                 Screen.WorkoutSummary.createRoute(
-                    data.durationSeconds, data.doneSets, data.totalSets, data.totalVolumeLb
+                    data.durationSeconds, data.doneSets, data.totalSets, data.totalVolumeLb, data.newPrCount
                 )
             ) { popUpTo(Screen.Workout.route) { inclusive = true } }
         }

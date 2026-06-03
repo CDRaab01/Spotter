@@ -48,6 +48,59 @@ async def test_add_set(auth_client, exercise):
     assert data["completed"] is False
 
 
+async def test_add_set_with_unknown_exercise_returns_404(auth_client):
+    """A bogus exercise_id must return a clean 404, not a 500 FK error."""
+    create = await auth_client.post("/sessions", json={"date": str(datetime.date.today())})
+    session_id = create.json()["id"]
+
+    resp = await auth_client.post(
+        f"/sessions/{session_id}/sets",
+        json={"exercise_id": str(uuid.uuid4()), "set_number": 1, "reps": 8},
+    )
+    assert resp.status_code == 404
+
+
+async def test_delete_session(auth_client, exercise):
+    create = await auth_client.post("/sessions", json={"date": str(datetime.date.today())})
+    session_id = create.json()["id"]
+    await auth_client.post(
+        f"/sessions/{session_id}/sets",
+        json={"exercise_id": str(exercise.id), "set_number": 1, "reps": 8, "weight": 100.0},
+    )
+
+    resp = await auth_client.delete(f"/sessions/{session_id}")
+    assert resp.status_code == 204
+
+    # It's gone (and its set logs were cascade-deleted, no orphan rows).
+    assert (await auth_client.get(f"/sessions/{session_id}")).status_code == 404
+
+
+async def test_delete_nonexistent_session_returns_404(auth_client):
+    resp = await auth_client.delete(f"/sessions/{uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+async def test_cannot_delete_another_users_session(client):
+    async def register_and_get_token(email):
+        r = await client.post(
+            "/auth/register",
+            json={"name": "User", "email": email, "password": "pass1234"},
+        )
+        return r.json()["access_token"]
+
+    uid1, uid2 = uuid.uuid4().hex[:8], uuid.uuid4().hex[:8]
+    token1 = await register_and_get_token(f"d1_{uid1}@test.com")
+    token2 = await register_and_get_token(f"d2_{uid2}@test.com")
+
+    client.headers["Authorization"] = f"Bearer {token1}"
+    create = await client.post("/sessions", json={"date": str(datetime.date.today())})
+    session_id = create.json()["id"]
+
+    client.headers["Authorization"] = f"Bearer {token2}"
+    resp = await client.delete(f"/sessions/{session_id}")
+    assert resp.status_code == 404
+
+
 async def test_toggle_set_completion(auth_client, exercise):
     create = await auth_client.post("/sessions", json={"date": str(datetime.date.today())})
     session_id = create.json()["id"]

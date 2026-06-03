@@ -101,6 +101,9 @@ interface ApiService {
         @Body req: SetLogUpdate,
     ): SetLogOut
 
+    @DELETE("sessions/{id}")
+    suspend fun deleteSession(@Path("id") id: String)
+
     @GET("sessions/{id}/prior-bests")
     suspend fun getPriorBests(@Path("id") id: String): List<ExercisePrior>
 

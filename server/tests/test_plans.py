@@ -41,6 +41,32 @@ async def test_delete_nonexistent_plan_returns_404(auth_client):
     assert resp.status_code == 404
 
 
+async def test_delete_plan_with_sessions_succeeds(auth_client, exercise):
+    """Deleting a plan that a session references must not 500.
+
+    Regression test for workout_sessions.plan_id lacking ON DELETE SET NULL.
+    The session is detached (plan_id nulled), not deleted.
+    """
+    import datetime
+
+    plan = await _create_plan(auth_client, str(exercise.id))
+
+    session = await auth_client.post(
+        "/sessions", json={"date": str(datetime.date.today()), "plan_id": plan["id"]}
+    )
+    assert session.status_code == 201, session.text
+    session_id = session.json()["id"]
+
+    resp = await auth_client.delete(f"/plans/{plan['id']}")
+    assert resp.status_code == 204, resp.text
+
+    # The session survives, with its plan link cleared.
+    got = await auth_client.get(f"/sessions/{session_id}")
+    assert got.status_code == 200, got.text
+    assert got.json()["plan_id"] is None
+
+
+
 async def test_rename_plan(auth_client, exercise):
     plan = await _create_plan(auth_client, str(exercise.id), name="Old Name")
     resp = await auth_client.patch(f"/plans/{plan['id']}", json={"name": "New Name"})

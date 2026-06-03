@@ -1,6 +1,7 @@
 package com.spotter.ui.workout
 
 import android.content.Context
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.ExercisePrior
@@ -35,12 +36,14 @@ data class WorkoutSummaryData(
     val doneSets: Int,
     val totalSets: Int,
     val totalVolumeLb: Int,
+    val newPrCount: Int,
 )
 
 object WorkoutSummaryStore {
+    /** Muscle group breakdown — passed via global store because the list is not
+     *  trivially serialisable as a nav route arg. Survives config changes; does
+     *  not survive process death (display degrades to empty, which is acceptable). */
     var muscleGroups: List<MuscleGroupSummary> = emptyList()
-    /** How many exercises beat their prior best top weight this session. */
-    var newPrCount: Int = 0
 }
 
 @HiltViewModel
@@ -213,7 +216,7 @@ class WorkoutViewModel @Inject constructor(
         val duration = if (failure) base + 60 else base
         restTimerJob?.cancel()
         _restTimerSeconds.value = duration
-        context.startService(RestTimerService.startIntent(context, duration))
+        ContextCompat.startForegroundService(context, RestTimerService.startIntent(context, duration))
         restTimerJob = viewModelScope.launch {
             var remaining = duration
             while (remaining > 0) {
@@ -229,6 +232,17 @@ class WorkoutViewModel @Inject constructor(
         restTimerJob?.cancel()
         _restTimerSeconds.value = null
         context.startService(RestTimerService.cancelIntent(context))
+    }
+
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            try {
+                sessionRepository.deleteSession(sessionId)
+                _navigateBack.emit(Unit)
+            } catch (e: Exception) {
+                _finishState.value = UiState.Error(e.message ?: "Failed to delete session")
+            }
+        }
     }
 
     fun finishSession(sessionId: String) {
@@ -249,11 +263,12 @@ class WorkoutViewModel @Inject constructor(
                 val totalSets = setLogs.size
                 val volumeLb = setLogs
                     .filter { it.completed }
-                    .sumOf { (it.reps * (it.weight ?: 0.0)).toInt() }
+                    .sumOf { it.reps * (it.weight ?: 0.0) }
+                    .toInt()
                 // A new PR = an exercise whose top completed weight this session beats the prior
                 // best loaded at session start. Only counts exercises that had a prior best to beat.
                 val priors = priorBests.value
-                WorkoutSummaryStore.newPrCount = setLogs
+                val newPrCount = setLogs
                     .filter { it.completed && it.weight != null }
                     .groupBy { it.exerciseId }
                     .count { (exerciseId, logs) ->
@@ -266,6 +281,7 @@ class WorkoutViewModel @Inject constructor(
                         doneSets = doneSets,
                         totalSets = totalSets,
                         totalVolumeLb = volumeLb,
+                        newPrCount = newPrCount,
                     )
                 )
             } catch (e: Exception) {

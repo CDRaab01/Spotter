@@ -74,7 +74,12 @@ fun PlateCalculatorDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = targetText,
-                    onValueChange = { targetText = it.filter { c -> c.isDigit() || c == '.' } },
+                    onValueChange = { raw ->
+                        // Allow digits and at most one decimal point
+                        val filtered = raw.filter { c -> c.isDigit() || c == '.' }
+                        val dotCount = filtered.count { it == '.' }
+                        targetText = if (dotCount <= 1) filtered else targetText
+                    },
                     label = { Text("Target weight ($unitLabel)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -99,7 +104,7 @@ fun PlateCalculatorDialog(
                 HorizontalDivider()
 
                 when {
-                    total == 0f -> Text(
+                    total < 0.01f -> Text(
                         "Enter a target weight above.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -110,11 +115,23 @@ fun PlateCalculatorDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     else -> {
+                        val achievablePerSide = plates.fold(0f) { acc, (p, c) -> acc + p * c }
+                        val achievableTotal = barWeight + achievablePerSide * 2
+                        val residual = total - achievableTotal
                         Text(
                             "Per side: ${"%.2f".format(perSide).trimEnd('0').trimEnd('.')} $unitLabel",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                         )
+                        if (residual > 0.01f) {
+                            Text(
+                                "Nearest achievable: ${"%.1f".format(achievableTotal)} $unitLabel (${
+                                    "%.2f".format(residual).trimEnd('0').trimEnd('.')
+                                } $unitLabel short)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Spacer(Modifier.height(4.dp))
                         Row(
                             modifier = Modifier
@@ -131,7 +148,7 @@ fun PlateCalculatorDialog(
                         if (plates.isNotEmpty()) {
                             Spacer(Modifier.height(4.dp))
                             plates.forEach { (plate, count) ->
-                                val plateLabel = if (plate == plate.toLong().toFloat())
+                                val plateLabel = if (plate % 1f < 0.01f)
                                     "${plate.toLong()} $unitLabel"
                                 else "$plate $unitLabel"
                                 Text(

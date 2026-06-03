@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -25,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -98,6 +101,7 @@ fun SessionHistoryScreen(
                                         navController.navigate(Screen.Workout.createRoute(session.id))
                                     }
                                 },
+                                onDelete = { viewModel.deleteSession(session.id) },
                             )
                         }
                     }
@@ -113,8 +117,27 @@ fun SessionHistoryScreen(
 private fun SessionCard(
     session: SessionSummary,
     onTap: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete workout?") },
+            text = { Text("This permanently removes this session and its logged sets.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    onDelete()
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Column(
@@ -171,6 +194,20 @@ private fun SessionCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { showDeleteDialog = true }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete session",
+                                modifier = Modifier.width(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

@@ -283,17 +283,24 @@ For any new program recommendation, end with:
 
 # Patterns that trigger immediate rejection before sending to the LLM
 _BLOCKED_PATTERNS = [
+    # Instruction-override attempts
     r"\bignore\s+(previous|prior|all)\s+instructions?\b",
-    r"\bsystem\s+prompt\b",
     r"\bforget\s+(your\s+)?(previous|prior|all|the)\s+(instructions?|rules?|context)\b",
-    r"\bact\s+as\s+(if\s+you\s+(are|were)|a)\b",
-    r"\byou\s+are\s+now\b",
+    r"\boverride\s+(your\s+)?(instructions?|rules?|system\s+prompt)\b",
+    r"\byou\s+are\s+now\s+(a\s+)?(different|new|unrestricted)\b",
     r"\bnew\s+persona\b",
     r"\bjailbreak\b",
-    r"\b(sql|xss|csrf|injection|exploit|hack)\b",
-    r"\b(bomb|weapon|explosive|poison)\b",
-    r"\b(self.?harm|suicide)\b",
-    r"\b(steroid|anabolic|testosterone\s+enanthate|ped\b)",
+    # Probing the system prompt itself
+    r"\brepeat\s+(your\s+)?(system\s+prompt|instructions)\b",
+    r"\bprint\s+(your\s+)?(system\s+prompt|instructions)\b",
+    r"\bwhat\s+(are\s+your\s+instructions|is\s+your\s+system\s+prompt)\b",
+    # Web/code attack keywords
+    r"\b(sql\s+injection|xss|csrf|cross.site|remote\s+code|exploit)\b",
+    # Dangerous physical harm
+    r"\b(bomb|explosive|poison\s+someone|weapons?\s+of\s+mass)\b",
+    r"\b(self.?harm|suicide\s+method)\b",
+    # PEDs / banned substances
+    r"\b(anabolic\s+steroid|testosterone\s+enanthate|trenbolone|sarms|ped\s+dosing)\b",
 ]
 
 # Sanity bounds (SETS_BOUNDS, REPS_BOUNDS, WEIGHT_BOUNDS_LB, CALORIE_BOUNDS) live in

@@ -11,6 +11,8 @@ SETS_BOUNDS = (1, 10)
 REPS_BOUNDS = (1, 50)
 WEIGHT_BOUNDS_LB = (0.5, 600.0)
 CALORIE_BOUNDS = (1200, 6000)
+BODY_WEIGHT_BOUNDS_LB = (50.0, 1500.0)  # bodyweight metric (lbs)
+BODYFAT_BOUNDS = (1.0, 70.0)  # body fat percentage
 
 
 def clamp_int(value: int, bounds: tuple[int, int]) -> int:

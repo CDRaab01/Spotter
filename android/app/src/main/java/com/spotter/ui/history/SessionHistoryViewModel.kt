@@ -35,4 +35,20 @@ class SessionHistoryViewModel @Inject constructor(
             }
         }
     }
+
+    fun deleteSession(sessionId: String) {
+        // Optimistically drop it from the visible list, then reconcile with the server.
+        val current = _sessions.value
+        if (current is UiState.Success) {
+            _sessions.value = UiState.Success(current.data.filterNot { it.id == sessionId })
+        }
+        viewModelScope.launch {
+            try {
+                sessionRepository.deleteSession(sessionId)
+            } catch (_: Exception) {
+                // Re-sync on failure so the list reflects the true server state.
+                loadSessions()
+            }
+        }
+    }
 }

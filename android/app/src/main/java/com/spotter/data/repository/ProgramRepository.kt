@@ -11,6 +11,7 @@ import com.spotter.data.model.ProgramOut
 import com.spotter.data.model.ProgramUpdate
 import com.spotter.data.remote.ApiService
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +42,12 @@ class ProgramRepository @Inject constructor(
 
     suspend fun updateProgram(id: String, req: ProgramUpdate): ProgramOut {
         val result = api.updateProgram(id, req)
+        if (req.isActive == true) {
+            // Deactivate all programs locally before marking the new one active so
+            // getActive() (LIMIT 1) can't transiently return the wrong program.
+            val all = programDao.getAll().first()
+            programDao.upsertAll(all.map { it.copy(isActive = false) })
+        }
         programDao.upsertAll(listOf(result.toEntity()))
         return result
     }

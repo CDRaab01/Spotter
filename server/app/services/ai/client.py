@@ -25,11 +25,15 @@ async def chat(
     last_user = next(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
-    error = validate_request(last_user)
-    if error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
-        )
+    # Check the new message and every prior user turn — injection can be embedded
+    # in earlier history entries to bypass a guard that only checks the latest turn.
+    for msg in req.messages:
+        if msg.role == "user":
+            error = validate_request(msg.content)
+            if error:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
+                )
 
     history = [m.model_dump() for m in req.messages[:-1]]
     user_context = await _merged_context(db, user_id, req.user_context)

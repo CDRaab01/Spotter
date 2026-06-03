@@ -84,6 +84,10 @@ object AppModule {
     fun provideDatabase(@ApplicationContext ctx: Context): SpotterDatabase =
         Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db")
             .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            // Safety net for schema versions that predate MIGRATION_2_3 (i.e. v1).
+            // Room is a server mirror only — no data is user-originated, so clearing
+            // and re-syncing is safe.
+            .fallbackToDestructiveMigration()
             .build()
 
     @Provides

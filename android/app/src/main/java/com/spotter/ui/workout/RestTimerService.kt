@@ -44,23 +44,27 @@ class RestTimerService : Service() {
         timerJob?.cancel()
         timerJob = scope.launch {
             var remaining = totalSeconds
+            // Post the first notification synchronously so startForeground is called
+            // promptly (required within 5s of startForegroundService on API 26+).
+            val initialNotification = buildNotification(remaining)
+            startForeground(NOTIFICATION_ID, initialNotification)
             while (remaining > 0) {
-                postNotification(remaining)
+                notificationManager.notify(NOTIFICATION_ID, buildNotification(remaining))
                 delay(1000)
                 remaining--
             }
-            notificationManager.cancel(NOTIFICATION_ID)
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
 
     private fun cancelTimer() {
         timerJob?.cancel()
-        notificationManager.cancel(NOTIFICATION_ID)
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    private fun postNotification(secondsRemaining: Int) {
+    private fun buildNotification(secondsRemaining: Int): android.app.Notification {
         val min = secondsRemaining / 60
         val sec = secondsRemaining % 60
         val timeText = "%d:%02d".format(min, sec)
@@ -74,7 +78,7 @@ class RestTimerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_pause)
             .setContentTitle("Rest timer")
             .setContentText("$timeText remaining")
@@ -82,8 +86,6 @@ class RestTimerService : Service() {
             .setSilent(true)
             .setContentIntent(tapIntent)
             .build()
-
-        notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
     private fun createNotificationChannel() {

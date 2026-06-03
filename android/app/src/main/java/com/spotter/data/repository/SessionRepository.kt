@@ -112,9 +112,15 @@ class SessionRepository @Inject constructor(
                         newLocal.toSetLogOut()
                     }
                 }
+                // Append locally-added sets that haven't been synced yet so they
+                // remain visible in the UI while offline (serverId is null).
+                val unsyncedLocal = localLogs
+                    .filter { it.serverId == null && it.syncPending }
+                    .map { it.toSetLogOut() }
+                val allLogs = refreshedLogs + unsyncedLocal
                 val updatedSession = serverResult.copy(
                     id = id,
-                    setLogs = refreshedLogs,
+                    setLogs = allLogs,
                     exerciseNotes = serverResult.exerciseNotes,
                 )
                 sessionDao.upsert(
@@ -239,15 +245,27 @@ class SessionRepository @Inject constructor(
         return try {
             api.listSessions()
         } catch (_: Exception) {
-            // Offline fallback: build summaries from cached sessions
+            // Offline fallback: build summaries from Room
             sessionDao.getAll().map { s ->
+                val sets = setLogDao.getBySession(s.id)
                 SessionSummary(
                     id = s.id, date = s.date, planName = null,
                     status = s.status, durationSeconds = s.durationSeconds,
-                    totalSets = 0, completedSets = 0,
+                    totalSets = sets.size,
+                    completedSets = sets.count { it.completed },
                 )
             }
         }
+    }
+
+    suspend fun deleteSession(sessionId: String) {
+        val session = sessionDao.getById(sessionId)
+        val serverSessionId = session?.serverId
+        if (serverSessionId != null) {
+            api.deleteSession(serverSessionId)
+        }
+        setLogDao.deleteBySession(sessionId)
+        sessionDao.deleteById(sessionId)
     }
 
     // ── Background sync ───────────────────────────────────────────────────────
@@ -286,7 +304,23 @@ class SessionRepository @Inject constructor(
             } catch (_: Exception) { continue }
         }
 
-        // 2. Push pending set log updates (completed, reps, weight)
+        // 2. Create sets that were added offline to an already-synced session
+        //    (these have a null serverId, so step 3 would otherwise skip them forever).
+        for (sl in setLogDao.getUnsyncedNewLogs()) {
+            val serverSessionId = sessionDao.getById(sl.sessionId)?.serverId ?: continue
+            try {
+                val result = api.logSet(
+                    serverSessionId,
+                    SetLogCreate(
+                        exerciseId = sl.exerciseId, setNumber = sl.setNumber,
+                        reps = sl.reps, weight = sl.weight, completed = sl.completed,
+                    )
+                )
+                setLogDao.upsert(sl.copy(serverId = result.id, syncPending = false))
+            } catch (_: Exception) { continue }
+        }
+
+        // 3. Push pending set log updates (completed, reps, weight)
         for (sl in setLogDao.getSyncPendingLogs()) {
             val serverSessionId = sessionDao.getById(sl.sessionId)?.serverId ?: continue
             val serverSetId = sl.serverId ?: continue
@@ -299,7 +333,7 @@ class SessionRepository @Inject constructor(
             } catch (_: Exception) { continue }
         }
 
-        // 3. Push pending session-level updates (status, duration, notes)
+        // 4. Push pending session-level updates (status, duration, notes)
         for (session in sessionDao.getSyncPendingSessions()) {
             val serverSessionId = session.serverId ?: continue
             try {

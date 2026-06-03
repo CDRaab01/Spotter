@@ -227,9 +227,34 @@ async def update_session(
     return await get_session(db, user_id, session_id)
 
 
+async def delete_session(
+    db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID
+) -> None:
+    result = await db.execute(
+        select(WorkoutSession).where(
+            WorkoutSession.id == session_id,
+            WorkoutSession.user_id == user_id,
+        )
+    )
+    s = result.scalar_one_or_none()
+    if not s:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
+    await db.delete(s)
+    await db.commit()
+
+
 async def add_set(
     db: AsyncSession, session_id: uuid.UUID, req: SetLogCreate
 ) -> SetLogOut:
+    ex_result = await db.execute(
+        select(Exercise).where(Exercise.id == req.exercise_id)
+    )
+    if ex_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found"
+        )
     sl = SetLog(session_id=session_id, **req.model_dump())
     db.add(sl)
     await db.commit()

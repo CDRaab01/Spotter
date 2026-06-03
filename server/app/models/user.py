@@ -15,7 +15,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     settings: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reset_token: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    reset_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     plans = relationship("WorkoutPlan", back_populates="user", lazy="raise")
