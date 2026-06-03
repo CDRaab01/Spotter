@@ -1,6 +1,7 @@
 package com.spotter.screenshot
 
 import android.app.Application
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,14 +13,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -39,11 +44,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.spotter.R
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.components.AnimatedCounter
 import com.spotter.ui.components.BrandLogo
@@ -106,6 +114,9 @@ class ScreenshotTest {
     @Test fun login_light() = capture("login_light", dark = false) { LoginScene() }
     @Test fun onboarding_light() = capture("onboarding_light", dark = false) { OnboardingScene() }
     @Test fun calendar_light() = capture("calendar_light", dark = false) { CalendarScene() }
+    @Test fun settings_light() = capture("settings_light", dark = false) { SettingsScene() }
+    @Test fun summary_pr_dark() = capture("summary_pr_dark", dark = true) { SummaryScene(prCount = 2, perfect = false) }
+    @Test fun app_icon() = capture("app_icon", dark = false) { IconPreviewScene() }
 }
 
 @Composable
@@ -168,7 +179,7 @@ private fun HomeScene() {
 }
 
 @Composable
-private fun SummaryScene() {
+private fun SummaryScene(prCount: Int = 0, perfect: Boolean = true) {
     Column(
         Modifier
             .fillMaxSize()
@@ -191,14 +202,33 @@ private fun SummaryScene() {
                 Icon(Icons.Default.CheckCircle, null, tint = Color.White, modifier = Modifier.size(60.dp))
             }
             Spacer(Modifier.height(20.dp))
-            Text("Perfect session!", style = MaterialTheme.typography.headlineLarge, color = Color.White)
             Text(
-                "Every set logged. That's how it's done.",
+                if (perfect) "Perfect session!" else "Great work!",
+                style = MaterialTheme.typography.headlineLarge,
+                color = Color.White,
+            )
+            Text(
+                if (perfect) "Every set logged. That's how it's done." else "Another one in the books.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.9f),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            if (prCount > 0) {
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    Modifier
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.2f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        "🏆 " + if (prCount == 1) "New personal record!" else "$prCount new personal records!",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -388,6 +418,96 @@ private fun OptionCardPreview(label: String, selected: Boolean) {
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (selected) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** Composites the real adaptive-icon layers (gradient bg + dumbbell fg) in squircle + round masks. */
+@Composable
+private fun IconPreviewScene() {
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("App icon", style = MaterialTheme.typography.headlineMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            IconMask(RoundedCornerShape(45)) // round / circle
+            IconMask(RoundedCornerShape(28)) // squircle
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconMask(RoundedCornerShape(28), size = 96.dp)
+            IconMask(RoundedCornerShape(28), size = 64.dp)
+            IconMask(RoundedCornerShape(28), size = 48.dp)
+        }
+    }
+}
+
+@Composable
+private fun IconMask(shape: androidx.compose.ui.graphics.Shape, size: androidx.compose.ui.unit.Dp = 144.dp) {
+    Box(Modifier.size(size).clip(shape)) {
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_background),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_foreground),
+            contentDescription = "Spotter app icon",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+    }
+}
+
+@Composable
+private fun SettingsScene() {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        SpotterCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(52.dp).background(SpotterTheme.brand.heroGradient, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) { Text("C", style = MaterialTheme.typography.titleLarge, color = Color.White) }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text("Casey Raab", style = MaterialTheme.typography.titleMedium)
+                    Text("casey@spotter.app", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        SpotterCard(Modifier.fillMaxWidth()) {
+            SectionHeader("Appearance")
+            Spacer(Modifier.height(8.dp))
+            Text("Theme", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("System", "Light", "Dark").forEachIndexed { i, t ->
+                    FilterChip(selected = i == 2, onClick = {}, label = { Text(t) })
+                }
+            }
+        }
+        SpotterCard(Modifier.fillMaxWidth()) {
+            SectionHeader("Units")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("lbs", "kg").forEachIndexed { i, t ->
+                    FilterChip(selected = i == 0, onClick = {}, label = { Text(t) })
+                }
+            }
+        }
+        SpotterCard(Modifier.fillMaxWidth()) {
+            SectionHeader("Account")
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {},
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) { Text("Sign out") }
         }
     }
 }
