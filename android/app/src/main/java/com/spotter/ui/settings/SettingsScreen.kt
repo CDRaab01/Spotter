@@ -9,15 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
@@ -48,7 +51,11 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.ui.components.PulsingDots
+import com.spotter.ui.components.SectionHeader
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
 import com.spotter.util.UiState
@@ -137,143 +144,167 @@ fun SettingsScreen(
                 .padding(padding)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // User info
+            // Profile header
             when (val state = userState) {
                 is UiState.Loading -> Box(
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+                ) { PulsingDots() }
 
                 is UiState.Error -> Text(
                     state.message,
                     color = MaterialTheme.colorScheme.error,
                 )
 
-                is UiState.Success -> {
-                    Text(state.data.name, style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        state.data.email,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                is UiState.Success -> ProfileHeader(
+                    name = state.data.name,
+                    email = state.data.email,
+                )
 
                 else -> Unit
             }
 
-            Spacer(Modifier.height(16.dp))
-
-            // Appearance
-            Text("Appearance", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            SegmentedSettingRow(
-                label = "Theme",
-                options = DarkModePreference.entries,
-                selected = darkMode,
-                labelFor = {
-                    when (it) {
-                        DarkModePreference.SYSTEM -> "System"
-                        DarkModePreference.LIGHT -> "Light"
-                        DarkModePreference.DARK -> "Dark"
-                    }
-                },
-                onSelect = { viewModel.setDarkMode(it) },
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // Units
-            Text("Units", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            SegmentedSettingRow(
-                label = "Weight",
-                options = WeightUnit.entries,
-                selected = weightUnit,
-                labelFor = { if (it == WeightUnit.KG) "kg" else "lbs" },
-                onSelect = { viewModel.setWeightUnit(it) },
-            )
-            Spacer(Modifier.height(8.dp))
-            SegmentedSettingRow(
-                label = "Distance",
-                options = DistanceUnit.entries,
-                selected = distanceUnit,
-                labelFor = { if (it == DistanceUnit.KM) "km" else "mi" },
-                onSelect = { viewModel.setDistanceUnit(it) },
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // Schedule
-            Text("Schedule", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            CadenceStepper(
-                cadenceDays = cadenceDays,
-                onChange = { viewModel.setWorkoutCadenceDays(it) },
-            )
-            Text(
-                "How often upcoming workouts are spaced on Home and the calendar.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // Server
-            Text("Server", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(4.dp))
-            var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
-            OutlinedTextField(
-                value = serverUrlInput,
-                onValueChange = { serverUrlInput = it },
-                label = { Text("Server URL") },
-                supportingText = {
-                    Text("e.g. http://100.x.y.z:8000/ (Tailscale) or https://spotter.example.com/")
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = { viewModel.setServerUrl(serverUrlInput) },
-                enabled = serverUrlInput.isNotBlank() && serverUrlInput != serverUrl,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Save server URL")
+            SettingsSection("Appearance") {
+                SegmentedSettingRow(
+                    label = "Theme",
+                    options = DarkModePreference.entries,
+                    selected = darkMode,
+                    labelFor = {
+                        when (it) {
+                            DarkModePreference.SYSTEM -> "System"
+                            DarkModePreference.LIGHT -> "Light"
+                            DarkModePreference.DARK -> "Dark"
+                        }
+                    },
+                    onSelect = { viewModel.setDarkMode(it) },
+                )
             }
 
-            Spacer(Modifier.height(24.dp))
-
-            Button(
-                onClick = { viewModel.logout() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                ),
-            ) {
-                Text("Sign out")
+            SettingsSection("Units") {
+                SegmentedSettingRow(
+                    label = "Weight",
+                    options = WeightUnit.entries,
+                    selected = weightUnit,
+                    labelFor = { if (it == WeightUnit.KG) "kg" else "lbs" },
+                    onSelect = { viewModel.setWeightUnit(it) },
+                )
+                Spacer(Modifier.height(8.dp))
+                SegmentedSettingRow(
+                    label = "Distance",
+                    options = DistanceUnit.entries,
+                    selected = distanceUnit,
+                    labelFor = { if (it == DistanceUnit.KM) "km" else "mi" },
+                    onSelect = { viewModel.setDistanceUnit(it) },
+                )
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            OutlinedButton(
-                onClick = { showResetDialog = true },
-                enabled = !resetting,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
-                ),
-            ) {
-                Text("Reset account")
+            SettingsSection("Schedule") {
+                CadenceStepper(
+                    cadenceDays = cadenceDays,
+                    onChange = { viewModel.setWorkoutCadenceDays(it) },
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "How often upcoming workouts are spaced on Home and the calendar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Text(
-                "Erase all your data and start fresh. Your login is kept.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+
+            SettingsSection("Server") {
+                var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
+                OutlinedTextField(
+                    value = serverUrlInput,
+                    onValueChange = { serverUrlInput = it },
+                    label = { Text("Server URL") },
+                    supportingText = {
+                        Text("e.g. http://100.x.y.z:8000/ (Tailscale) or https://spotter.example.com/")
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { viewModel.setServerUrl(serverUrlInput) },
+                    enabled = serverUrlInput.isNotBlank() && serverUrlInput != serverUrl,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Save server URL")
+                }
+            }
+
+            SettingsSection("Account") {
+                Button(
+                    onClick = { viewModel.logout() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Sign out")
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showResetDialog = true },
+                    enabled = !resetting,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Reset account")
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Erase all your data and start fresh. Your login is kept.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
+    }
+}
+
+/** Profile card: a gradient initial avatar next to the user's name + email. */
+@Composable
+private fun ProfileHeader(name: String, email: String) {
+    SpotterCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .background(SpotterTheme.brand.heroGradient, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = name.trim().take(1).uppercase().ifBlank { "?" },
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    email,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** A titled settings group rendered on a [SpotterCard] with an accent [SectionHeader]. */
+@Composable
+private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+    SpotterCard(modifier = Modifier.fillMaxWidth()) {
+        SectionHeader(title)
+        Spacer(Modifier.height(8.dp))
+        content()
     }
 }
 

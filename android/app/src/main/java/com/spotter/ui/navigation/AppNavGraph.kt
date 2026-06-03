@@ -91,6 +91,7 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
                 totalSets = totalSets,
                 totalVolumeLb = volume,
                 muscleGroups = WorkoutSummaryStore.muscleGroups,
+                newPrCount = WorkoutSummaryStore.newPrCount,
                 navController = navController,
             )
         }

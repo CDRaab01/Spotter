@@ -1,5 +1,6 @@
 package com.spotter.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +61,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.ui.components.AnimatedCounter
+import com.spotter.ui.components.ConfettiHost
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
@@ -110,6 +113,17 @@ fun HomeScreen(
         )
     }
 
+    // Celebrate when the streak crosses a milestone — once per milestone value per session.
+    var celebratedStreak by rememberSaveable { mutableStateOf(0) }
+    var celebrateStreak by remember { mutableStateOf(false) }
+    LaunchedEffect(streak) {
+        if (isStreakMilestone(streak) && celebratedStreak != streak) {
+            celebratedStreak = streak
+            celebrateStreak = true
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -240,7 +254,14 @@ fun HomeScreen(
             else -> Unit
         }
     }
+        ConfettiHost(play = celebrateStreak)
+    }
 }
+
+/** Day-streak values worth a confetti moment. */
+private fun isStreakMilestone(streak: Int): Boolean =
+    streak in setOf(3, 7, 14, 30, 50, 75, 100, 150, 200, 250, 300, 365) ||
+        (streak >= 100 && streak % 100 == 0)
 
 @Composable
 private fun GreetingHeader(greeting: String) {
@@ -273,7 +294,11 @@ private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        StreakTile(streak = streak, modifier = Modifier.weight(1f))
+        StreakTile(
+            streak = streak,
+            milestone = isStreakMilestone(streak),
+            modifier = Modifier.weight(1f),
+        )
         StatTile(
             modifier = Modifier.weight(1f),
             animatedValue = weeklyWorkouts,
@@ -291,8 +316,12 @@ private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
 
 /** Streak stat with a flame that animates in proportion to the streak length. */
 @Composable
-private fun StreakTile(streak: Int, modifier: Modifier = Modifier) {
-    SpotterCard(modifier = modifier, contentPadding = 14.dp) {
+private fun StreakTile(streak: Int, milestone: Boolean, modifier: Modifier = Modifier) {
+    SpotterCard(
+        modifier = modifier,
+        contentPadding = 14.dp,
+        border = if (milestone) BorderStroke(2.dp, SpotterTheme.brand.streak) else null,
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,

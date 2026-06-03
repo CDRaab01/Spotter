@@ -39,6 +39,8 @@ data class WorkoutSummaryData(
 
 object WorkoutSummaryStore {
     var muscleGroups: List<MuscleGroupSummary> = emptyList()
+    /** How many exercises beat their prior best top weight this session. */
+    var newPrCount: Int = 0
 }
 
 @HiltViewModel
@@ -248,6 +250,16 @@ class WorkoutViewModel @Inject constructor(
                 val volumeLb = setLogs
                     .filter { it.completed }
                     .sumOf { (it.reps * (it.weight ?: 0.0)).toInt() }
+                // A new PR = an exercise whose top completed weight this session beats the prior
+                // best loaded at session start. Only counts exercises that had a prior best to beat.
+                val priors = priorBests.value
+                WorkoutSummaryStore.newPrCount = setLogs
+                    .filter { it.completed && it.weight != null }
+                    .groupBy { it.exerciseId }
+                    .count { (exerciseId, logs) ->
+                        val priorBest = priors[exerciseId]?.weight
+                        priorBest != null && logs.maxOf { it.weight!! } > priorBest
+                    }
                 _navigateToSummary.emit(
                     WorkoutSummaryData(
                         durationSeconds = elapsedSeconds.value,
