@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.SpotterCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,12 +138,11 @@ fun ProgramDetailScreen(
                 }
             }
 
-            Button(
+            GradientButton(
+                text = "Save",
                 onClick = { viewModel.save() },
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Save")
-            }
+            )
             Spacer(Modifier.height(8.dp))
         }
     }
@@ -215,7 +216,7 @@ private fun DayRow(
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

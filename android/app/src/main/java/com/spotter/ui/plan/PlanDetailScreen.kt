@@ -18,9 +18,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.PlannedExerciseOut
+import com.spotter.ui.components.ErrorState
+import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight
@@ -192,24 +193,12 @@ fun PlanDetailScreen(
                 }
             }
 
-            planState is UiState.Loading -> {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
-            }
+            planState is UiState.Loading -> LoadingState(Modifier.padding(padding))
 
-            planState is UiState.Error -> {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        (planState as UiState.Error).message,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
+            planState is UiState.Error -> ErrorState(
+                message = (planState as UiState.Error).message,
+                modifier = Modifier.padding(padding),
+            )
 
             planState is UiState.Success -> {
                 val plan = (planState as UiState.Success).data
@@ -228,14 +217,13 @@ fun PlanDetailScreen(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Button(
+                    GradientButton(
+                        text = "Start Workout",
                         onClick = { viewModel.startWorkout(planId) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                    ) {
-                        Text("Start Workout")
-                    }
+                    )
                     Spacer(Modifier.height(16.dp))
                 }
             }
@@ -248,7 +236,7 @@ fun PlanDetailScreen(
 @Composable
 private fun ExerciseViewRow(exercise: PlannedExerciseOut) {
     val weightUnit = LocalWeightUnit.current
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Row(
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 12.dp)
