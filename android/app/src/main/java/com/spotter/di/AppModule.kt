@@ -10,6 +10,7 @@ import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_3_4
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
 import com.spotter.data.remote.HostSelectionInterceptor
+import com.spotter.data.remote.TokenAuthenticator
 import com.spotter.util.TokenStore
 import dagger.Module
 import dagger.Provides
@@ -42,6 +43,7 @@ object AppModule {
     fun provideOkHttp(
         authInterceptor: AuthInterceptor,
         hostSelectionInterceptor: HostSelectionInterceptor,
+        tokenAuthenticator: TokenAuthenticator,
     ): OkHttpClient =
         OkHttpClient.Builder()
             // AI chat proxies to a local LLM; the first request triggers a cold model
@@ -52,6 +54,8 @@ object AppModule {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            // On 401, refresh the access token and retry once before the failure reaches the app.
+            .authenticator(tokenAuthenticator)
             .addInterceptor(authInterceptor)
             .addInterceptor(hostSelectionInterceptor)
             .apply {
