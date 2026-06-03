@@ -17,8 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeightLabel
 
@@ -179,13 +179,12 @@ fun CreatePlanScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            Button(
+            GradientButton(
+                text = "Save Plan",
                 onClick = { viewModel.savePlan() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = planName.isNotBlank() && exercises.isNotEmpty(),
-            ) {
-                Text("Save Plan")
-            }
+            )
 
             Spacer(Modifier.height(8.dp))
         }
@@ -204,8 +203,8 @@ internal fun DraftExerciseRow(
         mutableStateOf(draft.targetWeight?.toString() ?: "")
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 12.dp) {
+        Column {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,

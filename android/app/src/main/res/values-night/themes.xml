@@ -3,7 +3,7 @@
     <!-- Dark window for system night mode so the launch frame matches the dark theme
          (Compose applies the in-app theme; this just covers the pre-Compose frame). -->
     <style name="Theme.Spotter" parent="android:Theme.Material.NoActionBar">
-        <!-- Matches SpotterDarkBg. -->
-        <item name="android:windowBackground">#FF0F0F14</item>
+        <!-- Matches DarkBackground. -->
+        <item name="android:windowBackground">#FF0C0E14</item>
     </style>
 </resources>

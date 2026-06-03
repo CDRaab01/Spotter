@@ -28,11 +28,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.SuggestedPlan
+import com.spotter.ui.components.EmptyState
+import com.spotter.ui.components.GradientButton
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,12 +155,11 @@ fun AiChatScreen(
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "Ask your coach anything about training, form, or your plan.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(32.dp),
+                    EmptyState(
+                        icon = Icons.Default.AutoAwesome,
+                        title = "Meet your AI Coach",
+                        subtitle = "Ask anything about training, form, or your plan — " +
+                            "or have it build a workout for you.",
                     )
                 }
             } else {
@@ -241,9 +242,11 @@ private fun SuggestedPlanCard(
                 modifier = Modifier.padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(onClick = onSave, modifier = Modifier.weight(1f)) {
-                    Text("Save Plan")
-                }
+                GradientButton(
+                    text = "Save Plan",
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                )
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                     Text("Dismiss")
                 }

@@ -5,6 +5,13 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -48,6 +56,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -193,44 +202,12 @@ fun WorkoutScreen(
 
             // Always-on work / rest timer. Counts up ("Working") between sets and flips
             // to a "Rest" countdown right after a set is completed.
-            val resting = restTimerSeconds != null
             AnimatedVisibility(visible = totalCount > 0) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (resting) MaterialTheme.colorScheme.primaryContainer
-                                         else MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val seconds = if (resting) (restTimerSeconds ?: 0) else workSeconds
-                        Text(
-                            text = "%d:%02d".format(seconds / 60, seconds % 60),
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(80.dp),
-                        )
-                        Text(
-                            text = if (resting) "Rest — next set coming up." else "Working",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (resting) {
-                            IconButton(onClick = { viewModel.dismissRestTimer() }) {
-                                Icon(Icons.Default.Close, contentDescription = "Skip rest")
-                            }
-                        }
-                    }
-                }
+                RestTimerCard(
+                    restTimerSeconds = restTimerSeconds,
+                    workSeconds = workSeconds,
+                    onSkip = { viewModel.dismissRestTimer() },
+                )
             }
 
             when (val state = session) {
@@ -282,6 +259,99 @@ fun WorkoutScreen(
                 }
 
                 else -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * The work/rest timer. While resting it shows a countdown inside a circular ring that drains as
+ * the rest elapses, with a gentle breathing pulse; while working it's a calm counting-up clock.
+ */
+@Composable
+private fun RestTimerCard(
+    restTimerSeconds: Int?,
+    workSeconds: Int,
+    onSkip: () -> Unit,
+) {
+    val resting = restTimerSeconds != null
+
+    // Remember the rest length the countdown started from so the ring can show progress without
+    // the ViewModel exposing it. Resets whenever a new (longer) rest begins.
+    var restStart by remember { mutableStateOf(1) }
+    LaunchedEffect(restTimerSeconds) {
+        val s = restTimerSeconds
+        if (s != null && s > restStart) restStart = s
+        if (s == null) restStart = 1
+    }
+    val ringProgress = if (resting && restStart > 0) {
+        (restTimerSeconds ?: 0).toFloat() / restStart
+    } else 0f
+
+    // Breathing pulse while resting.
+    val pulse = rememberInfiniteTransition(label = "restPulse")
+    val pulseScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = if (resting) 1.06f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseScale",
+    )
+
+    val container by animateColorAsState(
+        targetValue = if (resting) MaterialTheme.colorScheme.primaryContainer
+                      else MaterialTheme.colorScheme.surfaceVariant,
+        label = "timerContainer",
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val seconds = if (resting) (restTimerSeconds ?: 0) else workSeconds
+            Box(
+                modifier = Modifier.size(64.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (resting) {
+                    CircularProgressIndicator(
+                        progress = { ringProgress },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .scale(pulseScale),
+                        strokeWidth = 5.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                    )
+                }
+                Text(
+                    text = "%d:%02d".format(seconds / 60, seconds % 60),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = if (resting) "Rest — next set coming up." else "Working",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (resting) {
+                IconButton(onClick = onSkip) {
+                    Icon(Icons.Default.Close, contentDescription = "Skip rest")
+                }
             }
         }
     }

@@ -11,8 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.ExerciseOut
+import com.spotter.ui.components.EmptyState
+import com.spotter.ui.components.ErrorState
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SpotterCard
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,27 +66,17 @@ fun ExerciseLibraryScreen(
             )
 
             when (val state = exercises) {
-                is UiState.Loading -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+                is UiState.Loading -> LoadingState()
 
-                is UiState.Error -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
+                is UiState.Error -> ErrorState(message = state.message)
 
                 is UiState.Success -> {
                     if (state.data.isEmpty()) {
-                        Box(
-                            Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "No exercises found.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        EmptyState(
+                            icon = Icons.Default.SearchOff,
+                            title = "No exercises found",
+                            subtitle = "Try a different search term.",
+                        )
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
@@ -105,18 +98,16 @@ fun ExerciseLibraryScreen(
 
 @Composable
 private fun ExerciseRow(exercise: ExerciseOut) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(exercise.name, style = MaterialTheme.typography.titleMedium)
-            val subtitle = listOfNotNull(exercise.muscleGroup, exercise.equipment)
-                .joinToString(" · ")
-            if (subtitle.isNotEmpty()) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+    SpotterCard(modifier = Modifier.fillMaxWidth()) {
+        Text(exercise.name, style = MaterialTheme.typography.titleMedium)
+        val subtitle = listOfNotNull(exercise.muscleGroup, exercise.equipment)
+            .joinToString(" · ")
+        if (subtitle.isNotEmpty()) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

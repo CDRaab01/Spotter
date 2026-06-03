@@ -1,5 +1,6 @@
 package com.spotter.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,15 +50,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.ui.components.AnimatedCounter
+import com.spotter.ui.components.EmptyState
+import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
+import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.PulsingDots
+import com.spotter.ui.components.SectionHeader
+import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.StatTile
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
@@ -167,15 +181,12 @@ fun HomeScreen(
         },
     ) { padding ->
         when (val state = plans) {
-            is UiState.Loading -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            is UiState.Loading -> LoadingState(Modifier.padding(padding))
 
-            is UiState.Error -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
+            is UiState.Error -> ErrorState(
+                message = state.message,
+                modifier = Modifier.padding(padding),
+            )
 
             is UiState.Success -> {
                 val upcomingList = (upcoming as? UiState.Success)?.data.orEmpty()
@@ -233,20 +244,26 @@ fun HomeScreen(
 
 @Composable
 private fun GreetingHeader(greeting: String) {
-    Text(
-        text = greeting,
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
-    )
-}
-
-@Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(SpotterTheme.brand.heroGradient)
+            .padding(20.dp),
+    ) {
+        Column {
+            Text(
+                text = "LET'S TRAIN",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.85f),
+            )
+            Text(
+                text = greeting,
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+            )
+        }
+    }
 }
 
 @Composable
@@ -256,18 +273,14 @@ private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        StatCard(
+        StreakTile(streak = streak, modifier = Modifier.weight(1f))
+        StatTile(
             modifier = Modifier.weight(1f),
-            value = if (streak > 0) "$streak 🔥" else "0",
-            label = "day streak",
-        )
-        StatCard(
-            modifier = Modifier.weight(1f),
-            value = "$weeklyWorkouts",
+            animatedValue = weeklyWorkouts,
             label = "this week",
         )
         if (bodyweight != null) {
-            StatCard(
+            StatTile(
                 modifier = Modifier.weight(1f),
                 value = weightUnit.formatWeight(bodyweight),
                 label = "bodyweight",
@@ -276,20 +289,29 @@ private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
     }
 }
 
+/** Streak stat with a flame that animates in proportion to the streak length. */
 @Composable
-private fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
+private fun StreakTile(streak: Int, modifier: Modifier = Modifier) {
+    SpotterCard(modifier = modifier, contentPadding = 14.dp) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AnimatedCounter(
+                    target = streak,
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+                if (streak > 0) {
+                    Text(" 🔥", style = MaterialTheme.typography.titleLarge)
+                }
+            }
             Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = "day streak",
+                style = MaterialTheme.typography.labelMedium,
+                color = if (streak >= 7) SpotterTheme.brand.streak
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (streak >= 7) FontWeight.Bold else FontWeight.Normal,
             )
         }
     }
@@ -337,16 +359,33 @@ private fun EmptyPlansPrompt(onChat: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 24.dp),
+            .padding(top = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("No workout plans yet.")
-        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Chat,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Text("No workout plans yet", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
         Text(
-            "Chat with AI Coach to create one →",
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clickable { onChat() },
+            "Your AI Coach can build your first one in seconds.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(Modifier.height(20.dp))
+        GradientButton(text = "Chat with AI Coach", onClick = onChat)
     }
 }
 
@@ -355,12 +394,12 @@ private fun GeneratingPlaceholder() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 24.dp),
+            .padding(top = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CircularProgressIndicator()
+        PulsingDots()
         Spacer(Modifier.height(16.dp))
-        Text("Building your first plan…")
+        Text("Building your first plan…", style = MaterialTheme.typography.bodyMedium)
     }
 }
 

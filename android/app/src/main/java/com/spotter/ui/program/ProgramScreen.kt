@@ -18,9 +18,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -43,6 +42,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.ui.components.EmptyState
+import com.spotter.ui.components.ErrorState
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 
@@ -83,22 +86,21 @@ fun ProgramScreen(
         },
     ) { padding ->
         when (val state = programs) {
-            is UiState.Loading -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            is UiState.Loading -> LoadingState(Modifier.padding(padding))
 
-            is UiState.Error -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
+            is UiState.Error -> ErrorState(
+                message = state.message,
+                modifier = Modifier.padding(padding),
+            )
 
             is UiState.Success -> {
                 if (state.data.isEmpty()) {
-                    Box(
-                        Modifier.fillMaxSize().padding(padding),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("No programs yet. Tap + to create one.") }
+                    EmptyState(
+                        icon = Icons.Default.ViewWeek,
+                        title = "No programs yet",
+                        subtitle = "Tap + to build a multi-day training program.",
+                        modifier = Modifier.padding(padding),
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(padding),
@@ -151,10 +153,10 @@ private fun ProgramCard(
         )
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen),
+    SpotterCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onOpen,
+        contentPadding = 0.dp,
     ) {
         Row(
             modifier = Modifier

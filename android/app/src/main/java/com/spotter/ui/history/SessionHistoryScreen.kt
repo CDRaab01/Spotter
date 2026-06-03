@@ -16,8 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,6 +38,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.SessionSummary
+import com.spotter.ui.components.EmptyState
+import com.spotter.ui.components.ErrorState
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 import java.time.LocalDate
@@ -66,22 +69,21 @@ fun SessionHistoryScreen(
         },
     ) { padding ->
         when (val state = sessionsState) {
-            is UiState.Loading -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            is UiState.Loading -> LoadingState(Modifier.padding(padding))
 
-            is UiState.Error -> Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
+            is UiState.Error -> ErrorState(
+                message = state.message,
+                modifier = Modifier.padding(padding),
+            )
 
             is UiState.Success -> {
                 if (state.data.isEmpty()) {
-                    Box(
-                        Modifier.fillMaxSize().padding(padding),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("No workout history yet.") }
+                    EmptyState(
+                        icon = Icons.Default.History,
+                        title = "No history yet",
+                        subtitle = "Your completed workouts will show up here.",
+                        modifier = Modifier.padding(padding),
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(padding),
@@ -114,7 +116,7 @@ private fun SessionCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Column(
             modifier = Modifier
                 .clickable { expanded = !expanded }

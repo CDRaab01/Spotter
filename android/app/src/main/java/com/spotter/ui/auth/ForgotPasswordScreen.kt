@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.spotter.ui.components.GradientButton
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,13 +87,12 @@ fun ForgotPasswordScreen(
                 singleLine = true,
             )
             Spacer(Modifier.height(24.dp))
-            Button(
+            GradientButton(
+                text = if (authState is UiState.Loading) "Sending…" else "Send Reset Code",
                 onClick = { viewModel.forgotPassword(email) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = email.isNotBlank() && authState !is UiState.Loading,
-            ) {
-                Text(if (authState is UiState.Loading) "Sending…" else "Send Reset Code")
-            }
+            )
             if (authState is UiState.Error) {
                 Spacer(Modifier.height(8.dp))
                 Text(

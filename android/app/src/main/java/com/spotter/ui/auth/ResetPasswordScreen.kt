@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.spotter.ui.components.GradientButton
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,7 +107,8 @@ fun ResetPasswordScreen(
                 isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
             )
             Spacer(Modifier.height(24.dp))
-            Button(
+            GradientButton(
+                text = if (authState is UiState.Loading) "Resetting…" else "Reset Password",
                 onClick = {
                     when {
                         newPassword.length < 8 -> localError = "Password must be at least 8 characters"
@@ -120,9 +121,7 @@ fun ResetPasswordScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = token.isNotBlank() && newPassword.isNotBlank() && authState !is UiState.Loading,
-            ) {
-                Text(if (authState is UiState.Loading) "Resetting…" else "Reset Password")
-            }
+            )
             val displayError = localError ?: (authState as? UiState.Error)?.message
             if (displayError != null) {
                 Spacer(Modifier.height(8.dp))

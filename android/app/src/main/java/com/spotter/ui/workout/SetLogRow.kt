@@ -1,5 +1,10 @@
 package com.spotter.ui.workout
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,7 +27,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -49,6 +59,7 @@ fun SetLogRow(
     onToggleComplete: (reps: Int, weightLbs: Double?) -> Unit,
 ) {
     val weightUnit = LocalWeightUnit.current
+    val haptics = LocalHapticFeedback.current
     var repsText by remember(setLog.id) { mutableStateOf(setLog.reps.toString()) }
     var weightText by remember(setLog.id) {
         mutableStateOf(setLog.weight?.let { weightUnit.fieldValue(it) } ?: "")
@@ -57,9 +68,26 @@ fun SetLogRow(
     fun reps(): Int = repsText.toIntOrNull() ?: setLog.reps
     fun weightLbs(): Double? = if (weightText.isBlank()) null else weightUnit.parseToLbs(weightText)
 
+    // Completed rows get a soft accent wash; the check springs as it flips.
+    val rowBg by animateColorAsState(
+        targetValue = if (setLog.completed) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+        } else Color.Transparent,
+        label = "rowBg",
+    )
+    val checkScale by animateFloatAsState(
+        targetValue = if (setLog.completed) 1f else 0.85f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "checkScale",
+    )
+
     Column {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .background(rowBg)
+                .padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -99,14 +127,20 @@ fun SetLogRow(
                     .onFocusChanged { if (!it.isFocused) onCommit(reps(), weightLbs()) },
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = { onToggleComplete(reps(), weightLbs()) }) {
+            IconButton(onClick = {
+                if (!setLog.completed) {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+                onToggleComplete(reps(), weightLbs())
+            }) {
                 Icon(
                     imageVector = if (setLog.completed) Icons.Filled.CheckCircle
                                   else Icons.Filled.RadioButtonUnchecked,
                     contentDescription = if (setLog.completed) "Mark set incomplete"
                                          else "Mark set complete",
-                    tint = if (setLog.completed) MaterialTheme.colorScheme.primary
+                    tint = if (setLog.completed) MaterialTheme.colorScheme.secondary
                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.scale(checkScale),
                 )
             }
         }

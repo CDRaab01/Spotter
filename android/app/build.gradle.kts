@@ -53,6 +53,19 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+    }
+}
+
+// Forward Roborazzi's -P flags (record/verify/compare) into the forked unit-test JVM as the
+// system properties it actually reads.
+tasks.withType<Test>().configureEach {
+    listOf(
+        "roborazzi.test.record",
+        "roborazzi.test.verify",
+        "roborazzi.test.compare",
+    ).forEach { key ->
+        (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
     }
 }
 
@@ -92,11 +105,24 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // Confetti (celebration moments)
+    implementation(libs.konfetti.compose)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(kotlin("test"))
+
+    // JVM screenshot tests (Robolectric + Roborazzi) — no device/KVM required.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    // Contributes the empty ComponentActivity to the debug manifest so Robolectric/Compose
+    // test rules can resolve a host activity.
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.rule)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     debugImplementation(libs.androidx.ui.tooling)
