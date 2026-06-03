@@ -13,17 +13,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.components.AnimatedCounter
@@ -40,6 +52,7 @@ import com.spotter.ui.components.GradientButton
 import com.spotter.ui.components.SectionHeader
 import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.components.StatTile
+import com.spotter.ui.progress.LineChart
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.workout.SetLogRow
 import org.junit.Rule
@@ -63,6 +76,12 @@ class ScreenshotTest {
 
     @get:Rule val compose = createComposeRule()
 
+    // A small tolerance so sub-pixel AA / font-hinting noise across machines doesn't flag a diff
+    // when these are compared on CI.
+    private val roborazziOptions = RoborazziOptions(
+        compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.03f),
+    )
+
     private fun capture(name: String, dark: Boolean, content: @Composable () -> Unit) {
         compose.setContent {
             SpotterTheme(darkTheme = dark) {
@@ -73,7 +92,7 @@ class ScreenshotTest {
                 ) { content() }
             }
         }
-        compose.onRoot().captureRoboImage("screenshots/$name.png")
+        compose.onRoot().captureRoboImage("screenshots/$name.png", roborazziOptions = roborazziOptions)
     }
 
     @Test fun home_light() = capture("home_light", dark = false) { HomeScene() }
@@ -82,6 +101,11 @@ class ScreenshotTest {
     @Test fun summary_dark() = capture("summary_dark", dark = true) { SummaryScene() }
     @Test fun workout_light() = capture("workout_light", dark = false) { WorkoutScene() }
     @Test fun states_dark() = capture("states_dark", dark = true) { StatesScene() }
+    @Test fun progress_light() = capture("progress_light", dark = false) { ProgressScene() }
+    @Test fun progress_dark() = capture("progress_dark", dark = true) { ProgressScene() }
+    @Test fun login_light() = capture("login_light", dark = false) { LoginScene() }
+    @Test fun onboarding_light() = capture("onboarding_light", dark = false) { OnboardingScene() }
+    @Test fun calendar_light() = capture("calendar_light", dark = false) { CalendarScene() }
 }
 
 @Composable
@@ -260,4 +284,134 @@ private fun StatesScene() {
         subtitle = "Ask anything about training, form, or your plan — or have it build a workout for you.",
         action = { GradientButton(text = "Chat with AI Coach", onClick = {}) },
     )
+}
+
+@Composable
+private fun ProgressScene() {
+    // Renders the genuine LineChart component (internal) with sample data.
+    val points = listOf(135f, 140f, 138f, 145f, 150f, 148f, 155f, 160f)
+    val ranges = listOf("1M", "3M", "6M", "1Y", "All")
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHeader("Bench Press · max weight")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ranges.forEachIndexed { i, label ->
+                FilterChip(selected = i == 2, onClick = {}, label = { Text(label) })
+            }
+        }
+        SpotterCard(Modifier.fillMaxWidth()) {
+            LineChart(
+                points = points,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth().height(180.dp),
+            )
+        }
+        SpotterCard(Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.EmojiEvents, null, tint = SpotterTheme.brand.streak, modifier = Modifier.padding(end = 12.dp))
+                Column {
+                    Text("Bench Press", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Top: 160 lb × 5 · Est. 1RM 180 lb · Best volume 4,000 lb",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoginScene() {
+    var email by remember { mutableStateOf("casey@spotter.app") }
+    var password by remember { mutableStateOf("••••••••") }
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        BrandLogo()
+        Spacer(Modifier.height(16.dp))
+        Text("Spotter", style = MaterialTheme.typography.displaySmall)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Your personal fitness coach",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(40.dp))
+        OutlinedTextField(email, { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(password, { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Spacer(Modifier.height(24.dp))
+        GradientButton(text = "Sign In", onClick = {}, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = {}) { Text("Forgot password?") }
+        TextButton(onClick = {}) { Text("Don't have an account? Create one") }
+    }
+}
+
+@Composable
+private fun OnboardingScene() {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        LinearProgressIndicator(progress = { 0.4f }, modifier = Modifier.fillMaxWidth())
+        Text("What's your primary goal?", style = MaterialTheme.typography.titleLarge)
+        OptionCardPreview("Build muscle", selected = true)
+        OptionCardPreview("Lose fat", selected = false)
+        OptionCardPreview("Increase strength", selected = false)
+        OptionCardPreview("General fitness", selected = false)
+        Spacer(Modifier.height(4.dp))
+        GradientButton(text = "Continue", onClick = {}, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun OptionCardPreview(label: String, selected: Boolean) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant,
+        ),
+        border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (selected) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun CalendarScene() {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHeader("June 2026")
+        SpotterCard(Modifier.fillMaxWidth()) {
+            Text("Wednesday, June 3", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Push Day", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.small) {
+                    Text("Done", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Text("18 sets", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        SpotterCard(Modifier.fillMaxWidth()) {
+            Text("Friday, June 5", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Pull Day", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(12.dp))
+            GradientButton(text = "Start workout now", onClick = {}, modifier = Modifier.fillMaxWidth())
+        }
+    }
 }

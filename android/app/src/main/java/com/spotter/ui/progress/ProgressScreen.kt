@@ -429,9 +429,11 @@ private fun ChartCard(content: @Composable () -> Unit) {
 /**
  * A line chart that "rises" into place on load, with a soft gradient fill under the curve and
  * rounded joins/caps. The points animate up from the baseline whenever the dataset changes.
+ *
+ * `internal` (not `private`) so screenshot tests can render the genuine component.
  */
 @Composable
-private fun LineChart(
+internal fun LineChart(
     points: List<Float>,
     color: Color,
     modifier: Modifier = Modifier,
