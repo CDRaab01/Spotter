@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,6 +25,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.spotter.ui.components.BrandLogo
+import com.spotter.ui.components.GradientButton
 import com.spotter.util.UiState
 
 @Composable
@@ -51,7 +52,15 @@ fun RegisterScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Create Account", style = MaterialTheme.typography.headlineLarge)
+        BrandLogo(size = 64.dp)
+        Spacer(Modifier.height(16.dp))
+        Text("Create account", style = MaterialTheme.typography.displaySmall)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Start training smarter today",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(
             value = name,
@@ -87,13 +96,12 @@ fun RegisterScreen(
             singleLine = true,
         )
         Spacer(Modifier.height(24.dp))
-        Button(
+        GradientButton(
+            text = if (authState is UiState.Loading) "Creating account…" else "Create Account",
             onClick = { viewModel.register(name, email, password, inviteCode.trim().ifBlank { null }) },
             modifier = Modifier.fillMaxWidth(),
             enabled = authState !is UiState.Loading,
-        ) {
-            Text(if (authState is UiState.Loading) "Creating account…" else "Create Account")
-        }
+        )
         if (authState is UiState.Error) {
             Spacer(Modifier.height(8.dp))
             Text(
