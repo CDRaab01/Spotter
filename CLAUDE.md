@@ -50,7 +50,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 - `WorkoutSession` — id, user_id, plan_id, date, status, duration_seconds, note, exercise_notes (JSON).
 - `SetLog` — id, session_id, exercise_id, set_number, reps, weight (nullable for bodyweight), completed (bool), completed_at. Each set stores its own reps AND weight — they vary set-to-set (e.g. 7×125, 8×115, 8×115).
 - `BodyMetric` — id, user_id, date, weight, (optional bodyfat, etc.).
-- `WorkoutProgram` — id, user_id, name, active. `ProgramDay` — program_id, plan_id, label, order.
+- `WorkoutProgram` — id, user_id, name, is_active. `ProgramDay` — program_id, plan_id, label, order.
 
 ## AI Guardrails (critical)
 The AI assists with workout planning only. The server enforces these — never rely on the client.
@@ -92,3 +92,88 @@ The AI assists with workout planning only. The server enforces these — never r
 - Keep AI guardrail changes isolated and call them out explicitly.
 - Prefer migrations over manual schema edits.
 - This is a personal-use app, not a medical or clinical product — keep that scope.
+
+## Known Issues & Audit Backlog
+Findings from a full-codebase audit (2026-06-03). Each item lists the location and the
+intended fix. None are fixed yet — treat this as the prioritized work queue. The two
+HIGH server items produce 500s against real Postgres; the two HIGH Android items break
+the core offline workout path.
+
+### Server (FastAPI)
+- **[HIGH] Password reset is broken — token column too small.** `models/user.py:18` and
+  migrations `0003`/`0006` define `reset_token` as `VARCHAR(6)`, but
+  `auth_service.forgot_password` writes `secrets.token_urlsafe(32)` (~43 chars). Postgres
+  raises `StringDataRightTruncation` → 500, so `forgot-password`/`reset-password` never
+  work. *Fix:* widen the column to `String(64)`/`Text` via a new migration + update the
+  model. Add a test covering the full reset flow (currently untested).
+- **[HIGH] `DELETE /plans/{id}` 500s for any plan with sessions.** `workout_sessions.plan_id`
+  FK has no `ondelete` (migration `0001:92`, model `workout_session.py:16`), so deleting a
+  referenced plan raises an IntegrityError. *Fix:* change the FK to `ondelete="SET NULL"`
+  (matching `program_days.plan_id`) via migration, or null/detach sessions in
+  `plan_service.delete_plan` first.
+- **[MED] Prompt-injection guard only checks the last user message.** `ai/client.py:25-34`
+  validates `last_user` but forwards `messages[:-1]` verbatim. Injection placed in an
+  earlier turn bypasses `_BLOCKED_PATTERNS`. *Fix:* run `validate_request` over every
+  prior `role == "user"` turn (ideally sanitize `assistant` history too).
+- **[MED] `add_set` doesn't validate `exercise_id`.** `session_service.add_set:230` inserts
+  directly; a bogus id triggers an FK IntegrityError → 500. *Fix:* look up the `Exercise`
+  first and return 404/422 if missing.
+- **[MED] `BodyMetric.weight`/`bodyfat` have no sanity bounds.** `schemas/metric.py:9`
+  accepts negative/absurd values that then feed the trusted AI context and progress.
+  *Fix:* add `Field(gt=0, le=...)`, sourcing a range from `app/limits.py`.
+- **[LOW] Over-broad injection regexes.** `ai/prompts.py:288,293,296` false-positive on
+  legit chat ("act as a spotter", "life hack", word-boundary "ped"). *Fix:* require an
+  instruction-override context.
+- **[LOW] `get_next_day` mishandles duplicate plan_ids across program days.**
+  `program_service.py:176`/Android `WorkoutProjection.kt:85` match by `plan_id` via
+  first-occurrence, so two days sharing a plan rotate incorrectly. *Fix:* track the last
+  performed `ProgramDay` id on the session rather than matching by plan.
+- **[LOW] `get_exercise_progress` takes `max(weight)` and `max(reps)` independently**
+  (`progress_service.py:40-58`) — the reps shown may not be the reps at the top weight.
+  Fine for separate charts; revisit if used for est-1RM trend.
+
+### Android (Kotlin/Compose)
+- **[HIGH] Offline-added sets vanish on reload for synced sessions.**
+  `SessionRepository.getSession:97-114` rebuilds set logs by mapping only over
+  `serverResult.setLogs`, dropping local sets with `serverId == null`. *Fix:* append
+  unmatched local logs (`serverId == null` / `syncPending`) after the server map.
+- **[HIGH] No Room `MIGRATION_1_2` and no `fallbackToDestructiveMigration()`.**
+  `SpotterDatabase` is `version = 4`; `AppModule:86` registers only `2_3`/`3_4`. A DB at
+  schema v1 crashes on launch. *Fix:* add `fallbackToDestructiveMigration()` (Room is a
+  server mirror) and/or the missing migration.
+- **[HIGH] No reconnect-triggered sync.** `syncPending()` runs only from Home; there is no
+  `ConnectivityManager`/WorkManager trigger, and step 2 skips sets with `serverId == null`.
+  Edits to a never-synced session have no independent path to the server if Home isn't
+  opened. *Fix:* register a network callback / WorkManager job that calls `syncPending()`
+  on reconnect.
+- **[MED] `volumeLb` truncates each set before summing.** `WorkoutViewModel.kt:250` does
+  `sumOf { (reps * weight).toInt() }`. *Fix:* sum as Double, round once.
+- **[MED] `WorkoutSummaryStore` is a mutable global** (`WorkoutViewModel.kt:40`) — muscle
+  groups and PR count are lost on process death. *Fix:* pass via SavedStateHandle / route.
+- **[MED] Transient two-active-programs window.** `activateProgram` upserts only the new
+  program locally; `getActive()` uses `LIMIT 1` with no ordering. *Fix:* clear other active
+  flags locally in the same transaction.
+- **[MED] Most non-workout writes have no offline path** (metrics, plans, programs,
+  calendar, exercise search throw on failure; `logBodyweight` swallows the error silently).
+  *Fix:* write-through to Room + queue for sync where reasonable; surface swallowed errors.
+- **[MED] `listSessions` offline fallback drops plan name + set counts**
+  (`SessionRepository.kt:238-251`). *Fix:* populate counts from `setLogDao` and resolve
+  plan name from cache.
+- **[LOW] `PlannedExerciseEntity` PK `(planId, exerciseId)`** forbids the same exercise
+  twice in a plan. *Fix:* use a surrogate/`(planId, order)` PK to match the server.
+- **[LOW] Plate calculator** drops non-representable remainder and uses exact float
+  equality; input filter allows multiple dots. *Fix:* snap to nearest achievable increment,
+  show residual, guard input.
+- **[LOW] `RestTimerService` is a plain started service** (no `startForeground`,
+  `POST_NOTIFICATIONS` not requested) — the rest countdown can be killed in the background.
+  *Fix:* foreground service + runtime notification permission.
+- **[LOW] No delete-session path.** `WorkoutSessionDao.deleteById` exists but is unused;
+  there's no `DELETE /sessions/{id}` endpoint or UI. *Fix:* add the endpoint + repo/VM/UI.
+
+### Verified OK (not bugs)
+- AI plan extraction **clamps** out-of-range model output rather than dropping the plan;
+  write schemas enforce the same bounds via Pydantic. Rate limits match this doc exactly.
+- All user-data endpoints require auth and filter by `user_id`; refresh-token type checks
+  are correct. `estimatedOneRM` (client) matches `_epley_1rm` (server).
+- Android token-refresh authenticator loop-guard, host-selection interceptor ordering, and
+  the work/rest timer flow are sound.
