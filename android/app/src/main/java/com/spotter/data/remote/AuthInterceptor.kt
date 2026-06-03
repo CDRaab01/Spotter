@@ -11,8 +11,11 @@ class AuthInterceptor @Inject constructor(private val tokenStore: TokenStore) : 
     override fun intercept(chain: Interceptor.Chain): Response {
         val token = runBlocking { tokenStore.accessToken.firstOrNull() }
         val request = if (token != null) {
+            // Use header() (replace), not addHeader() (append): when TokenAuthenticator retries a
+            // request after refreshing, this interceptor runs again, and appending would leave the
+            // request with two Authorization headers.
             chain.request().newBuilder()
-                .addHeader("Authorization", "Bearer $token")
+                .header("Authorization", "Bearer $token")
                 .build()
         } else {
             chain.request()
