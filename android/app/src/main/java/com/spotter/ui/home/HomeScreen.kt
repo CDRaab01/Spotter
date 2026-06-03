@@ -37,6 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +59,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.ui.components.AnimatedCounter
 import com.spotter.ui.components.EmptyState
@@ -91,8 +94,18 @@ fun HomeScreen(
     val upcoming by viewModel.upcoming.collectAsState()
     val greeting by viewModel.greeting.collectAsState()
     val bodyweight by viewModel.bodyweight.collectAsState()
+    val planExercises by viewModel.planExercises.collectAsState()
+    val actionError by viewModel.actionError.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(actionError) {
+        actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearActionError()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToWorkout.collect { sessionId ->
@@ -111,6 +124,7 @@ fun HomeScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Spotter") },
@@ -225,6 +239,7 @@ fun HomeScreen(
                             items(state.data, key = { it.id }) { plan ->
                                 PlanCard(
                                     plan = plan,
+                                    exercises = planExercises[plan.id].orEmpty(),
                                     isStarting = isStarting,
                                     onStart = { viewModel.startSession(plan.id) },
                                     onDelete = { viewModel.deletePlan(plan.id) },
@@ -406,6 +421,7 @@ private fun GeneratingPlaceholder() {
 @Composable
 private fun PlanCard(
     plan: WorkoutPlanEntity,
+    exercises: List<PlannedExerciseEntity>,
     isStarting: Boolean,
     onStart: () -> Unit,
     onDelete: () -> Unit,
@@ -444,44 +460,50 @@ private fun PlanCard(
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                Modifier
-                    .weight(1f)
-                    .clickable { onTapCard() },
+        Column(modifier = Modifier.clickable { onTapCard() }) {
+            Row(
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(plan.name, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    plan.source,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Button(
-                onClick = onStart,
-                enabled = !isStarting,
-            ) {
-                Text(if (isStarting) "Starting…" else "Start")
-            }
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Plan options")
+                Column(Modifier.weight(1f)) {
+                    Text(plan.name, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        plan.source,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
+                Button(
+                    onClick = onStart,
+                    enabled = !isStarting,
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Rename") },
-                        onClick = { menuExpanded = false; showRenameDialog = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                        onClick = { menuExpanded = false; showDeleteConfirm = true },
-                    )
+                    Text(if (isStarting) "Starting…" else "Start")
+                }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Plan options")
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            onClick = { menuExpanded = false; showRenameDialog = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                            onClick = { menuExpanded = false; showDeleteConfirm = true },
+                        )
+                    }
+                }
+            }
+            if (exercises.isNotEmpty()) {
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                    exercises.forEach { lift ->
+                        ExercisePreviewRow(lift)
+                        Spacer(Modifier.height(2.dp))
+                    }
                 }
             }
         }

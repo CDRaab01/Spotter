@@ -1,12 +1,15 @@
 package com.spotter.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.spotter.ui.ai.AiChatScreen
+import com.spotter.ui.auth.AuthViewModel
 import com.spotter.ui.auth.ForgotPasswordScreen
 import com.spotter.ui.auth.LoginScreen
 import com.spotter.ui.auth.RegisterScreen
@@ -29,6 +32,12 @@ import com.spotter.ui.workout.WorkoutSummaryStore
 @Composable
 fun AppNavGraph(startDestination: String = Screen.Login.route) {
     val navController = rememberNavController()
+    val authViewModel: AuthViewModel = hiltViewModel()
+    LaunchedEffect(Unit) {
+        authViewModel.logoutEvents.collect {
+            navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Screen.Login.route) {
             LoginScreen(

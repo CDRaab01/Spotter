@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.repository.AuthRepository
 import com.spotter.util.AppPreferences
+import com.spotter.util.AuthEventBus
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,10 @@ import javax.inject.Inject
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val appPreferences: AppPreferences,
+    authEventBus: AuthEventBus,
 ) : ViewModel() {
+
+    val logoutEvents = authEventBus.events
 
     /**
      * Whether this device has completed the onboarding questionnaire. After login we route
