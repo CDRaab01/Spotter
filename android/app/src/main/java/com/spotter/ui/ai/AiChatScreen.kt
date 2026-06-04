@@ -74,6 +74,7 @@ fun AiChatScreen(
     val messages by viewModel.messages.collectAsState()
     val sendState by viewModel.sendState.collectAsState()
     val pendingPlan by viewModel.pendingPlan.collectAsState()
+    val pendingProgram by viewModel.pendingProgram.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var overflowExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -99,6 +100,15 @@ fun AiChatScreen(
         viewModel.planSaved.collect { planName ->
             snackbarHostState.showSnackbar(
                 message = "Plan \"$planName\" saved!",
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.programSaved.collect { programName ->
+            snackbarHostState.showSnackbar(
+                message = "Program \"$programName\" saved & activated!",
                 duration = SnackbarDuration.Short,
             )
         }
@@ -186,6 +196,17 @@ fun AiChatScreen(
                 }
             }
 
+            AnimatedVisibility(visible = pendingProgram != null) {
+                pendingProgram?.let { program ->
+                    SuggestedProgramCard(
+                        program = program,
+                        onSave = { viewModel.saveProgram() },
+                        onDismiss = { viewModel.dismissProgram() },
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -244,6 +265,62 @@ private fun SuggestedPlanCard(
             ) {
                 GradientButton(
                     text = "Save Plan",
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    Text("Dismiss")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestedProgramCard(
+    program: com.spotter.data.model.SuggestedProgram,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = program.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = "${program.days.size}-day program",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+            )
+            program.days.forEach { day ->
+                val detail = if (day.exercises.isEmpty()) "Rest"
+                    else "${day.exercises.size} lift${if (day.exercises.size != 1) "s" else ""}"
+                Text(
+                    text = "• ${day.label} · $detail",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                )
+            }
+            Text(
+                text = "Saving makes this your active program.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GradientButton(
+                    text = "Save Program",
                     onClick = onSave,
                     modifier = Modifier.weight(1f),
                 )

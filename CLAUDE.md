@@ -34,7 +34,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 - Config via environment variables (`pydantic-settings`), never hardcoded.
 
 ## Core Features
-1. **AI chat** — conversational workout-plan setup. See AI Guardrails below.
+1. **AI chat** — conversational workout-plan setup. Can generate either a single plan or a multi-day **program** (named days incl. rest days); the user opts in via a "Save Program" card (`POST /ai/programs/accept`), which creates the plans + program and activates it. When opened from an active workout (`ai_chat?sessionId=`), the chat is session-aware (server injects a trusted "workout in progress" block) and gives **advice only** — it does not edit the log. See AI Guardrails below.
 2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, and an inline edit mode. Must work offline.
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
@@ -58,7 +58,8 @@ The AI assists with workout planning only. The server enforces these — never r
 - **System prompt** lives server-side in `app/services/ai/prompts.py` and is never client-editable.
 - **Scope:** fitness/exercise programming only. Refuse medical diagnosis, nutrition-as-medical-advice, injury treatment, supplements/PEDs dosing. Redirect users to a professional for these.
 - **Safety framing:** include a non-medical-advice disclaimer; advise consulting a doctor before new programs; encourage proper form, warmups, and rest.
-- **Structured output:** when generating a plan, require the model to return JSON matching the `WorkoutPlan`/`PlannedExercise` schema. Validate with Pydantic before persisting; reject and re-prompt on malformed output.
+- **Structured output:** when generating a plan, require the model to return JSON matching the `WorkoutPlan`/`PlannedExercise` schema. Validate with Pydantic before persisting; reject and re-prompt on malformed output. A multi-day **program** is extracted the same way (`client._extract_program` → `AiProgramDraft`), reusing the shared `_resolve_exercises` resolve+clamp helper; `chat()` prefers a program when present, else falls back to a single plan. Both are extracted into `SuggestedPlan`/`SuggestedProgram` and only persisted on explicit user accept.
+- **Live-session context:** when `current_session_id` is supplied, `context_service.build_current_session_context` adds a trusted summary of the in-progress workout (exercises, sets done/target, last completed set) to the system prompt. Advice-only — the AI has no path to mutate set logs.
 - **Input handling:** treat user chat as untrusted. Guard against prompt injection (e.g. "ignore previous instructions") — the system prompt and validation layer take precedence.
 - **Sanity bounds:** the canonical bounds live in `app/limits.py` (sets/reps/weight, plus `BODY_WEIGHT_BOUNDS_LB`/`BODYFAT_BOUNDS` for metrics) and are enforced two ways — Pydantic `Field(ge/le)` constraints on the write schemas (`PlannedExerciseIn`, `SetLogCreate/Update`, `BodyMetricCreate`) reject out-of-range client input (422), and the AI plan-extraction layer (`client._extract_plan`) *clamps* whatever the model returns into bounds rather than dropping the plan.
 - **Trusted context:** `app/services/ai/context_service.build_user_context` derives a short training-history summary from the DB (recent sessions, last weights, current plan, bodyweight trend) and injects it into the system prompt as trusted context. Any client-supplied profile string is appended as stated preferences only — it never overrides the DB-derived data.
@@ -69,7 +70,8 @@ The AI assists with workout planning only. The server enforces these — never r
 - `POST /auth/register|login|refresh|forgot-password|reset-password`
 - `GET/POST /plans`, `GET /plans/{id}`, `PATCH/DELETE /plans/{id}`, `PUT /plans/{id}/exercises`
 - `GET/POST /sessions`, `GET/PATCH/DELETE /sessions/{id}`, `POST/PATCH /sessions/{id}/sets[/{set_id}]`, `GET /sessions/{id}/prior-bests` (includes progression-aware `suggested_weight`)
-- `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated plan)
+- `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated `suggested_plan` OR `suggested_program`). Accepts an optional `current_session_id` for in-workout, session-aware advice.
+- `POST /ai/programs/accept` — persists a user-accepted AI `SuggestedProgram` (creates one plan per non-rest day + a program, activates it)
 - `GET/POST /metrics/weight`
 - `GET /calendar?from=&to=`
 - `GET /exercises?search=`, `GET /users/me`
@@ -162,3 +164,22 @@ A full-codebase audit was run and the findings below were **fixed and verified**
   are correct. `estimatedOneRM` (client) matches `_epley_1rm` (server).
 - Android token-refresh authenticator loop-guard, host-selection interceptor ordering, and
   the work/rest timer flow are sound.
+
+## Sprint 2 — Features (2026-06-04)
+Delivered (server: 133 pytest green; Android: `:app:testDebugUnitTest` + `assembleDebug` green):
+- **Home polish:** greeting and the prominent bottom FAB both open AI chat; "+" moved to the
+  top bar (create/add); bodyweight FAB is now a scale icon; upcoming blocks show "Today" /
+  weekday labels and are tappable → the active program's breakdown.
+- **Stats:** "This week" replaced by **Active minutes** (sum of completed-session durations,
+  Mon→today); streak dedupes per day, counts a grace day (today-or-yesterday), and refreshes
+  when Home resumes (so finishing a workout updates it).
+- **Program breakdown:** `ProgramDetailScreen` days expand to show lifts/sets with a per-day
+  **Edit** link (reuses `PlanDetail` edit). Reachable from the Home block and a new
+  **Settings → Programs** section.
+- **AI multi-day programs:** the AI can return a `SuggestedProgram`; user saves via
+  `POST /ai/programs/accept` (auto-activates). First-run auto-generates + accepts a program
+  so the calendar/Home populate out of the box. This is also the fix for "calendar shows
+  nothing" — there was simply no active program before.
+- **In-workout AI chat (advice-only):** chat icon in the workout top bar opens a
+  session-aware chat (`ai_chat?sessionId=`); the VM resolves the local id → serverId. AI
+  editing the log is intentionally deferred to a future sprint.

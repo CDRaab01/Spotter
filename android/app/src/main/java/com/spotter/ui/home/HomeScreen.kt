@@ -18,10 +18,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.AlertDialog
@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,10 +57,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
@@ -81,6 +85,7 @@ import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,8 +98,9 @@ fun HomeScreen(
     val startState by viewModel.startState.collectAsState()
     val generatingPlan by viewModel.generatingPlan.collectAsState()
     val streak by viewModel.streak.collectAsState()
-    val weeklyWorkouts by viewModel.weeklyWorkouts.collectAsState()
+    val weeklyActiveMinutes by viewModel.weeklyActiveMinutes.collectAsState()
     val upcoming by viewModel.upcoming.collectAsState()
+    val activeProgramId by viewModel.activeProgramId.collectAsState()
     val greeting by viewModel.greeting.collectAsState()
     val bodyweight by viewModel.bodyweight.collectAsState()
     val planExercises by viewModel.planExercises.collectAsState()
@@ -114,6 +120,17 @@ fun HomeScreen(
         viewModel.navigateToWorkout.collect { sessionId ->
             navController.navigate(Screen.Workout.createRoute(sessionId))
         }
+    }
+
+    // Refresh stats/upcoming whenever Home returns to the foreground so finishing a
+    // workout immediately updates the streak, active minutes, and upcoming blocks.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     if (showBodyweightDialog) {
@@ -149,8 +166,8 @@ fun HomeScreen(
                     IconButton(onClick = { navController.navigate(Screen.Progress.route) }) {
                         Icon(Icons.Default.ShowChart, contentDescription = "Progress")
                     }
-                    IconButton(onClick = { navController.navigate(Screen.AiChat.route) }) {
-                        Icon(Icons.Default.Chat, contentDescription = "AI Coach")
+                    IconButton(onClick = { navController.navigate(Screen.CreatePlan.route) }) {
+                        Icon(Icons.Default.Add, contentDescription = "New plan")
                     }
                     var overflowExpanded by remember { mutableStateOf(false) }
                     Box {
@@ -200,10 +217,10 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SmallFloatingActionButton(onClick = { showBodyweightDialog = true }) {
-                    Icon(Icons.Default.FitnessCenter, contentDescription = "Log bodyweight")
+                    Icon(Icons.Default.MonitorWeight, contentDescription = "Log bodyweight")
                 }
-                FloatingActionButton(onClick = { navController.navigate(Screen.CreatePlan.route) }) {
-                    Icon(Icons.Default.Add, contentDescription = "New plan")
+                FloatingActionButton(onClick = { navController.navigate(Screen.AiChat.createRoute()) }) {
+                    Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "AI Coach")
                 }
             }
         },
@@ -225,8 +242,8 @@ fun HomeScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    item { GreetingHeader(greeting) }
-                    item { StatsBand(streak = streak, weeklyWorkouts = weeklyWorkouts, bodyweight = bodyweight) }
+                    item { GreetingHeader(greeting, onClick = { navController.navigate(Screen.AiChat.createRoute()) }) }
+                    item { StatsBand(streak = streak, weeklyActiveMinutes = weeklyActiveMinutes, bodyweight = bodyweight) }
 
                     if (upcomingList.isNotEmpty()) {
                         item { SectionHeader("Upcoming workouts") }
@@ -235,13 +252,16 @@ fun HomeScreen(
                                 workout = workout,
                                 isStarting = isStarting,
                                 onStart = { workout.planId?.let { viewModel.startSession(it) } },
+                                onTapCard = activeProgramId?.let { pid ->
+                                    { navController.navigate(Screen.ProgramDetail.createRoute(pid)) }
+                                },
                             )
                         }
                     }
 
                     when {
                         state.data.isEmpty() && !generatingPlan -> item {
-                            EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.route) })
+                            EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
                         }
 
                         generatingPlan && state.data.isEmpty() -> item {
@@ -273,18 +293,30 @@ fun HomeScreen(
     }
 }
 
+/** "Today" for today, the weekday name within the coming week, else a dated label. */
+private fun formatUpcomingDate(date: LocalDate): String {
+    val today = LocalDate.now()
+    return when {
+        date == today -> "Today"
+        date.isAfter(today) && date.isBefore(today.plusDays(7)) ->
+            date.format(DateTimeFormatter.ofPattern("EEEE"))
+        else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d"))
+    }
+}
+
 /** Day-streak values worth a confetti moment. */
 private fun isStreakMilestone(streak: Int): Boolean =
     streak in setOf(3, 7, 14, 30, 50, 75, 100, 150, 200, 250, 300, 365) ||
         (streak >= 100 && streak % 100 == 0)
 
 @Composable
-private fun GreetingHeader(greeting: String) {
+private fun GreetingHeader(greeting: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.extraLarge)
             .background(SpotterTheme.brand.heroGradient)
+            .clickable(onClick = onClick)
             .padding(20.dp),
     ) {
         Column {
@@ -303,7 +335,7 @@ private fun GreetingHeader(greeting: String) {
 }
 
 @Composable
-private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
+private fun StatsBand(streak: Int, weeklyActiveMinutes: Int, bodyweight: Double?) {
     val weightUnit = LocalWeightUnit.current
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -316,8 +348,8 @@ private fun StatsBand(streak: Int, weeklyWorkouts: Int, bodyweight: Double?) {
         )
         StatTile(
             modifier = Modifier.weight(1f),
-            animatedValue = weeklyWorkouts,
-            label = "this week",
+            animatedValue = weeklyActiveMinutes,
+            label = "active min",
         )
         if (bodyweight != null) {
             StatTile(
@@ -366,13 +398,19 @@ private fun UpcomingWorkoutCard(
     workout: UpcomingWorkout,
     isStarting: Boolean,
     onStart: () -> Unit,
+    onTapCard: (() -> Unit)? = null,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val cardModifier = if (onTapCard != null) {
+        Modifier.fillMaxWidth().clickable(onClick = onTapCard)
+    } else {
+        Modifier.fillMaxWidth()
+    }
+    Card(modifier = cardModifier) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = workout.date.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
+                        text = formatUpcomingDate(workout.date),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -414,7 +452,7 @@ private fun EmptyPlansPrompt(onChat: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Default.Chat,
+                Icons.AutoMirrored.Filled.Chat,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(40.dp),

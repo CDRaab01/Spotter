@@ -1,5 +1,7 @@
 package com.spotter.ui.program
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +11,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
@@ -44,9 +48,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.ui.components.ExercisePreviewRow
 import com.spotter.ui.components.GradientButton
 import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +64,7 @@ fun ProgramDetailScreen(
 ) {
     val programName by viewModel.programName.collectAsState()
     val days by viewModel.days.collectAsState()
+    val dayExercises by viewModel.dayExercises.collectAsState()
     val availablePlans by viewModel.availablePlans.collectAsState()
     val error by viewModel.error.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -128,11 +136,15 @@ fun ProgramDetailScreen(
                             index = index,
                             label = day.label,
                             planName = day.planName,
+                            exercises = day.planId?.let { dayExercises[it] }.orEmpty(),
                             canMoveUp = index > 0,
                             canMoveDown = index < days.size - 1,
                             onMoveUp = { viewModel.moveDay(index, -1) },
                             onMoveDown = { viewModel.moveDay(index, 1) },
                             onRemove = { viewModel.removeDay(index) },
+                            onEdit = day.planId?.let { planId ->
+                                { navController.navigate(Screen.PlanDetail.createRoute(planId)) }
+                            },
                         )
                     }
                 }
@@ -210,42 +222,76 @@ private fun DayRow(
     index: Int,
     label: String,
     planName: String?,
+    exercises: List<PlannedExerciseEntity>,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
+    onEdit: (() -> Unit)?,
 ) {
+    var expanded by remember { mutableStateOf(false) }
     SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "${index + 1}. $label",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    planName ?: "Rest / no plan",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "${index + 1}. $label",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        planName ?: "Rest / no plan",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
+                }
+                IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
+                }
+                IconButton(onClick = onRemove) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Remove day",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
-            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
-            }
-            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
-            }
-            IconButton(onClick = onRemove) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Remove day",
-                    tint = MaterialTheme.colorScheme.error,
-                )
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                    if (exercises.isEmpty()) {
+                        Text(
+                            "No exercises in this day.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        exercises.forEach { ex ->
+                            ExercisePreviewRow(ex)
+                            Spacer(Modifier.height(2.dp))
+                        }
+                    }
+                    if (onEdit != null) {
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedButton(onClick = onEdit) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.height(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Edit workout")
+                        }
+                    }
+                }
             }
         }
     }

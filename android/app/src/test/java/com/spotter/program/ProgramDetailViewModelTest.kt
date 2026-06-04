@@ -1,5 +1,6 @@
 package com.spotter.program
 
+import com.spotter.data.local.dao.PlannedExerciseDao
 import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.model.ProgramDayIn
@@ -20,6 +21,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -32,6 +34,7 @@ class ProgramDetailViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var programRepository: ProgramRepository
     private lateinit var planRepository: PlanRepository
+    private lateinit var plannedExerciseDao: PlannedExerciseDao
     private lateinit var viewModel: ProgramDetailViewModel
 
     private val pushPlan = WorkoutPlanEntity(
@@ -43,8 +46,9 @@ class ProgramDetailViewModelTest {
         Dispatchers.setMain(testDispatcher)
         programRepository = mock()
         planRepository = mock()
+        plannedExerciseDao = mock { onBlocking { getByPlanId(any()) } doReturn emptyList() }
         whenever(planRepository.plans).thenReturn(flowOf(listOf(pushPlan)))
-        viewModel = ProgramDetailViewModel(programRepository, planRepository)
+        viewModel = ProgramDetailViewModel(programRepository, planRepository, plannedExerciseDao)
     }
 
     @After

@@ -57,6 +57,53 @@ async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str | None
     return "\n".join(lines)
 
 
+async def build_current_session_context(
+    db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID
+) -> str | None:
+    """Trusted summary of the workout currently in progress, for in-workout chat.
+
+    Returns None if the session doesn't exist or isn't the user's. Advice-only:
+    the coach is told what's happening but cannot edit the log.
+    """
+    result = await db.execute(
+        select(WorkoutSession)
+        .where(
+            WorkoutSession.id == session_id,
+            WorkoutSession.user_id == user_id,
+        )
+        .options(selectinload(WorkoutSession.set_logs).selectinload(SetLog.exercise))
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        return None
+
+    # Group set logs by exercise, preserving completion progress.
+    by_exercise: dict[uuid.UUID, list[SetLog]] = {}
+    for sl in session.set_logs:
+        by_exercise.setdefault(sl.exercise_id, []).append(sl)
+
+    lines: list[str] = [
+        "The athlete is CURRENTLY in an active workout (in progress right now). "
+        "Use this live state when answering; give concise, actionable coaching."
+    ]
+    for sets in by_exercise.values():
+        sets.sort(key=lambda s: s.set_number)
+        name = sets[0].exercise.name if sets[0].exercise else "Unknown"
+        done = sum(1 for s in sets if s.completed)
+        last = next(
+            (s for s in reversed(sets) if s.completed),
+            None,
+        )
+        if last is not None and last.weight is not None:
+            last_txt = f"; last completed {last.reps}@{last.weight:g} lb"
+        elif last is not None:
+            last_txt = f"; last completed {last.reps} reps bodyweight"
+        else:
+            last_txt = ""
+        lines.append(f"- {name}: {done}/{len(sets)} sets done{last_txt}")
+    return "\n".join(lines)
+
+
 async def _recent_sessions(
     db: AsyncSession, user_id: uuid.UUID
 ) -> list[WorkoutSession]:

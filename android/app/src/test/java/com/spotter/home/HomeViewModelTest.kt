@@ -11,6 +11,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.PlanOut
+import com.spotter.data.model.SessionSummary
 import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.repository.AiRepository
@@ -192,7 +193,7 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `upcoming projects two workouts with limited lifts when a program is active`() = runTest(testDispatcher) {
+    fun `upcoming projects workouts with limited lifts when a program is active`() = runTest(testDispatcher) {
         whenever(programDao.getActive()).thenReturn(WorkoutProgramEntity("prog-1", "PPL", isActive = true))
         whenever(programDayDao.getByProgram(any())).thenReturn(
             listOf(
@@ -220,10 +221,47 @@ class HomeViewModelTest {
 
         val state = viewModel.upcoming.value
         assertIs<UiState.Success<List<com.spotter.util.UpcomingWorkout>>>(state)
-        assertEquals(2, state.data.size)
+        assertEquals(4, state.data.size)
         // Completed Push -> next slot is Pull, capped at 4 lifts.
         assertEquals("plan-B", state.data[0].planId)
         assertEquals(4, state.data[0].lifts.size)
+        // activeProgramId is surfaced for the tappable upcoming block.
+        assertEquals("prog-1", viewModel.activeProgramId.value)
+    }
+
+    @Test
+    fun `loadStats sums active minutes and dedupes same-day streak`() = runTest(testDispatcher) {
+        val today = LocalDate.now().toString()
+        whenever(sessionRepository.listSessions()).thenReturn(
+            listOf(
+                SessionSummary(id = "a", date = today, status = "completed", durationSeconds = 1800, totalSets = 5, completedSets = 5),
+                SessionSummary(id = "b", date = today, status = "completed", durationSeconds = 1200, totalSets = 4, completedSets = 4),
+                SessionSummary(id = "c", date = today, status = "in_progress", durationSeconds = 9999, totalSets = 3, completedSets = 0),
+            )
+        )
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        // Two completed sessions today → 3000s = 50 min; in-progress ignored.
+        assertEquals(50, viewModel.weeklyActiveMinutes.value)
+        // Two completed sessions on the same day count once.
+        assertEquals(1, viewModel.streak.value)
+    }
+
+    @Test
+    fun `streak counts yesterday as grace day when today not trained`() = runTest(testDispatcher) {
+        val yesterday = LocalDate.now().minusDays(1).toString()
+        whenever(sessionRepository.listSessions()).thenReturn(
+            listOf(
+                SessionSummary(id = "a", date = yesterday, status = "completed", durationSeconds = 600, totalSets = 3, completedSets = 3),
+            )
+        )
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        assertEquals(1, viewModel.streak.value)
     }
 
     @Test

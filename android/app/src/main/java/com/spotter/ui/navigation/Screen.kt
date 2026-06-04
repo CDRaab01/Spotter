@@ -13,7 +13,11 @@ sealed class Screen(val route: String) {
     }
     data object Calendar : Screen("calendar")
     data object Progress : Screen("progress")
-    data object AiChat : Screen("ai_chat")
+    data object AiChat : Screen("ai_chat?sessionId={sessionId}") {
+        /** Pass a sessionId to open chat aware of an in-progress workout. */
+        fun createRoute(sessionId: String? = null) =
+            if (sessionId != null) "ai_chat?sessionId=$sessionId" else "ai_chat"
+    }
     data object CreatePlan : Screen("create_plan")
     data object PlanDetail : Screen("plan_detail/{planId}") {
         fun createRoute(planId: String) = "plan_detail/$planId"

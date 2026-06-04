@@ -1,15 +1,20 @@
 package com.spotter.ui.ai
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.dao.ChatMessageDao
+import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.ChatMessageEntity
+import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.SuggestedPlan
+import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,9 +34,15 @@ import javax.inject.Inject
 class AiChatViewModel @Inject constructor(
     private val aiRepository: AiRepository,
     private val planRepository: PlanRepository,
+    private val programRepository: ProgramRepository,
     private val chatMessageDao: ChatMessageDao,
+    private val sessionDao: WorkoutSessionDao,
     private val appPreferences: AppPreferences,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    /** Local session id, set when chat is opened from within an active workout. */
+    private val localSessionId: String? = savedStateHandle["sessionId"]
 
     val messages: StateFlow<List<ChatMessage>> = chatMessageDao.getAllMessages()
         .map { entities -> entities.map { ChatMessage(it.role, it.content) } }
@@ -43,8 +54,14 @@ class AiChatViewModel @Inject constructor(
     private val _pendingPlan = MutableStateFlow<SuggestedPlan?>(null)
     val pendingPlan: StateFlow<SuggestedPlan?> = _pendingPlan.asStateFlow()
 
+    private val _pendingProgram = MutableStateFlow<SuggestedProgram?>(null)
+    val pendingProgram: StateFlow<SuggestedProgram?> = _pendingProgram.asStateFlow()
+
     private val _planSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val planSaved: SharedFlow<String> = _planSaved
+
+    private val _programSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val programSaved: SharedFlow<String> = _programSaved
 
     fun send(userText: String) {
         if (userText.isBlank() || _sendState.value is UiState.Loading) return
@@ -55,14 +72,26 @@ class AiChatViewModel @Inject constructor(
             _sendState.value = UiState.Loading
             try {
                 val profile = appPreferences.userProfile.first()
+                // The route carries the local session id; the server needs the server-side
+                // id to look up the live session, so resolve it (null when unsynced).
+                val serverSessionId = localSessionId?.let {
+                    runCatching { sessionDao.getById(it)?.serverId }.getOrNull()
+                }
                 val response = aiRepository.chat(
                     ChatRequest(
                         messages = allMessages,
                         userContext = profile.toContextString().ifBlank { null },
+                        currentSessionId = serverSessionId,
                     )
                 )
                 chatMessageDao.insert(ChatMessageEntity(role = "assistant", content = response.reply))
-                response.suggestedPlan?.let { _pendingPlan.value = it }
+                // Prefer a program when present; never surface both.
+                val program = response.suggestedProgram
+                if (program != null) {
+                    _pendingProgram.value = program
+                } else {
+                    response.suggestedPlan?.let { _pendingPlan.value = it }
+                }
                 _sendState.value = UiState.Success(Unit)
             } catch (e: Exception) {
                 _sendState.value = UiState.Error(e.message ?: "Failed to reach Spotter. Try again.")
@@ -91,6 +120,29 @@ class AiChatViewModel @Inject constructor(
 
     fun dismissPlan() {
         _pendingPlan.value = null
+    }
+
+    fun saveProgram() {
+        val program = _pendingProgram.value ?: return
+        viewModelScope.launch {
+            try {
+                val result = aiRepository.acceptProgram(
+                    AcceptProgramRequest(name = program.name, days = program.days)
+                )
+                // Pull the new program + its plans into the local cache so Home/Calendar
+                // immediately reflect the now-active program.
+                runCatching { programRepository.sync() }
+                runCatching { planRepository.sync() }
+                _pendingProgram.value = null
+                _programSaved.emit(result.name)
+            } catch (e: Exception) {
+                _sendState.value = UiState.Error(e.message ?: "Failed to save program.")
+            }
+        }
+    }
+
+    fun dismissProgram() {
+        _pendingProgram.value = null
     }
 
     fun clearHistory() {

@@ -10,6 +10,7 @@ data class ChatMessage(val role: String, val content: String)
 data class ChatRequest(
     val messages: List<ChatMessage>,
     @SerialName("user_context") val userContext: String? = null,
+    @SerialName("current_session_id") val currentSessionId: String? = null,
 )
 
 @Serializable
@@ -19,7 +20,27 @@ data class SuggestedPlan(
 )
 
 @Serializable
+data class SuggestedProgramDay(
+    val label: String,
+    val exercises: List<PlannedExerciseIn> = emptyList(),
+    val order: Int = 0,
+)
+
+@Serializable
+data class SuggestedProgram(
+    val name: String,
+    val days: List<SuggestedProgramDay>,
+)
+
+@Serializable
+data class AcceptProgramRequest(
+    val name: String,
+    val days: List<SuggestedProgramDay>,
+)
+
+@Serializable
 data class ChatResponse(
     val reply: String,
     @SerialName("suggested_plan") val suggestedPlan: SuggestedPlan? = null,
+    @SerialName("suggested_program") val suggestedProgram: SuggestedProgram? = null,
 )

@@ -1,5 +1,6 @@
 package com.spotter.data.remote
 
+import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
@@ -117,6 +118,9 @@ interface ApiService {
     // AI
     @POST("ai/chat")
     suspend fun aiChat(@Body req: ChatRequest): ChatResponse
+
+    @POST("ai/programs/accept")
+    suspend fun acceptProgram(@Body req: AcceptProgramRequest): ProgramOut
 
     // Calendar
     @GET("calendar")

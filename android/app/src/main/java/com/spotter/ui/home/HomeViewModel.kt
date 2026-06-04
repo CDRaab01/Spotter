@@ -8,6 +8,7 @@ import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
@@ -73,8 +75,11 @@ class HomeViewModel @Inject constructor(
     private val _streak = MutableStateFlow(0)
     val streak: StateFlow<Int> = _streak.asStateFlow()
 
-    private val _weeklyWorkouts = MutableStateFlow(0)
-    val weeklyWorkouts: StateFlow<Int> = _weeklyWorkouts.asStateFlow()
+    private val _weeklyActiveMinutes = MutableStateFlow(0)
+    val weeklyActiveMinutes: StateFlow<Int> = _weeklyActiveMinutes.asStateFlow()
+
+    private val _activeProgramId = MutableStateFlow<String?>(null)
+    val activeProgramId: StateFlow<String?> = _activeProgramId.asStateFlow()
 
     private val _nextProgramDay = MutableStateFlow<ProgramDayOut?>(null)
     val nextProgramDay: StateFlow<ProgramDayOut?> = _nextProgramDay.asStateFlow()
@@ -106,20 +111,37 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val sessions = sessionRepository.listSessions()
-                val completedDates = sessions
-                    .filter { it.status == "completed" }
+                val completed = sessions.filter { it.status == "completed" }
+                val completedDates = completed
                     .mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }
                     .toSet()
 
+                // Streak: consecutive days with a completed workout, deduped per day.
+                // Anchor at today if trained today, else yesterday (grace day) so the
+                // streak persists through the current day until a workout is finished.
+                val today = LocalDate.now()
+                var day = if (completedDates.contains(today)) today else today.minusDays(1)
                 var streak = 0
-                var day = LocalDate.now()
                 while (completedDates.contains(day)) { streak++; day = day.minusDays(1) }
                 _streak.value = streak
 
-                val weekStart = LocalDate.now().minusDays(6)
-                _weeklyWorkouts.value = completedDates.count { !it.isBefore(weekStart) }
+                // Active minutes: sum of completed-session durations within the current
+                // week (Monday → today).
+                val weekStart = today.with(DayOfWeek.MONDAY)
+                _weeklyActiveMinutes.value = completed
+                    .filter { s ->
+                        runCatching { LocalDate.parse(s.date) }.getOrNull()
+                            ?.let { !it.isBefore(weekStart) && !it.isAfter(today) } ?: false
+                    }
+                    .sumOf { (it.durationSeconds ?: 0) } / 60
             } catch (_: Exception) {}
         }
+    }
+
+    /** Re-pull stats and upcoming workouts (called on Home resume). */
+    fun refresh() {
+        loadStats()
+        loadUpcoming()
     }
 
     private fun observeBodyweight() {
@@ -140,6 +162,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val active = programDao.getActive()
+                _activeProgramId.value = active?.id
                 if (active == null) {
                     _upcoming.value = UiState.Success(emptyList())
                     return@launch
@@ -159,7 +182,7 @@ class HomeViewModel @Inject constructor(
                     }
                     .maxByOrNull { it.date }
 
-                val slots = WorkoutProjection.project(LocalDate.now(), cadence, anchor, days, count = 2)
+                val slots = WorkoutProjection.project(LocalDate.now(), cadence, anchor, days, count = 4)
                 val result = slots.map { slot ->
                     val lifts = slot.planId
                         ?.let { plannedExerciseDao.getByPlanId(it).take(4) }
@@ -223,16 +246,27 @@ class HomeViewModel @Inject constructor(
                         messages = listOf(
                             ChatMessage(
                                 role = "user",
-                                content = "Based on my profile, generate a starter workout plan for me.",
+                                content = "Based on my profile, generate a multi-day workout program for me.",
                             )
                         ),
                         userContext = profile.toContextString().ifBlank { null },
                     )
                 )
-                response.suggestedPlan?.let { plan ->
-                    planRepository.createPlan(
-                        PlanCreate(name = plan.name, source = "ai", exercises = plan.exercises)
+                val program = response.suggestedProgram
+                if (program != null) {
+                    // First-run auto-accept is safe — there's no existing active program
+                    // to clobber. This gives new users a scheduled program out of the box.
+                    aiRepository.acceptProgram(
+                        AcceptProgramRequest(name = program.name, days = program.days)
                     )
+                    runCatching { programRepository.sync() }
+                    loadUpcoming()
+                } else {
+                    response.suggestedPlan?.let { plan ->
+                        planRepository.createPlan(
+                            PlanCreate(name = plan.name, source = "ai", exercises = plan.exercises)
+                        )
+                    }
                 }
             } catch (_: Exception) {
                 // silent — user can still create a plan manually

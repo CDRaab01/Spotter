@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -168,6 +169,14 @@ fun WorkoutScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        navController.navigate(Screen.AiChat.createRoute(sessionId))
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Chat,
+                            contentDescription = "Ask the coach",
+                        )
+                    }
                     IconButton(
                         onClick = { showFinishDialog = true },
                         enabled = completedCount > 0 && !isFinishing,

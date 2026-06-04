@@ -5,9 +5,14 @@ import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.PlannedExerciseIn
 import com.spotter.data.model.PlanOut
+import com.spotter.data.model.ProgramOut
 import com.spotter.data.model.SuggestedPlan
+import com.spotter.data.model.SuggestedProgram
+import com.spotter.data.model.SuggestedProgramDay
+import androidx.lifecycle.SavedStateHandle
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.ui.ai.AiChatViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
@@ -51,6 +56,7 @@ class AiChatViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var aiRepository: AiRepository
     private lateinit var planRepository: PlanRepository
+    private lateinit var programRepository: ProgramRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var fakeChatDao: FakeChatMessageDao
     private lateinit var viewModel: AiChatViewModel
@@ -60,10 +66,14 @@ class AiChatViewModelTest {
         Dispatchers.setMain(testDispatcher)
         aiRepository = mock()
         planRepository = mock()
+        programRepository = mock()
         appPreferences = mock()
         fakeChatDao = FakeChatMessageDao()
         whenever(appPreferences.userProfile).thenReturn(flowOf(UserProfile()))
-        viewModel = AiChatViewModel(aiRepository, planRepository, fakeChatDao, appPreferences)
+        viewModel = AiChatViewModel(
+            aiRepository, planRepository, programRepository, fakeChatDao, mock(), appPreferences,
+            SavedStateHandle(),
+        )
     }
 
     @After
@@ -198,6 +208,64 @@ class AiChatViewModelTest {
         viewModel.dismissPlan()
 
         assertNull(viewModel.pendingPlan.value)
+    }
+
+    @Test
+    fun `send prefers program over plan when both present`() = runTest(testDispatcher) {
+        val plan = SuggestedPlan(name = "Plan", exercises = emptyList())
+        val program = SuggestedProgram(
+            name = "PPL",
+            days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
+        )
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "Here's your split.", suggestedPlan = plan, suggestedProgram = program)
+        )
+
+        viewModel.send("give me a ppl program")
+        advanceTimeBy(200)
+
+        assertNotNull(viewModel.pendingProgram.value)
+        assertEquals("PPL", viewModel.pendingProgram.value?.name)
+        assertNull(viewModel.pendingPlan.value)
+    }
+
+    @Test
+    fun `saveProgram accepts program, clears pending, emits programSaved`() = runTest(testDispatcher) {
+        val program = SuggestedProgram(
+            name = "PPL",
+            days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
+        )
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "split", suggestedProgram = program))
+        whenever(aiRepository.acceptProgram(any()))
+            .thenReturn(ProgramOut(id = "prog-1", name = "PPL", isActive = true))
+
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+
+        val saved = mutableListOf<String>()
+        val job = launch { viewModel.programSaved.collect { saved.add(it) } }
+
+        viewModel.saveProgram()
+        advanceTimeBy(200)
+
+        assertNull(viewModel.pendingProgram.value)
+        assertEquals(listOf("PPL"), saved)
+        job.cancel()
+    }
+
+    @Test
+    fun `dismissProgram clears pendingProgram`() = runTest(testDispatcher) {
+        val program = SuggestedProgram(name = "P", days = emptyList())
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "ok", suggestedProgram = program))
+        viewModel.send("go")
+        advanceTimeBy(200)
+        assertNotNull(viewModel.pendingProgram.value)
+
+        viewModel.dismissProgram()
+
+        assertNull(viewModel.pendingProgram.value)
     }
 
     @Test

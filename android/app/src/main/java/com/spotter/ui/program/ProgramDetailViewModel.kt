@@ -2,6 +2,8 @@ package com.spotter.ui.program
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.model.ProgramDayIn
 import com.spotter.data.model.ProgramDaysUpdate
@@ -28,6 +30,7 @@ data class DraftDay(
 class ProgramDetailViewModel @Inject constructor(
     private val programRepository: ProgramRepository,
     private val planRepository: PlanRepository,
+    private val plannedExerciseDao: PlannedExerciseDao,
 ) : ViewModel() {
 
     private val _programName = MutableStateFlow("Program")
@@ -35,6 +38,10 @@ class ProgramDetailViewModel @Inject constructor(
 
     private val _days = MutableStateFlow<List<DraftDay>>(emptyList())
     val days: StateFlow<List<DraftDay>> = _days
+
+    /** Per-plan exercise breakdown, keyed by planId, for the day expansion view. */
+    private val _dayExercises = MutableStateFlow<Map<String, List<PlannedExerciseEntity>>>(emptyMap())
+    val dayExercises: StateFlow<Map<String, List<PlannedExerciseEntity>>> = _dayExercises
 
     val availablePlans: StateFlow<List<WorkoutPlanEntity>> =
         planRepository.plans.stateIn(
@@ -55,9 +62,23 @@ class ProgramDetailViewModel @Inject constructor(
             try { programRepository.sync() } catch (_: Exception) {}
             try { planRepository.sync() } catch (_: Exception) {}
             _programName.value = programRepository.programName(id) ?: "Program"
-            _days.value = programRepository.daysFor(id).map {
+            val days = programRepository.daysFor(id)
+            _days.value = days.map {
                 DraftDay(planId = it.planId, planName = it.planName, label = it.label)
             }
+            // Load each linked plan's exercises for the expandable breakdown.
+            _dayExercises.value = days
+                .mapNotNull { it.planId }
+                .distinct()
+                .associateWith { plannedExerciseDao.getByPlanId(it) }
+        }
+    }
+
+    /** Re-load the breakdown for a single plan after it was edited in PlanDetail. */
+    fun refreshPlanExercises(planId: String) {
+        viewModelScope.launch {
+            val updated = plannedExerciseDao.getByPlanId(planId)
+            _dayExercises.value = _dayExercises.value.toMutableMap().apply { put(planId, updated) }
         }
     }
 

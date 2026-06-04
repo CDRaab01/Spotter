@@ -112,7 +112,16 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
         composable(Screen.Progress.route) {
             ProgressScreen(navController = navController)
         }
-        composable(Screen.AiChat.route) {
+        composable(
+            route = Screen.AiChat.route,
+            arguments = listOf(
+                navArgument("sessionId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) {
             AiChatScreen(navController = navController)
         }
         composable(Screen.CreatePlan.route) {

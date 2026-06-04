@@ -3,6 +3,7 @@ package com.spotter.settings
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.ui.settings.SettingsViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
@@ -36,6 +37,7 @@ class SettingsViewModelTest {
     private lateinit var tokenStore: TokenStore
     private lateinit var appPreferences: AppPreferences
     private lateinit var database: SpotterDatabase
+    private lateinit var programRepository: ProgramRepository
     private lateinit var viewModel: SettingsViewModel
 
     @Before
@@ -45,15 +47,17 @@ class SettingsViewModelTest {
         tokenStore = mock()
         appPreferences = mock()
         database = mock()
+        programRepository = mock()
         whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
         whenever(appPreferences.weightUnit).thenReturn(flowOf(WeightUnit.LBS))
         whenever(appPreferences.distanceUnit).thenReturn(flowOf(DistanceUnit.MI))
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(appPreferences.serverUrl).thenReturn(flowOf("http://10.0.2.2:8000/"))
+        whenever(programRepository.programs).thenReturn(flowOf(emptyList()))
     }
 
     private fun createViewModel() =
-        SettingsViewModel(api, tokenStore, appPreferences, database, testDispatcher)
+        SettingsViewModel(api, tokenStore, appPreferences, database, programRepository, testDispatcher)
 
     @After
     fun tearDown() {

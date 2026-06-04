@@ -3,8 +3,10 @@ package com.spotter.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.SpotterDatabase
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.di.IoDispatcher
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
@@ -34,11 +36,16 @@ class SettingsViewModel @Inject constructor(
     private val tokenStore: TokenStore,
     private val appPreferences: AppPreferences,
     private val database: SpotterDatabase,
+    private val programRepository: ProgramRepository,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _user = MutableStateFlow<UiState<UserOut>>(UiState.Loading)
     val user: StateFlow<UiState<UserOut>> = _user.asStateFlow()
+
+    /** All programs (incl. AI-generated), surfaced for the Programs settings section. */
+    val programs: StateFlow<List<WorkoutProgramEntity>> = programRepository.programs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _navigateToLogin = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateToLogin: SharedFlow<Unit> = _navigateToLogin.asSharedFlow()
@@ -73,6 +80,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadUser()
+        viewModelScope.launch { runCatching { programRepository.sync() } }
     }
 
     private fun loadUser() {
