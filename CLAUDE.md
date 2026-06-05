@@ -183,3 +183,28 @@ Delivered (server: 133 pytest green; Android: `:app:testDebugUnitTest` + `assemb
 - **In-workout AI chat (advice-only):** chat icon in the workout top bar opens a
   session-aware chat (`ai_chat?sessionId=`); the VM resolves the local id → serverId. AI
   editing the log is intentionally deferred to a future sprint.
+
+## Sprint 3 — Features (2026-06-05)
+Delivered (Android: `:app:testDebugUnitTest` + `:app:compileDebugKotlin` green; server prompt
+change is text-only, covered by the existing AI guardrail tests):
+- **Preset programs (client-side):** new **Preset programs** screen (`ui/program/ProgramPresetsScreen.kt`
+  + `ProgramPresetsViewModel.kt`), reachable from the Programs screen (a "Presets" top-bar action
+  and a "Browse presets" empty-state button). Six curated starters live in
+  `ui/program/ProgramPresets.kt` (StrongLifts 5×5, PPL, Upper/Lower, Full Body, Dumbbell-only,
+  Bodyweight), defined by exercise **name**. Applying one fetches `GET /exercises`, resolves
+  names → ids (dropping any unresolved), and reuses `POST /ai/programs/accept` to create the
+  plans + program and activate it (replacing any prior active program) — **no server change**.
+  Presets prescribe structure (movements/sets/reps), not weights. A catalog guardrail test
+  asserts every preset name matches a seeded exercise.
+- **Personalized greeting:** the Home greeting now appends the signed-in user's first name
+  (e.g. "Good afternoon, Sonic"). `HomeViewModel` fetches the name via `getMe`, takes the first
+  whitespace-delimited token, and falls back to the plain time-of-day greeting when offline.
+- **Calendar self-sync:** `loadMonth(sync=true)` now pulls programs + plans (and pushes pending
+  sessions) on first load and on resume, so opening Calendar without a prior sync no longer shows
+  an empty schedule; a "No active program" hint links to the AI coach / Programs when nothing is
+  scheduled.
+- **[AI guardrail/prompt change] Intake Protocol no longer re-asks known onboarding info.**
+  `app/services/ai/prompts.py` now instructs the model to read the `## User Profile` context
+  first, treat any item already present (equipment, experience, goal, age range, limitations,
+  training days) as answered, ask only for genuine gaps, and skip intake entirely when everything
+  is known. Behaviour change is confined to the prompt module; no validation/scope changes.
