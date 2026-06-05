@@ -32,15 +32,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.spotter.data.model.CalendarEntry
 import com.spotter.ui.components.ErrorState
@@ -65,11 +69,23 @@ fun CalendarScreen(
     val entries by viewModel.entries.collectAsState()
     val projected by viewModel.projected.collectAsState()
     val selectedDate by viewModel.selectedDate.collectAsState()
+    val hasActiveProgram by viewModel.hasActiveProgram.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.navigateToWorkout.collect { sessionId ->
             navController.navigate(Screen.Workout.createRoute(sessionId))
         }
+    }
+
+    // Re-sync the active program + schedule whenever the calendar returns to the
+    // foreground (e.g. after activating a program elsewhere).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -125,6 +141,37 @@ fun CalendarScreen(
             }
 
             Spacer(Modifier.height(4.dp))
+
+            if (!hasActiveProgram) {
+                SpotterCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            "No active program",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            "Activate a program to see your workouts scheduled here. Ask the AI " +
+                                "coach for a multi-day program, or pick one under Settings → Programs.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GradientButton(
+                                text = "Ask the coach",
+                                onClick = { navController.navigate(Screen.AiChat.createRoute()) },
+                            )
+                            OutlinedButton(onClick = { navController.navigate(Screen.Programs.route) }) {
+                                Text("Programs")
+                            }
+                        }
+                    }
+                }
+            }
 
             when (val state = entries) {
                 is UiState.Loading -> Box(

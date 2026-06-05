@@ -6,6 +6,8 @@ import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.model.SessionOut
 import com.spotter.data.repository.CalendarRepository
+import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.calendar.CalendarViewModel
 import com.spotter.util.AppPreferences
@@ -36,6 +38,8 @@ class CalendarViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var calendarRepository: CalendarRepository
     private lateinit var sessionRepository: SessionRepository
+    private lateinit var programRepository: ProgramRepository
+    private lateinit var planRepository: PlanRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var programDao: WorkoutProgramDao
@@ -47,6 +51,8 @@ class CalendarViewModelTest {
         Dispatchers.setMain(testDispatcher)
         calendarRepository = mock()
         sessionRepository = mock()
+        programRepository = mock()
+        planRepository = mock()
         appPreferences = mock()
         sessionDao = mock()
         programDao = mock()
@@ -58,6 +64,8 @@ class CalendarViewModelTest {
     private fun createViewModel() = CalendarViewModel(
         calendarRepository,
         sessionRepository,
+        programRepository,
+        planRepository,
         appPreferences,
         sessionDao,
         programDao,
@@ -81,6 +89,7 @@ class CalendarViewModelTest {
 
             assertIs<UiState.Success<*>>(viewModel.entries.value)
             assertTrue(viewModel.projected.value.isEmpty())
+            assertTrue(!viewModel.hasActiveProgram.value)
         }
 
     @Test

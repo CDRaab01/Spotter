@@ -9,6 +9,8 @@ import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.model.CalendarEntry
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.repository.CalendarRepository
+import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.ProjectionDay
@@ -34,6 +36,8 @@ import javax.inject.Inject
 class CalendarViewModel @Inject constructor(
     private val calendarRepository: CalendarRepository,
     private val sessionRepository: SessionRepository,
+    private val programRepository: ProgramRepository,
+    private val planRepository: PlanRepository,
     private val appPreferences: AppPreferences,
     private val sessionDao: WorkoutSessionDao,
     private val programDao: WorkoutProgramDao,
@@ -51,6 +55,10 @@ class CalendarViewModel @Inject constructor(
     private val _projected = MutableStateFlow<List<UpcomingWorkout>>(emptyList())
     val projected: StateFlow<List<UpcomingWorkout>> = _projected.asStateFlow()
 
+    /** False when there's no active program to schedule — drives an empty-state hint. */
+    private val _hasActiveProgram = MutableStateFlow(true)
+    val hasActiveProgram: StateFlow<Boolean> = _hasActiveProgram.asStateFlow()
+
     private val _selectedDate = MutableStateFlow<LocalDate?>(null)
     val selectedDate: StateFlow<LocalDate?> = _selectedDate.asStateFlow()
 
@@ -58,14 +66,24 @@ class CalendarViewModel @Inject constructor(
     val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
 
     init {
-        loadMonth(YearMonth.now())
+        loadMonth(YearMonth.now(), sync = true)
     }
 
-    fun loadMonth(month: YearMonth) {
+    /** Re-sync sources and recompute the current month (called on screen resume). */
+    fun refresh() = loadMonth(_displayedMonth.value, sync = true)
+
+    fun loadMonth(month: YearMonth, sync: Boolean = false) {
         _displayedMonth.value = month
         _selectedDate.value = null
         _projected.value = emptyList()
         viewModelScope.launch {
+            // Pull the active program + its plans (and push pending sessions) so the
+            // schedule reflects server state, not just whatever happens to be cached.
+            if (sync) {
+                runCatching { programRepository.sync() }
+                runCatching { planRepository.sync() }
+                runCatching { sessionRepository.syncPending() }
+            }
             _entries.value = UiState.Loading
             val loaded = try {
                 val from = month.atDay(1).toString()
@@ -88,12 +106,15 @@ class CalendarViewModel @Inject constructor(
         month: YearMonth,
         entries: List<CalendarEntry>,
     ): List<UpcomingWorkout> {
+        val active = programDao.getActive()
+        _hasActiveProgram.value = active != null
+
         val today = LocalDate.now()
         val monthStart = month.atDay(1)
         val monthEnd = month.atEndOfMonth()
         if (monthEnd.isBefore(today)) return emptyList()
 
-        val active = programDao.getActive() ?: return emptyList()
+        if (active == null) return emptyList()
         val days = programDayDao.getByProgram(active.id)
             .map { ProjectionDay(it.planId, it.label, it.planName) }
         if (days.isEmpty()) return emptyList()
