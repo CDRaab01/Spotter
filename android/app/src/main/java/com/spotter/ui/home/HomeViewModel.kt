@@ -16,6 +16,7 @@ import com.spotter.data.model.PlanCreate
 import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.ProgramDayOut
+import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
@@ -51,6 +52,7 @@ class HomeViewModel @Inject constructor(
     private val aiRepository: AiRepository,
     private val programRepository: ProgramRepository,
     private val appPreferences: AppPreferences,
+    private val api: ApiService,
     private val sessionDao: WorkoutSessionDao,
     private val programDao: WorkoutProgramDao,
     private val programDayDao: ProgramDayDao,
@@ -105,6 +107,20 @@ class HomeViewModel @Inject constructor(
         sync()
         loadStats()
         loadUpcoming()
+        loadGreeting()
+    }
+
+    /**
+     * Personalises the greeting with the user's first name (e.g. "Good afternoon, Sonic").
+     * Falls back to the plain time-of-day greeting if the name can't be fetched (offline).
+     */
+    private fun loadGreeting() {
+        viewModelScope.launch {
+            val firstName = runCatching { firstNameOf(api.getMe().name) }.getOrNull()
+            if (!firstName.isNullOrBlank()) {
+                _greeting.value = greetingForTime(LocalTime.now(), firstName)
+            }
+        }
     }
 
     private fun loadStats() {
@@ -334,10 +350,16 @@ class HomeViewModel @Inject constructor(
     }
 
     private companion object {
-        fun greetingForTime(time: LocalTime): String = when (time.hour) {
-            in 5..11 -> "Good morning"
-            in 12..16 -> "Good afternoon"
-            else -> "Good evening"
+        fun greetingForTime(time: LocalTime, firstName: String? = null): String {
+            val base = when (time.hour) {
+                in 5..11 -> "Good morning"
+                in 12..16 -> "Good afternoon"
+                else -> "Good evening"
+            }
+            return if (firstName.isNullOrBlank()) base else "$base, $firstName"
         }
+
+        /** First whitespace-delimited token of a full name, e.g. "Sonic Hedgehog" -> "Sonic". */
+        fun firstNameOf(fullName: String): String = fullName.trim().substringBefore(' ').trim()
     }
 }

@@ -14,6 +14,8 @@ import com.spotter.data.model.PlanOut
 import com.spotter.data.model.SessionSummary
 import com.spotter.data.model.PlanUpdate
 import com.spotter.data.model.ProgramDayOut
+import com.spotter.data.model.UserOut
+import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.PlanRepository
@@ -40,6 +42,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.wheneverBlocking
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -60,6 +63,7 @@ class HomeViewModelTest {
     private lateinit var programDao: WorkoutProgramDao
     private lateinit var programDayDao: ProgramDayDao
     private lateinit var plannedExerciseDao: PlannedExerciseDao
+    private lateinit var apiService: ApiService
     private lateinit var viewModel: HomeViewModel
 
     @Before
@@ -75,10 +79,14 @@ class HomeViewModelTest {
         programDao = mock()
         programDayDao = mock()
         plannedExerciseDao = mock()
+        apiService = mock()
         whenever(planRepository.plans).thenReturn(emptyFlow())
         whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(metricRepository.metrics).thenReturn(emptyFlow())
+        wheneverBlocking { apiService.getMe() }.thenReturn(
+            UserOut(id = "user-1", name = "Sonic Hedgehog", email = "sonic@spotter.com"),
+        )
         viewModel = createViewModel()
     }
 
@@ -89,6 +97,7 @@ class HomeViewModelTest {
         aiRepository,
         programRepository,
         appPreferences,
+        apiService,
         sessionDao,
         programDao,
         programDayDao,
@@ -267,5 +276,13 @@ class HomeViewModelTest {
     @Test
     fun `greeting is non-blank`() {
         assertTrue(viewModel.greeting.value.isNotBlank())
+    }
+
+    @Test
+    fun `greeting appends the user's first name`() = runTest(testDispatcher) {
+        advanceTimeBy(200)
+
+        val greeting = viewModel.greeting.value
+        assertTrue(greeting.endsWith(", Sonic"), "expected first name suffix, got: $greeting")
     }
 }
