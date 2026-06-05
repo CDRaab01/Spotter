@@ -120,6 +120,29 @@ async def test_single_plan_still_returns_plan_not_program(auth_client, exercise)
     assert data["suggested_plan"]["name"] == "Single Day"
 
 
+async def test_program_reply_strips_json_block(auth_client, exercise):
+    """The chat bubble must show only prose — the JSON belongs in the Save card."""
+    note = "This is an Upper/Lower split for strength."
+    resp = await _chat(auth_client, f"```json\n{_program_json(exercise.name)}\n```\n\n{note}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["suggested_program"] is not None
+    assert "```" not in data["reply"]
+    assert "exercise_id" not in data["reply"]
+    assert note in data["reply"]
+
+
+async def test_program_reply_falls_back_when_json_only(auth_client, exercise):
+    """If the model returns nothing but JSON, the reply points at the Save card."""
+    resp = await _chat(auth_client, f"```json\n{_program_json(exercise.name)}\n```")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["suggested_program"] is not None
+    assert data["reply"].strip() != ""
+    assert "```" not in data["reply"]
+    assert "Save Program" in data["reply"]
+
+
 async def test_program_with_only_rest_days_returns_none(auth_client):
     program = json.dumps(
         {"name": "Empty", "source": "ai", "days": [{"label": "Rest", "exercises": []}]}

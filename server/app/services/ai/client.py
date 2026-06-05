@@ -84,11 +84,22 @@ async def chat(
 
     data = resp.json()
     raw_reply = data["choices"][0]["message"]["content"]
-    clean_reply = validate_response(raw_reply)
     # Prefer a multi-day program when the model emitted one; otherwise fall back to a
     # single-session plan. Never return both.
     suggested_program = await _extract_program(raw_reply, db)
     suggested_plan = None if suggested_program else await _extract_plan(raw_reply, db)
+    # The structured plan/program JSON is surfaced via the Save card — strip it from the
+    # chat text so the bubble shows only the prose. If the model returned nothing but JSON,
+    # fall back to a short prompt pointing at the Save card.
+    clean_reply = validate_response(_strip_structured_blocks(raw_reply))
+    if not clean_reply:
+        if suggested_program:
+            clean_reply = (
+                "I've put together a multi-day program for you — review the days below "
+                "and tap Save Program to add it."
+            )
+        elif suggested_plan:
+            clean_reply = "I've put together a plan for you — tap Save Plan to add it."
     return ChatResponse(
         reply=clean_reply,
         suggested_plan=suggested_plan,
@@ -118,6 +129,31 @@ async def _merged_context(
     if base and profile:
         return f"{base}\n\nAthlete-stated profile/preferences:\n{profile}"
     return base or profile
+
+
+def _strip_structured_blocks(reply: str) -> str:
+    """Remove plan/program JSON from a reply so the chat bubble shows only prose.
+
+    Drops fenced ``` blocks (the JSON the model emits for a plan/program) and a
+    leading bare JSON object, then collapses the leftover blank lines.
+    """
+    # Remove fenced code blocks (```json ... ``` or plain ``` ... ```).
+    text = re.sub(r"```.*?```", "", reply, flags=re.DOTALL).strip()
+    # Remove a leading bare JSON object (the _extract_json_block fallback case) by
+    # matching braces, so trailing prose containing a "}" isn't swallowed.
+    if text.startswith("{"):
+        depth = 0
+        for i, ch in enumerate(text):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    text = text[i + 1 :]
+                    break
+    # Collapse 3+ newlines left behind into a clean paragraph break.
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _extract_json_block(raw_reply: str) -> str | None:

@@ -140,6 +140,33 @@ async def test_absurd_ai_values_are_clamped_not_dropped(auth_client, exercise):
     assert ex["target_weight"] == 600.0  # WEIGHT_BOUNDS_LB max
 
 
+async def test_plan_reply_strips_json_block(auth_client, exercise):
+    """The plan JSON is removed from the chat text; only the prose note remains."""
+    plan_json = json.dumps(
+        {
+            "name": "Test Plan",
+            "source": "ai",
+            "exercises": [
+                {"exercise_id": exercise.name, "target_sets": 3, "target_reps": 10, "is_bodyweight": False, "order": 0}
+            ],
+        }
+    )
+    lm_response = f"Here you go:\n```json\n{plan_json}\n```\nAdd 5 lb each session."
+    mock_resp = _mock_lm_response(lm_response)
+    with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
+        resp = await auth_client.post(
+            "/ai/chat",
+            json={"messages": [{"role": "user", "content": "give me a plan"}]},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["suggested_plan"] is not None
+    assert "```" not in data["reply"]
+    assert "exercise_id" not in data["reply"]
+    assert "Add 5 lb each session." in data["reply"]
+
+
 async def test_plan_reply_still_includes_text(auth_client, exercise):
     """When a plan is extracted, the reply field still contains the text portion."""
     plan_json = json.dumps(
