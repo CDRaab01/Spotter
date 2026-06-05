@@ -52,13 +52,14 @@ async def chat(
         db, user_id, req.user_context, req.current_session_id
     )
     messages = build_messages(history, last_user, user_context)
+    model = _select_model(req, last_user)
 
     async with httpx.AsyncClient(timeout=settings.lm_studio_timeout) as client:
         try:
             resp = await client.post(
                 f"{settings.lm_studio_base_url}/chat/completions",
                 json={
-                    "model": settings.lm_studio_model,
+                    "model": model,
                     "messages": messages,
                     "temperature": 0.7,
                 },
@@ -105,6 +106,41 @@ async def chat(
         suggested_plan=suggested_plan,
         suggested_program=suggested_program,
     )
+
+
+# A create-verb + plan-noun co-occurring in a turn signals a genuine
+# "build me a plan/program" request (worth the larger plan model). Kept deliberately
+# conservative: a missed generation ask just lands on the fast chat model (still works),
+# whereas a false positive only costs one slightly slower turn.
+_CREATE_VERB = (
+    r"generate|create|build|design|make|put together|write|draft|set up|give me"
+)
+_PLAN_NOUN = r"program|plan|routine|split|schedule|weeks?|days?"
+_GENERATION_PATTERNS = [
+    re.compile(rf"\b(?:{_CREATE_VERB})\b.*\b(?:{_PLAN_NOUN})\b", re.IGNORECASE),
+    # Strong standalone signals — naming a known split is itself a generation ask.
+    re.compile(r"\b(?:push[\s/-]*pull[\s/-]*legs|ppl|upper[\s/-]*lower|5\s*x\s*5)\b", re.IGNORECASE),
+]
+
+
+def _looks_like_generation_request(text: str) -> bool:
+    return any(p.search(text) for p in _GENERATION_PATTERNS)
+
+
+def _select_model(req: ChatRequest, last_user: str) -> str:
+    """Deterministic routing: plan/program generation → plan model; everything else
+    (intake, tweaks, in-workout advice) → fast chat model. Falls back to the chat
+    model whenever no separate plan model is configured."""
+    # In-workout chat is advice-only by design → always the fast chat model.
+    if req.current_session_id is not None:
+        return settings.lm_studio_model
+    # Explicit client signal (e.g. first-run auto-generate) wins.
+    if (req.intent or "").lower() == "generate":
+        return settings.plan_model
+    # Free-form chat: route obvious creation asks to the plan model.
+    if _looks_like_generation_request(last_user):
+        return settings.plan_model
+    return settings.lm_studio_model
 
 
 async def _merged_context(

@@ -11,6 +11,9 @@ data class ChatRequest(
     val messages: List<ChatMessage>,
     @SerialName("user_context") val userContext: String? = null,
     @SerialName("current_session_id") val currentSessionId: String? = null,
+    // "generate" routes the turn to the server's larger plan model. Used by first-run
+    // auto-generate; normal chat leaves this null and the server infers intent.
+    @SerialName("intent") val intent: String? = null,
 )
 
 @Serializable

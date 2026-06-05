@@ -266,6 +266,7 @@ class HomeViewModel @Inject constructor(
                             )
                         ),
                         userContext = profile.toContextString().ifBlank { null },
+                        intent = "generate",
                     )
                 )
                 val program = response.suggestedProgram

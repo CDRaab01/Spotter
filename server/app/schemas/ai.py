@@ -17,6 +17,10 @@ class ChatRequest(BaseModel):
     # in-progress session id so the server can inject a trusted "workout in progress"
     # context block. Advice-only — the AI does not edit the log.
     current_session_id: uuid.UUID | None = None
+    # Optional explicit routing hint. "generate" steers the turn to the larger plan
+    # model (e.g. first-run auto-generate). Any other value / None = normal chat; the
+    # server still falls back to a keyword heuristic to detect generation requests.
+    intent: str | None = None
 
 
 class AiPlanExercise(BaseModel):
