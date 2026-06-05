@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ViewWeek
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -77,6 +78,11 @@ fun ProgramScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    TextButton(onClick = { navController.navigate(Screen.ProgramPresets.route) }) {
+                        Text("Presets")
+                    }
+                },
             )
         },
         floatingActionButton = {
@@ -98,8 +104,13 @@ fun ProgramScreen(
                     EmptyState(
                         icon = Icons.Default.ViewWeek,
                         title = "No programs yet",
-                        subtitle = "Tap + to build a multi-day training program.",
+                        subtitle = "Start from a proven preset, or tap + to build your own.",
                         modifier = Modifier.padding(padding),
+                        action = {
+                            Button(onClick = { navController.navigate(Screen.ProgramPresets.route) }) {
+                                Text("Browse presets")
+                            }
+                        },
                     )
                 } else {
                     LazyColumn(
