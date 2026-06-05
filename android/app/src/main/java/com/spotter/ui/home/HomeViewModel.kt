@@ -255,12 +255,17 @@ class HomeViewModel @Inject constructor(
                 val program = response.suggestedProgram
                 if (program != null) {
                     // First-run auto-accept is safe — there's no existing active program
-                    // to clobber. This gives new users a scheduled program out of the box.
+                    // to clobber. This gives new users a scheduled program out of the box,
+                    // created silently here (never written to chat history).
                     aiRepository.acceptProgram(
                         AcceptProgramRequest(name = program.name, days = program.days)
                     )
+                    // Pull the new program AND its per-day plans into the local cache, or
+                    // Home keeps showing the empty "ask the coach" prompt (which pushes the
+                    // user into the chat) even though a program now exists.
                     runCatching { programRepository.sync() }
-                    loadUpcoming()
+                    runCatching { planRepository.sync() }
+                    refresh()
                 } else {
                     response.suggestedPlan?.let { plan ->
                         planRepository.createPlan(
