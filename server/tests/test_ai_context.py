@@ -5,7 +5,33 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.schemas.session import SetLogOut
+from app.services.ai.context_service import _athlete_status_line
 from app.services.session_service import suggest_next_weight
+
+
+# ── _athlete_status_line (pure) ───────────────────────────────────────────────
+
+
+def test_status_new_when_no_program_or_workouts():
+    line = _athlete_status_line(0, has_program=False, recent_active=False)
+    assert "Athlete status: new" in line
+
+
+def test_status_early_with_program_no_workouts():
+    line = _athlete_status_line(0, has_program=True, recent_active=False)
+    assert "Athlete status: early" in line
+
+
+def test_status_established_but_returning_when_inactive():
+    line = _athlete_status_line(10, has_program=True, recent_active=False)
+    assert "established but returning" in line
+    assert "Welcome them back" in line
+
+
+def test_status_established_when_recently_active():
+    line = _athlete_status_line(10, has_program=True, recent_active=True)
+    assert "Athlete status: established —" in line
+    assert "returning" not in line
 
 
 def _set(completed: bool, reps: int = 8, weight: float | None = 100.0) -> SetLogOut:

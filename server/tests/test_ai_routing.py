@@ -20,14 +20,25 @@ def _mock_lm_response(content: str):
     return mock_resp
 
 
-async def _model_used_for(auth_client, body: dict) -> str:
-    """POST to /ai/chat with the LLM mocked and return the model id the server sent."""
+async def _capture_for(auth_client, body: dict) -> dict:
+    """POST to /ai/chat with the LLM mocked; return the model, temperature, and the
+    httpx client timeout the server used."""
     mock_post = AsyncMock(return_value=_mock_lm_response("Sure — here's some guidance."))
     with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
         mock_cls.return_value.__aenter__.return_value.post = mock_post
         resp = await auth_client.post("/ai/chat", json=body)
     assert resp.status_code == 200
-    return mock_post.call_args.kwargs["json"]["model"]
+    payload = mock_post.call_args.kwargs["json"]
+    return {
+        "model": payload["model"],
+        "temperature": payload["temperature"],
+        "timeout": mock_cls.call_args.kwargs["timeout"],
+    }
+
+
+async def _model_used_for(auth_client, body: dict) -> str:
+    """POST to /ai/chat with the LLM mocked and return the model id the server sent."""
+    return (await _capture_for(auth_client, body))["model"]
 
 
 @pytest.fixture
@@ -101,3 +112,69 @@ async def test_backcompat_no_plan_model_uses_chat_model(auth_client, monkeypatch
         {"messages": [{"role": "user", "content": "Generate a 4-day workout program for me."}]},
     )
     assert model == settings.lm_studio_model
+
+
+# ── Heuristic tuning ──────────────────────────────────────────────────────────
+
+
+async def test_comparison_question_stays_on_chat_model(auth_client, plan_model):
+    """Naming splits in a comparison/question is discussion, not generation."""
+    model = await _model_used_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "What's the difference between PPL and upper/lower?"}]},
+    )
+    assert model == settings.lm_studio_model
+
+
+async def test_want_a_routine_uses_plan_model(auth_client, plan_model):
+    model = await _model_used_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "I want a routine for building muscle."}]},
+    )
+    assert model == plan_model
+
+
+async def test_need_a_split_uses_plan_model(auth_client, plan_model):
+    model = await _model_used_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "I need a 4-day split."}]},
+    )
+    assert model == plan_model
+
+
+async def test_build_me_a_ppl_uses_plan_model(auth_client, plan_model):
+    model = await _model_used_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "Build me a ppl."}]},
+    )
+    assert model == plan_model
+
+
+async def test_casual_days_reference_stays_on_chat_model(auth_client, plan_model):
+    """Bare time references ('a couple days') must not trip the plan-noun heuristic."""
+    model = await _model_used_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "I can only train a couple days a week, is that enough?"}]},
+    )
+    assert model == settings.lm_studio_model
+
+
+# ── Per-model inference params ────────────────────────────────────────────────
+
+
+async def test_plan_turn_uses_low_temp_and_long_timeout(auth_client, plan_model):
+    cap = await _capture_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "Generate a 4-day workout program for me."}]},
+    )
+    assert cap["temperature"] == 0.4
+    assert cap["timeout"] == settings.lm_studio_plan_timeout
+
+
+async def test_chat_turn_uses_default_temp_and_timeout(auth_client, plan_model):
+    cap = await _capture_for(
+        auth_client,
+        {"messages": [{"role": "user", "content": "How do I improve my bench press?"}]},
+    )
+    assert cap["temperature"] == 0.7
+    assert cap["timeout"] == settings.lm_studio_timeout

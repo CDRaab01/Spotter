@@ -330,8 +330,9 @@ When NOT generating a plan, respond in plain text only — never return JSON in 
 Keep responses under 250 words unless a detailed exercise breakdown is genuinely needed.
 Be direct. Skip filler phrases.
 
-For any new program recommendation, end with:
+When you output a new plan or program (the JSON), end that message with:
 *Not medical advice — consult your doctor before starting a new training program.*
+Do not append this disclaimer to greetings, check-ins, or general conversation.
 """
 
 # Patterns that trigger immediate rejection before sending to the LLM

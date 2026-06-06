@@ -49,11 +49,12 @@ object AppModule {
             .authenticator(tokenRefreshAuthenticator)
             // AI chat proxies to a local LLM; the first request triggers a cold model
             // load + inference that can take well over OkHttp's 10s default read timeout,
-            // which surfaced to users as a "timeout" during initial setup. Allow a read
-            // window comfortably larger than the server's own LM Studio timeout so the
-            // server's meaningful error (502/503/504) reaches the client instead.
+            // which surfaced to users as a "timeout" during initial setup. Plan/program
+            // generation runs on the larger, slower model (server LM_STUDIO_PLAN_TIMEOUT,
+            // default 180s). Keep the read window comfortably above that so the server's
+            // meaningful error (502/503/504) reaches the client instead of a socket timeout.
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
+            .readTimeout(210, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
             .addInterceptor(hostSelectionInterceptor)

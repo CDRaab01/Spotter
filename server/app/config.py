@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # loads the model before inference, so allow generous headroom. The Android client's
     # read timeout should stay above this so the server's error surfaces to the user.
     lm_studio_timeout: float = 90.0
+    # Plan/program generation runs on the larger, slower model — give it more headroom.
+    # The Android read timeout must stay above this too (see AppModule.kt).
+    lm_studio_plan_timeout: float = 180.0
 
     @property
     def plan_model(self) -> str:

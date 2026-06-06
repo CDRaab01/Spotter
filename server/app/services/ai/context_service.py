@@ -40,7 +40,11 @@ async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str:
     completed_count = await _count_completed_sessions(db, user_id)
 
     lines: list[str] = [
-        _athlete_status_line(completed_count, has_program=active_line is not None)
+        _athlete_status_line(
+            completed_count,
+            has_program=active_line is not None,
+            recent_active=bool(sessions),
+        )
     ]
 
     if active_line:
@@ -68,7 +72,9 @@ async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str:
     return "\n".join(lines)
 
 
-def _athlete_status_line(completed_count: int, has_program: bool) -> str:
+def _athlete_status_line(
+    completed_count: int, has_program: bool, recent_active: bool = True
+) -> str:
     """One-line training-stage signal so the coach pitches its reply correctly."""
     if completed_count == 0 and not has_program:
         return (
@@ -84,6 +90,12 @@ def _athlete_status_line(completed_count: int, has_program: bool) -> str:
         return (
             f"Athlete status: early — {completed_count} workout(s) completed so far. "
             "Encourage consistency and reference their progress."
+        )
+    if not recent_active:
+        return (
+            f"Athlete status: established but returning — {completed_count} workouts "
+            "all-time, but none logged in the last 30 days. Welcome them back warmly "
+            "and encourage easing in; do not pitch a new program unless asked."
         )
     return (
         f"Athlete status: established — {completed_count} workouts completed. "

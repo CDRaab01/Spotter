@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -65,6 +68,12 @@ class AiChatViewModel @Inject constructor(
 
     fun send(userText: String) {
         if (userText.isBlank() || _sendState.value is UiState.Loading) return
+        if (userText.trim().length > MAX_MESSAGE_CHARS) {
+            _sendState.value = UiState.Error(
+                "That message is a bit long — keep it under $MAX_MESSAGE_CHARS characters."
+            )
+            return
+        }
         viewModelScope.launch {
             val historySnapshot = messages.value.toList()
             val allMessages = historySnapshot + ChatMessage("user", userText)
@@ -84,17 +93,31 @@ class AiChatViewModel @Inject constructor(
                         currentSessionId = serverSessionId,
                     )
                 )
-                chatMessageDao.insert(ChatMessageEntity(role = "assistant", content = response.reply))
-                // Prefer a program when present; never surface both.
-                val program = response.suggestedProgram
-                if (program != null) {
-                    _pendingProgram.value = program
-                } else {
-                    response.suggestedPlan?.let { _pendingPlan.value = it }
+                // Don't render an empty bubble if the model returned nothing usable.
+                if (response.reply.isNotBlank()) {
+                    chatMessageDao.insert(
+                        ChatMessageEntity(role = "assistant", content = response.reply)
+                    )
                 }
-                _sendState.value = UiState.Success(Unit)
+                // In-workout chat is advice-only — never surface a Save card mid-session.
+                if (serverSessionId == null) {
+                    // Prefer a program when present; never surface both.
+                    val program = response.suggestedProgram
+                    if (program != null) {
+                        _pendingProgram.value = program
+                    } else {
+                        response.suggestedPlan?.let { _pendingPlan.value = it }
+                    }
+                }
+                val gotNothing = response.reply.isBlank() &&
+                    response.suggestedProgram == null && response.suggestedPlan == null
+                _sendState.value = if (gotNothing) {
+                    UiState.Error("The coach didn't have a response — please try again.")
+                } else {
+                    UiState.Success(Unit)
+                }
             } catch (e: Exception) {
-                _sendState.value = UiState.Error(e.message ?: "Failed to reach Spotter. Try again.")
+                _sendState.value = UiState.Error(friendlyError(e))
             }
         }
     }
@@ -153,5 +176,27 @@ class AiChatViewModel @Inject constructor(
 
     fun clearError() {
         if (_sendState.value is UiState.Error) _sendState.value = UiState.Idle
+    }
+
+    /** Turn raw network/HTTP exceptions into a message a user can act on. */
+    private fun friendlyError(e: Throwable): String = when {
+        e is HttpException -> when (e.code()) {
+            502 -> "The AI service is briefly unavailable. Please try again in a moment."
+            503 -> "The AI service isn't reachable right now. Please try again shortly."
+            504 -> "The model is still loading — give it a moment and try again."
+            422 -> "That message couldn't be processed. Try rephrasing or shortening it."
+            in 500..599 -> "The server hit an error. Please try again."
+            else -> e.message ?: "Something went wrong. Please try again."
+        }
+        e is SocketTimeoutException ->
+            "That took too long — the model may be busy. Please try again."
+        e is IOException ->
+            "Can't reach Spotter — check your connection and try again."
+        else -> e.message ?: "Failed to reach Spotter. Try again."
+    }
+
+    companion object {
+        /** Mirrors the server's 2000-char limit on a single chat message. */
+        private const val MAX_MESSAGE_CHARS = 2000
     }
 }

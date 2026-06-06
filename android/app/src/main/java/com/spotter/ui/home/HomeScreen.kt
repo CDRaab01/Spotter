@@ -97,6 +97,7 @@ fun HomeScreen(
     val plans by viewModel.plans.collectAsState()
     val startState by viewModel.startState.collectAsState()
     val generatingPlan by viewModel.generatingPlan.collectAsState()
+    val generationError by viewModel.generationError.collectAsState()
     val streak by viewModel.streak.collectAsState()
     val weeklyActiveMinutes by viewModel.weeklyActiveMinutes.collectAsState()
     val upcoming by viewModel.upcoming.collectAsState()
@@ -260,12 +261,20 @@ fun HomeScreen(
                     }
 
                     when {
-                        state.data.isEmpty() && !generatingPlan -> item {
-                            EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
-                        }
-
                         generatingPlan && state.data.isEmpty() -> item {
                             GeneratingPlaceholder()
+                        }
+
+                        generationError != null && state.data.isEmpty() -> item {
+                            GenerationErrorPrompt(
+                                message = generationError!!,
+                                onRetry = { viewModel.retryInitialPlan() },
+                                onChat = { navController.navigate(Screen.AiChat.createRoute()) },
+                            )
+                        }
+
+                        state.data.isEmpty() -> item {
+                            EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
                         }
 
                         else -> {
@@ -482,6 +491,31 @@ private fun GeneratingPlaceholder() {
         PulsingDots()
         Spacer(Modifier.height(16.dp))
         Text("Building your first plan…", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun GenerationErrorPrompt(
+    message: String,
+    onRetry: () -> Unit,
+    onChat: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Setup didn't finish", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(20.dp))
+        GradientButton(text = "Try again", onClick = onRetry)
+        TextButton(onClick = onChat) { Text("Chat with AI Coach instead") }
     }
 }
 
