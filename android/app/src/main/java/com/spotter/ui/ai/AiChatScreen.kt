@@ -223,7 +223,7 @@ fun AiChatScreen(
                 Spacer(Modifier.width(8.dp))
                 IconButton(
                     onClick = {
-                        viewModel.send(inputText)
+                        viewModel.send(inputText.trim())
                         inputText = ""
                     },
                     enabled = inputText.isNotBlank() && !isLoading,

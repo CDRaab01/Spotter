@@ -52,15 +52,25 @@ async def chat(
         db, user_id, req.user_context, req.current_session_id
     )
     messages = build_messages(history, last_user, user_context)
+    # The plan model emits structured JSON (steadier at a lower temperature) and is the
+    # slower, larger model (needs more timeout headroom). Decide the route once.
+    is_plan = _use_plan_model(req, last_user)
+    model = settings.plan_model if is_plan else settings.lm_studio_model
+    timeout = settings.lm_studio_plan_timeout if is_plan else settings.lm_studio_timeout
 
-    async with httpx.AsyncClient(timeout=settings.lm_studio_timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.post(
                 f"{settings.lm_studio_base_url}/chat/completions",
                 json={
-                    "model": settings.lm_studio_model,
+                    "model": model,
                     "messages": messages,
-                    "temperature": 0.7,
+                    "temperature": 0.4 if is_plan else 0.7,
+                    # Gemma 4 recommended nucleus/top-k sampling. Pinned explicitly so
+                    # output doesn't drift with LM Studio's UI defaults; temperature still
+                    # carries the plan-vs-chat distinction above.
+                    "top_p": 0.95,
+                    "top_k": 64,
                 },
             )
             resp.raise_for_status()
@@ -82,8 +92,22 @@ async def chat(
                 detail="LM Studio is not reachable",
             )
 
-    data = resp.json()
-    raw_reply = data["choices"][0]["message"]["content"]
+    try:
+        data = resp.json()
+        raw_reply = data["choices"][0]["message"]["content"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        # LM Studio answered 200 but with a body we can't read (no choices, non-JSON,
+        # etc.) — surface a clean 502 instead of letting it bubble up as a 500.
+        logger.warning("Unexpected LM Studio response body: %s", resp.text[:500])
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The AI service returned an unexpected response. Please try again.",
+        )
+    # Some models intermittently return null/empty content (no error). Answer softly
+    # rather than crashing downstream (e.g. _strip_structured_blocks on None).
+    if not raw_reply or not raw_reply.strip():
+        logger.warning("LM Studio returned empty content")
+        return ChatResponse(reply="Sorry — I didn't catch that. Could you say it again?")
     # Prefer a multi-day program when the model emitted one; otherwise fall back to a
     # single-session plan. Never return both.
     suggested_program = await _extract_program(raw_reply, db)
@@ -105,6 +129,44 @@ async def chat(
         suggested_routine=suggested_routine,
         suggested_program=suggested_program,
     )
+
+
+# A create/intent verb + plan-noun co-occurring in a turn signals a genuine
+# "build me a plan/program" request (worth the larger plan model). Kept deliberately
+# conservative: a missed generation ask just lands on the fast chat model (still works),
+# whereas a false positive only costs one slightly slower turn.
+_CREATE_VERB = (
+    r"generate|create|build|design|make|put together|write|draft"
+    r"|set(?:\s+\w+){0,2}\s+up"  # "set up", "set me up", "set me up with"
+    r"|give me|want|wanting|need|looking for"
+)
+# Plan nouns. "days" only counts when qualified by a number (e.g. "4-day", "5 days") so
+# casual time references ("the next few days") don't trip the heuristic.
+_PLAN_NOUN = r"program|plan|routine|split|schedule|weeks?|\d+[\s-]*days?"
+_SPLIT_NAME = r"push[\s/-]*pull[\s/-]*legs|ppl|upper[\s/-]*lower|full[\s-]*body|5\s*x\s*5"
+_GENERATION_PATTERNS = [
+    re.compile(rf"\b(?:{_CREATE_VERB})\b.*\b(?:{_PLAN_NOUN})\b", re.IGNORECASE),
+    # Naming a known split is a generation ask only alongside a create-verb — otherwise
+    # comparison/discussion ("difference between PPL and upper/lower") false-positives.
+    re.compile(rf"\b(?:{_CREATE_VERB})\b.{{0,40}}\b(?:{_SPLIT_NAME})\b", re.IGNORECASE),
+]
+
+
+def _looks_like_generation_request(text: str) -> bool:
+    return any(p.search(text) for p in _GENERATION_PATTERNS)
+
+
+def _use_plan_model(req: ChatRequest, last_user: str) -> bool:
+    """Deterministic routing decision: True → plan/program generation (larger model);
+    False → everything else (intake, tweaks, in-workout advice → fast chat model)."""
+    # In-workout chat is advice-only by design → always the fast chat model.
+    if req.current_session_id is not None:
+        return False
+    # Explicit client signal (e.g. first-run auto-generate) wins.
+    if (req.intent or "").lower() == "generate":
+        return True
+    # Free-form chat: route obvious creation asks to the plan model.
+    return _looks_like_generation_request(last_user)
 
 
 async def _merged_context(

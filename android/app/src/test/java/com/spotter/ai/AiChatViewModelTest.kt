@@ -1,7 +1,9 @@
 package com.spotter.ai
 
 import com.spotter.data.local.dao.ChatMessageDao
+import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.ChatMessageEntity
+import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.RoutineExerciseIn
 import com.spotter.data.model.RoutineOut
@@ -29,12 +31,18 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import retrofit2.HttpException
+import retrofit2.Response
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -266,6 +274,86 @@ class AiChatViewModelTest {
         viewModel.dismissProgram()
 
         assertNull(viewModel.pendingProgram.value)
+    }
+
+    private fun httpException(code: Int): HttpException {
+        val body = "{\"detail\":\"x\"}".toResponseBody("application/json".toMediaTypeOrNull())
+        return HttpException(Response.error<Any>(code, body))
+    }
+
+    @Test
+    fun `send maps HTTP 502 to a friendly message`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenThrow(httpException(502))
+
+        viewModel.send("hello")
+        advanceTimeBy(200)
+
+        assertEquals(
+            "The AI service is briefly unavailable. Please try again in a moment.",
+            (viewModel.sendState.value as UiState.Error).message,
+        )
+    }
+
+    @Test
+    fun `send maps HTTP 504 to a model-loading message`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenThrow(httpException(504))
+
+        viewModel.send("hello")
+        advanceTimeBy(200)
+
+        assertEquals(
+            "The model is still loading — give it a moment and try again.",
+            (viewModel.sendState.value as UiState.Error).message,
+        )
+    }
+
+    @Test
+    fun `send rejects over-length input without calling the repository`() = runTest(testDispatcher) {
+        viewModel.send("x".repeat(2001))
+        advanceTimeBy(200)
+
+        assertIs<UiState.Error>(viewModel.sendState.value)
+        assertEquals(0, viewModel.messages.value.size)
+        verify(aiRepository, never()).chat(any())
+    }
+
+    @Test
+    fun `blank reply inserts no assistant message and sets an error`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = ""))
+
+        viewModel.send("hello")
+        advanceTimeBy(200)
+
+        // Only the user message persisted — no empty assistant bubble.
+        assertEquals(1, viewModel.messages.value.size)
+        assertEquals("user", viewModel.messages.value[0].role)
+        assertIs<UiState.Error>(viewModel.sendState.value)
+    }
+
+    @Test
+    fun `in-workout chat does not surface a Save card`() = runTest(testDispatcher) {
+        val sessionDao = mock<WorkoutSessionDao>()
+        val entity = WorkoutSessionEntity(
+            id = "local-1", userId = "u", routineId = null, date = "2026-06-01",
+            status = "in_progress", durationSeconds = null, note = null, serverId = "server-1",
+        )
+        whenever(sessionDao.getById("local-1")).thenReturn(entity)
+        val program = SuggestedProgram(
+            name = "PPL",
+            days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
+        )
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "Here's some advice.", suggestedProgram = program))
+        val vm = AiChatViewModel(
+            aiRepository, routineRepository, programRepository, fakeChatDao, sessionDao, appPreferences,
+            SavedStateHandle(mapOf("sessionId" to "local-1")),
+        )
+
+        vm.send("build me a program")
+        advanceTimeBy(200)
+
+        assertNull(vm.pendingProgram.value)
+        assertNull(vm.pendingRoutine.value)
     }
 
     @Test

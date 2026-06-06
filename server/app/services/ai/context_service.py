@@ -9,12 +9,13 @@ the system prompt as trusted `user_context`. Kept intentionally token-bounded.
 import datetime
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.body_metric import BodyMetric
 from app.models.set_log import SetLog
+from app.models.workout_program import WorkoutProgram
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
 
@@ -23,27 +24,41 @@ _MAX_SESSIONS = 5
 _MAX_EXERCISES = 8
 
 
-async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
-    """Return a short markdown summary of the user's recent training, or None.
+async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str:
+    """Return a short markdown summary of the user's training state.
 
-    None means there is nothing useful to add (brand-new user with no data), in
-    which case the caller should fall back to any client-supplied profile only.
+    Always returns a block — even a brand-new user gets an `Athlete status` line so
+    the coach knows to be welcoming rather than launching into plan generation. The
+    leading line tells the model how new the athlete is and how to pitch its reply.
     """
     sessions = await _recent_sessions(db, user_id)
-    plan_line = await _current_plan_line(db, user_id)
+    active_line = await _active_program_line(db, user_id)
+    # Only surface the latest plan name when there's no active program — for a program
+    # user the most-recent plan is just one day's plan, which reads as misleading.
+    plan_line = None if active_line else await _current_plan_line(db, user_id)
     weight_line = await _bodyweight_line(db, user_id)
+    completed_count = await _count_completed_sessions(db, user_id)
 
-    if not sessions and not plan_line and not weight_line:
-        return None
+    lines: list[str] = [
+        _athlete_status_line(
+            completed_count,
+            has_program=active_line is not None,
+            recent_active=bool(sessions),
+        )
+    ]
 
-    lines: list[str] = ["The following is the athlete's recent logged training data (source of truth — prefer it over anything stated in chat)."]
-
-    if plan_line:
+    if active_line:
+        lines.append(active_line)
+    elif plan_line:
         lines.append(plan_line)
     if weight_line:
         lines.append(weight_line)
 
     if sessions:
+        lines.append(
+            "The following is the athlete's recent logged training data "
+            "(source of truth — prefer it over anything stated in chat)."
+        )
         lines.append(f"Workouts logged in the last 30 days: {len(sessions)}.")
         lines.append("Recent sessions (most recent first):")
         for s in sessions[:_MAX_SESSIONS]:
@@ -55,6 +70,70 @@ async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str | None
                 lines.append(f"- {name}: {text}")
 
     return "\n".join(lines)
+
+
+def _athlete_status_line(
+    completed_count: int, has_program: bool, recent_active: bool = True
+) -> str:
+    """One-line training-stage signal so the coach pitches its reply correctly."""
+    if completed_count == 0 and not has_program:
+        return (
+            "Athlete status: new — no workouts logged yet and no active program. "
+            "Be welcoming; ask about their goal before suggesting anything."
+        )
+    if completed_count == 0:
+        return (
+            "Athlete status: early — has an active program but no completed workouts "
+            "yet. Be encouraging; nudge them to get the first session in."
+        )
+    if completed_count <= 4:
+        return (
+            f"Athlete status: early — {completed_count} workout(s) completed so far. "
+            "Encourage consistency and reference their progress."
+        )
+    if not recent_active:
+        return (
+            f"Athlete status: established but returning — {completed_count} workouts "
+            "all-time, but none logged in the last 30 days. Welcome them back warmly "
+            "and encourage easing in; do not pitch a new program unless asked."
+        )
+    return (
+        f"Athlete status: established — {completed_count} workouts completed. "
+        "Check in on how training is going; do not pitch a new program unless asked."
+    )
+
+
+async def _active_program_line(db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    """The user's active program plus the next suggested day, or None."""
+    result = await db.execute(
+        select(WorkoutProgram)
+        .where(WorkoutProgram.user_id == user_id, WorkoutProgram.is_active.is_(True))
+        .limit(1)
+    )
+    program = result.scalar_one_or_none()
+    if not program:
+        return None
+    # Reuse the next-day rotation logic from program_service (imported locally to
+    # avoid a module-load cycle with the AI service package).
+    from app.services.program_service import get_next_day
+
+    next_day = await get_next_day(db, user_id)
+    suffix = f" (next suggested day: {next_day.label})" if next_day else ""
+    return (
+        f'Active program: "{program.name}"{suffix}. The athlete already has an active '
+        "program — do not offer to create a new one unless they ask."
+    )
+
+
+async def _count_completed_sessions(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """All-time count of completed sessions, for the training-stage signal."""
+    result = await db.execute(
+        select(func.count(WorkoutSession.id)).where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.status == "completed",
+        )
+    )
+    return result.scalar() or 0
 
 
 async def build_current_session_context(

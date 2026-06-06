@@ -74,6 +74,10 @@ class HomeViewModel @Inject constructor(
     private val _generatingPlan = MutableStateFlow(false)
     val generatingPlan: StateFlow<Boolean> = _generatingPlan.asStateFlow()
 
+    /** Non-null when first-run program generation failed, so Home can offer a retry. */
+    private val _generationError = MutableStateFlow<String?>(null)
+    val generationError: StateFlow<String?> = _generationError.asStateFlow()
+
     private val _streak = MutableStateFlow(0)
     val streak: StateFlow<Int> = _streak.asStateFlow()
 
@@ -255,6 +259,7 @@ class HomeViewModel @Inject constructor(
     fun generateInitialRoutine() {
         viewModelScope.launch {
             _generatingPlan.value = true
+            _generationError.value = null
             try {
                 val profile = appPreferences.userProfile.first()
                 val response = aiRepository.chat(
@@ -266,6 +271,7 @@ class HomeViewModel @Inject constructor(
                             )
                         ),
                         userContext = profile.toContextString().ifBlank { null },
+                        intent = "generate",
                     )
                 )
                 val program = response.suggestedProgram
@@ -290,11 +296,24 @@ class HomeViewModel @Inject constructor(
                     }
                 }
             } catch (_: Exception) {
-                // silent — user can still create a routine manually
+                // Surface a retry instead of silently leaving Home empty — new users
+                // expect their starter program after onboarding.
+                _generationError.value =
+                    "Couldn't set up your starter program. Tap to try again."
             } finally {
                 _generatingPlan.value = false
             }
         }
+    }
+
+    /** Re-run first-run generation after a failure (clears the error). */
+    fun retryInitialRoutine() {
+        _generationError.value = null
+        generateInitialRoutine()
+    }
+
+    fun dismissGenerationError() {
+        _generationError.value = null
     }
 
     fun startSession(routineId: String) {
