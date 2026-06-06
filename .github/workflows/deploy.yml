@@ -1,0 +1,64 @@
+name: Deploy
+
+# Redeploys the self-hosted Spotter server (Windows + Docker Desktop) on a
+# self-hosted GitHub Actions runner. The runner long-polls GitHub *outbound*, so
+# there are no inbound ports to open on the home network.
+#
+# Auto-deploy fires only after the CI workflow goes green on `main`
+# (workflow_run), so a broken commit never ships. workflow_dispatch is a manual
+# button that doubles as a rollback lever (pass a previous SHA in `ref`).
+#
+# Setup notes live in deploy/README.md ("Remote redeploy on push to main").
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA or branch to deploy (default: origin/main). Use a prior SHA to roll back."
+        required: false
+        default: "origin/main"
+
+# Never let two deploys run at once; queue the second instead of colliding.
+concurrency:
+  group: spotter-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Redeploy server
+    # The `spotter` label is assigned when the runner is registered on the host.
+    runs-on: [self-hosted, spotter]
+    # Manual runs always proceed; automatic runs require a successful CI run on main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    steps:
+      # No actions/checkout: we deploy the canonical clone on the host
+      # (vars.SPOTTER_DIR), not the runner's ephemeral _work directory. That clone
+      # owns the .env file and the pgdata Docker volume.
+      - name: Resolve deploy ref
+        id: ref
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $ref = '${{ inputs.ref }}'
+          } else {
+            $ref = '${{ github.event.workflow_run.head_sha }}'
+          }
+          if ([string]::IsNullOrWhiteSpace($ref)) { $ref = 'origin/main' }
+          "ref=$ref" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Deploying ref: $ref"
+
+      - name: Pull, rebuild, restart, health-check
+        shell: pwsh
+        env:
+          SPOTTER_DIR: ${{ vars.SPOTTER_DIR }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SPOTTER_DIR)) {
+            throw "SPOTTER_DIR Actions variable is not set. See deploy/README.md."
+          }
+          & "$env:SPOTTER_DIR\deploy\redeploy.ps1" -Ref "${{ steps.ref.outputs.ref }}"
