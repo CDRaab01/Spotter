@@ -87,8 +87,22 @@ async def chat(
                 detail="LM Studio is not reachable",
             )
 
-    data = resp.json()
-    raw_reply = data["choices"][0]["message"]["content"]
+    try:
+        data = resp.json()
+        raw_reply = data["choices"][0]["message"]["content"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        # LM Studio answered 200 but with a body we can't read (no choices, non-JSON,
+        # etc.) — surface a clean 502 instead of letting it bubble up as a 500.
+        logger.warning("Unexpected LM Studio response body: %s", resp.text[:500])
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The AI service returned an unexpected response. Please try again.",
+        )
+    # Some models intermittently return null/empty content (no error). Answer softly
+    # rather than crashing downstream (e.g. _strip_structured_blocks on None).
+    if not raw_reply or not raw_reply.strip():
+        logger.warning("LM Studio returned empty content")
+        return ChatResponse(reply="Sorry — I didn't catch that. Could you say it again?")
     # Prefer a multi-day program when the model emitted one; otherwise fall back to a
     # single-session plan. Never return both.
     suggested_program = await _extract_program(raw_reply, db)
