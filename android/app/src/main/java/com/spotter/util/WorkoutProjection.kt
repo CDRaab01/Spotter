@@ -1,28 +1,28 @@
 package com.spotter.util
 
-import com.spotter.data.local.entity.PlannedExerciseEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
 import java.time.LocalDate
 
 /** Minimal info about the most recent local session, used to anchor projections. */
 data class SessionAnchor(
     val date: LocalDate,
-    val planId: String?,
+    val routineId: String?,
     val status: String, // "completed" | "in_progress" | other
 )
 
 /** A program day reduced to what projection needs. Supplied sorted by `order`. */
 data class ProjectionDay(
-    val planId: String?,
+    val routineId: String?,
     val label: String,
-    val planName: String?,
+    val routineName: String?,
 )
 
 /** One projected upcoming workout slot (lifts are attached separately by the caller). */
 data class ProjectedSlot(
     val date: LocalDate,
-    val planId: String?,
+    val routineId: String?,
     val label: String,
-    val planName: String?,
+    val routineName: String?,
 )
 
 /**
@@ -32,9 +32,9 @@ data class ProjectedSlot(
 data class UpcomingWorkout(
     val date: LocalDate,
     val dayLabel: String,
-    val planId: String?,
-    val planName: String?,
-    val lifts: List<PlannedExerciseEntity>,
+    val routineId: String?,
+    val routineName: String?,
+    val lifts: List<RoutineExerciseEntity>,
 )
 
 /**
@@ -60,7 +60,7 @@ object WorkoutProjection {
      *  - Each later slot is +N after the previous.
      *
      * Day-selection rules (mirrors the server `get_next_day` cyclic logic, extended to N slots):
-     *  - startIndex = index of the day whose planId == anchor.planId, else -1 (no match / no anchor).
+     *  - startIndex = index of the day whose routineId == anchor.routineId, else -1 (no match / no anchor).
      *  - slot k (0-based) uses day at ((startIndex + 1 + k) mod size).
      */
     fun project(
@@ -82,16 +82,16 @@ object WorkoutProjection {
             today
         }
 
-        val startIndex = anchor?.planId?.let { pid -> days.indexOfFirst { it.planId == pid } } ?: -1
+        val startIndex = anchor?.routineId?.let { rid -> days.indexOfFirst { it.routineId == rid } } ?: -1
 
         return (0 until count).map { k ->
             // ((startIndex + 1 + k) % n + n) % n stays valid when startIndex == -1.
             val day = days[((startIndex + 1 + k) % n + n) % n]
             ProjectedSlot(
                 date = firstDate.plusDays(step * k),
-                planId = day.planId,
+                routineId = day.routineId,
                 label = day.label,
-                planName = day.planName,
+                routineName = day.routineName,
             )
         }
     }

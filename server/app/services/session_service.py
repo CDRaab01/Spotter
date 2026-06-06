@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.exercise import Exercise
-from app.models.planned_exercise import PlannedExercise
+from app.models.routine_exercise import RoutineExercise
 from app.models.set_log import SetLog
-from app.models.workout_plan import WorkoutPlan
+from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
 from app.limits import clamp_weight
 from app.schemas.session import (
@@ -64,20 +64,20 @@ async def create_session(
     db.add(session)
     await db.flush()
 
-    if req.plan_id:
-        plan_check = await db.execute(
-            select(WorkoutPlan).where(
-                WorkoutPlan.id == req.plan_id,
-                WorkoutPlan.user_id == user_id,
+    if req.routine_id:
+        routine_check = await db.execute(
+            select(WorkoutRoutine).where(
+                WorkoutRoutine.id == req.routine_id,
+                WorkoutRoutine.user_id == user_id,
             )
         )
-        if plan_check.scalar_one_or_none() is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        if routine_check.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Routine not found")
 
         pe_result = await db.execute(
-            select(PlannedExercise)
-            .where(PlannedExercise.plan_id == req.plan_id)
-            .order_by(PlannedExercise.order)
+            select(RoutineExercise)
+            .where(RoutineExercise.routine_id == req.routine_id)
+            .order_by(RoutineExercise.order)
         )
         planned_exercises = pe_result.scalars().all()
         for pe in planned_exercises:
@@ -114,14 +114,14 @@ async def get_session(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
         )
 
-    plan_name: str | None = None
+    routine_name: str | None = None
     exercise_context: dict[uuid.UUID, tuple] = {}
     exercise_order: dict[uuid.UUID, int] = {}
-    if s.plan_id:
+    if s.routine_id:
         pe_result = await db.execute(
-            select(PlannedExercise)
-            .where(PlannedExercise.plan_id == s.plan_id)
-            .options(selectinload(PlannedExercise.exercise))
+            select(RoutineExercise)
+            .where(RoutineExercise.routine_id == s.routine_id)
+            .options(selectinload(RoutineExercise.exercise))
         )
         for pe in pe_result.scalars().all():
             exercise_context[pe.exercise_id] = (
@@ -134,12 +134,12 @@ async def get_session(
             )
             exercise_order[pe.exercise_id] = pe.order
 
-        plan_result = await db.execute(
-            select(WorkoutPlan).where(WorkoutPlan.id == s.plan_id)
+        routine_result = await db.execute(
+            select(WorkoutRoutine).where(WorkoutRoutine.id == s.routine_id)
         )
-        plan = plan_result.scalar_one_or_none()
-        if plan:
-            plan_name = plan.name
+        routine = routine_result.scalar_one_or_none()
+        if routine:
+            routine_name = routine.name
 
     set_logs_out = []
     for sl in sorted(
@@ -189,8 +189,8 @@ async def get_session(
     return SessionOut(
         id=s.id,
         user_id=s.user_id,
-        plan_id=s.plan_id,
-        plan_name=plan_name,
+        routine_id=s.routine_id,
+        routine_name=routine_name,
         date=s.date,
         status=s.status,
         duration_seconds=s.duration_seconds,
@@ -452,15 +452,15 @@ async def list_sessions(
     if not sessions:
         return []
 
-    # Bulk-load plan names
-    plan_ids = list({s.plan_id for s in sessions if s.plan_id is not None})
-    plan_names: dict[uuid.UUID, str] = {}
-    if plan_ids:
-        plan_result = await db.execute(
-            select(WorkoutPlan).where(WorkoutPlan.id.in_(plan_ids))
+    # Bulk-load routine names
+    routine_ids = list({s.routine_id for s in sessions if s.routine_id is not None})
+    routine_names: dict[uuid.UUID, str] = {}
+    if routine_ids:
+        routine_result = await db.execute(
+            select(WorkoutRoutine).where(WorkoutRoutine.id.in_(routine_ids))
         )
-        for p in plan_result.scalars().all():
-            plan_names[p.id] = p.name
+        for r in routine_result.scalars().all():
+            routine_names[r.id] = r.name
 
     # Bulk-load exercise names
     all_exercise_ids: set[uuid.UUID] = set()
@@ -502,7 +502,7 @@ async def list_sessions(
             SessionSummary(
                 id=s.id,
                 date=s.date,
-                plan_name=plan_names.get(s.plan_id) if s.plan_id else None,
+                routine_name=routine_names.get(s.routine_id) if s.routine_id else None,
                 status=s.status,
                 duration_seconds=s.duration_seconds,
                 total_sets=total_sets,

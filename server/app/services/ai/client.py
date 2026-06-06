@@ -17,11 +17,11 @@ from app.schemas.ai import (
     AiProgramDraft,
     ChatRequest,
     ChatResponse,
-    SuggestedPlan,
+    SuggestedRoutine,
     SuggestedProgram,
     SuggestedProgramDay,
 )
-from app.schemas.plan import PlannedExerciseIn
+from app.schemas.routine import RoutineExerciseIn
 from app.services.ai.context_service import (
     build_current_session_context,
     build_user_context,
@@ -111,8 +111,8 @@ async def chat(
     # Prefer a multi-day program when the model emitted one; otherwise fall back to a
     # single-session plan. Never return both.
     suggested_program = await _extract_program(raw_reply, db)
-    suggested_plan = None if suggested_program else await _extract_plan(raw_reply, db)
-    # The structured plan/program JSON is surfaced via the Save card — strip it from the
+    suggested_routine = None if suggested_program else await _extract_plan(raw_reply, db)
+    # The structured routine/program JSON is surfaced via the Save card — strip it from the
     # chat text so the bubble shows only the prose. If the model returned nothing but JSON,
     # fall back to a short prompt pointing at the Save card.
     clean_reply = validate_response(_strip_structured_blocks(raw_reply))
@@ -122,11 +122,11 @@ async def chat(
                 "I've put together a multi-day program for you — review the days below "
                 "and tap Save Program to add it."
             )
-        elif suggested_plan:
-            clean_reply = "I've put together a plan for you — tap Save Plan to add it."
+        elif suggested_routine:
+            clean_reply = "I've put together a routine for you — tap Save Routine to add it."
     return ChatResponse(
         reply=clean_reply,
-        suggested_plan=suggested_plan,
+        suggested_routine=suggested_routine,
         suggested_program=suggested_program,
     )
 
@@ -233,20 +233,20 @@ def _extract_json_block(raw_reply: str) -> str | None:
 
 async def _resolve_exercises(
     draft_exercises: list[AiPlanExercise], db: AsyncSession
-) -> list[PlannedExerciseIn]:
+) -> list[RoutineExerciseIn]:
     """Resolve LLM exercise names to UUIDs and clamp values into sanity bounds.
 
     The LLM is untrusted — cap absurd values rather than letting one bad number
-    reject the whole plan, and skip exercises that don't resolve to a real row.
+    reject the whole routine, and skip exercises that don't resolve to a real row.
     """
-    resolved: list[PlannedExerciseIn] = []
+    resolved: list[RoutineExerciseIn] = []
     for ex in draft_exercises:
         exercise_id = await _resolve_exercise(ex.exercise_id, db)
         if exercise_id is None:
             logger.info("Could not resolve exercise name: %r — skipping", ex.exercise_id)
             continue
         resolved.append(
-            PlannedExerciseIn(
+            RoutineExerciseIn(
                 exercise_id=exercise_id,
                 target_sets=clamp_int(ex.target_sets, SETS_BOUNDS),
                 target_reps=clamp_int(ex.target_reps, REPS_BOUNDS),
@@ -258,7 +258,7 @@ async def _resolve_exercises(
     return resolved
 
 
-async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedPlan | None:
+async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedRoutine | None:
     json_str = _extract_json_block(raw_reply)
     if json_str is None:
         return None
@@ -271,7 +271,7 @@ async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedPlan | Non
     resolved = await _resolve_exercises(draft.exercises, db)
     if not resolved:
         return None
-    return SuggestedPlan(name=draft.name, exercises=resolved)
+    return SuggestedRoutine(name=draft.name, exercises=resolved)
 
 
 async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram | None:

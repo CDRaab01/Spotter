@@ -11,10 +11,10 @@ import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.PersonalRecord
 import com.spotter.data.model.LoginRequest
-import com.spotter.data.model.PlanCreate
-import com.spotter.data.model.PlanOut
-import com.spotter.data.model.PlanUpdate
-import com.spotter.data.model.PlannedExercisesUpdate
+import com.spotter.data.model.RoutineCreate
+import com.spotter.data.model.RoutineOut
+import com.spotter.data.model.RoutineUpdate
+import com.spotter.data.model.RoutineExercisesUpdate
 import com.spotter.data.model.RefreshRequest
 import com.spotter.data.model.RegisterRequest
 import com.spotter.data.model.SessionCreate
@@ -60,24 +60,24 @@ interface ApiService {
     @POST("auth/reset-password")
     suspend fun resetPassword(@Body req: ResetPasswordRequest)
 
-    // Plans
-    @GET("plans")
-    suspend fun getPlans(): List<PlanOut>
+    // Routines
+    @GET("routines")
+    suspend fun getRoutines(): List<RoutineOut>
 
-    @POST("plans")
-    suspend fun createPlan(@Body req: PlanCreate): PlanOut
+    @POST("routines")
+    suspend fun createRoutine(@Body req: RoutineCreate): RoutineOut
 
-    @GET("plans/{id}")
-    suspend fun getPlan(@Path("id") id: String): PlanOut
+    @GET("routines/{id}")
+    suspend fun getRoutine(@Path("id") id: String): RoutineOut
 
-    @PATCH("plans/{id}")
-    suspend fun renamePlan(@Path("id") id: String, @Body req: PlanUpdate): PlanOut
+    @PATCH("routines/{id}")
+    suspend fun renameRoutine(@Path("id") id: String, @Body req: RoutineUpdate): RoutineOut
 
-    @DELETE("plans/{id}")
-    suspend fun deletePlan(@Path("id") id: String)
+    @DELETE("routines/{id}")
+    suspend fun deleteRoutine(@Path("id") id: String)
 
-    @PUT("plans/{id}/exercises")
-    suspend fun updatePlanExercises(@Path("id") id: String, @Body req: PlannedExercisesUpdate): PlanOut
+    @PUT("routines/{id}/exercises")
+    suspend fun updateRoutineExercises(@Path("id") id: String, @Body req: RoutineExercisesUpdate): RoutineOut
 
     // Sessions
     @GET("sessions")

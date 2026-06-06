@@ -1,12 +1,12 @@
 package com.spotter.calendar
 
-import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.model.SessionOut
 import com.spotter.data.repository.CalendarRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.calendar.CalendarViewModel
@@ -39,12 +39,12 @@ class CalendarViewModelTest {
     private lateinit var calendarRepository: CalendarRepository
     private lateinit var sessionRepository: SessionRepository
     private lateinit var programRepository: ProgramRepository
-    private lateinit var planRepository: PlanRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var programDao: WorkoutProgramDao
     private lateinit var programDayDao: ProgramDayDao
-    private lateinit var plannedExerciseDao: PlannedExerciseDao
+    private lateinit var routineExerciseDao: RoutineExerciseDao
 
     @Before
     fun setup() {
@@ -52,12 +52,12 @@ class CalendarViewModelTest {
         calendarRepository = mock()
         sessionRepository = mock()
         programRepository = mock()
-        planRepository = mock()
+        routineRepository = mock()
         appPreferences = mock()
         sessionDao = mock()
         programDao = mock()
         programDayDao = mock()
-        plannedExerciseDao = mock()
+        routineExerciseDao = mock()
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
     }
 
@@ -65,12 +65,12 @@ class CalendarViewModelTest {
         calendarRepository,
         sessionRepository,
         programRepository,
-        planRepository,
+        routineRepository,
         appPreferences,
         sessionDao,
         programDao,
         programDayDao,
-        plannedExerciseDao,
+        routineExerciseDao,
     )
 
     @After
@@ -106,7 +106,7 @@ class CalendarViewModelTest {
         val events = mutableListOf<String>()
         val job = launch { viewModel.navigateToWorkout.collect { events.add(it) } }
 
-        viewModel.startProjectedSession("plan-A")
+        viewModel.startProjectedSession("routine-A")
         advanceTimeBy(200)
 
         verify(sessionRepository).createSession(any())

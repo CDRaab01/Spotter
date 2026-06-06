@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class ProgramDayIn(
-    @SerialName("plan_id") val planId: String? = null,
+    @SerialName("routine_id") val routineId: String? = null,
     val label: String,
     val order: Int = 0,
 )
@@ -28,10 +28,10 @@ data class ProgramDaysUpdate(val days: List<ProgramDayIn>)
 @Serializable
 data class ProgramDayOut(
     val id: String,
-    @SerialName("plan_id") val planId: String? = null,
+    @SerialName("routine_id") val routineId: String? = null,
     val label: String,
     val order: Int = 0,
-    @SerialName("plan_name") val planName: String? = null,
+    @SerialName("routine_name") val routineName: String? = null,
 )
 
 @Serializable

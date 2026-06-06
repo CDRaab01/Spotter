@@ -7,8 +7,8 @@ import androidx.room.PrimaryKey
 data class ProgramDayEntity(
     @PrimaryKey val id: String,
     val programId: String,
-    val planId: String?,
+    val routineId: String?,
     val label: String,
     val order: Int = 0,
-    val planName: String? = null,
+    val routineName: String? = null,
 )

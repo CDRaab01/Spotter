@@ -4,17 +4,17 @@ from pydantic import BaseModel
 
 
 class ProgramDayIn(BaseModel):
-    plan_id: uuid.UUID | None = None
+    routine_id: uuid.UUID | None = None
     label: str
     order: int = 0
 
 
 class ProgramDayOut(BaseModel):
     id: uuid.UUID
-    plan_id: uuid.UUID | None
+    routine_id: uuid.UUID | None
     label: str
     order: int
-    plan_name: str | None = None
+    routine_name: str | None = None
 
 
 class ProgramCreate(BaseModel):

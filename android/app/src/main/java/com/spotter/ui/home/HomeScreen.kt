@@ -65,8 +65,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
-import com.spotter.data.local.entity.PlannedExerciseEntity
-import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.ui.components.AnimatedCounter
 import com.spotter.ui.components.ConfettiHost
 import com.spotter.ui.components.EmptyState
@@ -94,7 +94,7 @@ fun HomeScreen(
     navController: NavController,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    val plans by viewModel.plans.collectAsState()
+    val routines by viewModel.routines.collectAsState()
     val startState by viewModel.startState.collectAsState()
     val generatingPlan by viewModel.generatingPlan.collectAsState()
     val generationError by viewModel.generationError.collectAsState()
@@ -104,7 +104,7 @@ fun HomeScreen(
     val activeProgramId by viewModel.activeProgramId.collectAsState()
     val greeting by viewModel.greeting.collectAsState()
     val bodyweight by viewModel.bodyweight.collectAsState()
-    val planExercises by viewModel.planExercises.collectAsState()
+    val routineExercises by viewModel.routineExercises.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
@@ -167,8 +167,8 @@ fun HomeScreen(
                     IconButton(onClick = { navController.navigate(Screen.Progress.route) }) {
                         Icon(Icons.Default.ShowChart, contentDescription = "Progress")
                     }
-                    IconButton(onClick = { navController.navigate(Screen.CreatePlan.route) }) {
-                        Icon(Icons.Default.Add, contentDescription = "New plan")
+                    IconButton(onClick = { navController.navigate(Screen.CreateRoutine.route) }) {
+                        Icon(Icons.Default.Add, contentDescription = "New routine")
                     }
                     var overflowExpanded by remember { mutableStateOf(false) }
                     Box {
@@ -226,7 +226,7 @@ fun HomeScreen(
             }
         },
     ) { padding ->
-        when (val state = plans) {
+        when (val state = routines) {
             is UiState.Loading -> LoadingState(Modifier.padding(padding))
 
             is UiState.Error -> ErrorState(
@@ -248,11 +248,11 @@ fun HomeScreen(
 
                     if (upcomingList.isNotEmpty()) {
                         item { SectionHeader("Upcoming workouts") }
-                        items(upcomingList, key = { "${it.date}-${it.planId}-${it.dayLabel}" }) { workout ->
+                        items(upcomingList, key = { "${it.date}-${it.routineId}-${it.dayLabel}" }) { workout ->
                             UpcomingWorkoutCard(
                                 workout = workout,
                                 isStarting = isStarting,
-                                onStart = { workout.planId?.let { viewModel.startSession(it) } },
+                                onStart = { workout.routineId?.let { viewModel.startSession(it) } },
                                 onTapCard = activeProgramId?.let { pid ->
                                     { navController.navigate(Screen.ProgramDetail.createRoute(pid)) }
                                 },
@@ -268,7 +268,7 @@ fun HomeScreen(
                         generationError != null && state.data.isEmpty() -> item {
                             GenerationErrorPrompt(
                                 message = generationError!!,
-                                onRetry = { viewModel.retryInitialPlan() },
+                                onRetry = { viewModel.retryInitialRoutine() },
                                 onChat = { navController.navigate(Screen.AiChat.createRoute()) },
                             )
                         }
@@ -278,16 +278,16 @@ fun HomeScreen(
                         }
 
                         else -> {
-                            item { SectionHeader("Your plans") }
-                            items(state.data, key = { it.id }) { plan ->
-                                PlanCard(
-                                    plan = plan,
-                                    exercises = planExercises[plan.id].orEmpty(),
+                            item { SectionHeader("Your routines") }
+                            items(state.data, key = { it.id }) { routine ->
+                                RoutineCard(
+                                    routine = routine,
+                                    exercises = routineExercises[routine.id].orEmpty(),
                                     isStarting = isStarting,
-                                    onStart = { viewModel.startSession(plan.id) },
-                                    onDelete = { viewModel.deletePlan(plan.id) },
-                                    onRename = { newName -> viewModel.renamePlan(plan.id, newName) },
-                                    onTapCard = { navController.navigate(Screen.PlanDetail.createRoute(plan.id)) },
+                                    onStart = { viewModel.startSession(routine.id) },
+                                    onDelete = { viewModel.deleteRoutine(routine.id) },
+                                    onRename = { newName -> viewModel.renameRoutine(routine.id, newName) },
+                                    onTapCard = { navController.navigate(Screen.RoutineDetail.createRoute(routine.id)) },
                                 )
                             }
                         }
@@ -424,11 +424,11 @@ private fun UpcomingWorkoutCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = workout.planName ?: workout.dayLabel,
+                        text = workout.routineName ?: workout.dayLabel,
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
-                if (workout.planId != null) {
+                if (workout.routineId != null) {
                     Button(onClick = onStart, enabled = !isStarting) {
                         Text(if (isStarting) "Starting…" else "Start")
                     }
@@ -468,7 +468,7 @@ private fun EmptyPlansPrompt(onChat: () -> Unit) {
             )
         }
         Spacer(Modifier.height(16.dp))
-        Text("No workout plans yet", style = MaterialTheme.typography.titleMedium)
+        Text("No workout routines yet", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(6.dp))
         Text(
             "Your AI Coach can build your first one in seconds.",
@@ -490,7 +490,7 @@ private fun GeneratingPlaceholder() {
     ) {
         PulsingDots()
         Spacer(Modifier.height(16.dp))
-        Text("Building your first plan…", style = MaterialTheme.typography.bodyMedium)
+        Text("Building your first routine…", style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -520,9 +520,9 @@ private fun GenerationErrorPrompt(
 }
 
 @Composable
-private fun PlanCard(
-    plan: WorkoutPlanEntity,
-    exercises: List<PlannedExerciseEntity>,
+private fun RoutineCard(
+    routine: WorkoutRoutineEntity,
+    exercises: List<RoutineExerciseEntity>,
     isStarting: Boolean,
     onStart: () -> Unit,
     onDelete: () -> Unit,
@@ -535,7 +535,7 @@ private fun PlanCard(
 
     if (showRenameDialog) {
         RenameDialog(
-            currentName = plan.name,
+            currentName = routine.name,
             onDismiss = { showRenameDialog = false },
             onConfirm = { newName ->
                 onRename(newName)
@@ -547,8 +547,8 @@ private fun PlanCard(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete plan?") },
-            text = { Text("\"${plan.name}\" will be permanently deleted.") },
+            title = { Text("Delete routine?") },
+            text = { Text("\"${routine.name}\" will be permanently deleted.") },
             confirmButton = {
                 TextButton(onClick = { showDeleteConfirm = false; onDelete() }) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
@@ -567,9 +567,9 @@ private fun PlanCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(plan.name, style = MaterialTheme.typography.titleMedium)
+                    Text(routine.name, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        plan.source,
+                        routine.source,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -582,7 +582,7 @@ private fun PlanCard(
                 }
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Plan options")
+                        Icon(Icons.Default.MoreVert, contentDescription = "Routine options")
                     }
                     DropdownMenu(
                         expanded = menuExpanded,
@@ -620,12 +620,12 @@ private fun RenameDialog(
     var nameText by remember { mutableStateOf(currentName) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename plan") },
+        title = { Text("Rename routine") },
         text = {
             OutlinedTextField(
                 value = nameText,
                 onValueChange = { nameText = it },
-                label = { Text("Plan name") },
+                label = { Text("Routine name") },
                 singleLine = true,
             )
         },

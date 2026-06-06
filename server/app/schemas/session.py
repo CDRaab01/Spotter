@@ -7,7 +7,7 @@ from app.limits import REPS_BOUNDS, WEIGHT_BOUNDS_LB
 
 
 class SessionCreate(BaseModel):
-    plan_id: uuid.UUID | None = None
+    routine_id: uuid.UUID | None = None
     date: datetime.date
     note: str | None = None
 
@@ -63,8 +63,8 @@ class MuscleGroupSummary(BaseModel):
 class SessionOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
-    plan_id: uuid.UUID | None
-    plan_name: str | None = None
+    routine_id: uuid.UUID | None
+    routine_name: str | None = None
     date: datetime.date
     status: str
     duration_seconds: int | None
@@ -83,7 +83,7 @@ class ExerciseSummary(BaseModel):
 class SessionSummary(BaseModel):
     id: uuid.UUID
     date: datetime.date
-    plan_name: str | None = None
+    routine_name: str | None = None
     status: str
     duration_seconds: int | None = None
     total_sets: int

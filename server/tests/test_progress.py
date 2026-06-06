@@ -14,11 +14,11 @@ async def test_records_empty_for_new_user(auth_client):
     assert resp.json() == []
 
 
-async def _plan_with_exercise(auth_client, exercise, sets=3, reps=8, weight=135.0):
-    plan_resp = await auth_client.post(
-        "/plans",
+async def _routine_with_exercise(auth_client, exercise, sets=3, reps=8, weight=135.0):
+    routine_resp = await auth_client.post(
+        "/routines",
         json={
-            "name": "PR Test Plan",
+            "name": "PR Test Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),
@@ -31,17 +31,17 @@ async def _plan_with_exercise(auth_client, exercise, sets=3, reps=8, weight=135.
             ],
         },
     )
-    assert plan_resp.status_code == 201
-    return plan_resp.json()["id"]
+    assert routine_resp.status_code == 201
+    return routine_resp.json()["id"]
 
 
 async def test_records_computes_weight_1rm_and_volume(auth_client, exercise):
     """Records reflect the heaviest weight, best Epley 1RM, and best set volume
     across completed sets, ignoring incomplete ones."""
-    plan_id = await _plan_with_exercise(auth_client, exercise)
+    routine_id = await _routine_with_exercise(auth_client, exercise)
     session_resp = await auth_client.post(
         "/sessions",
-        json={"plan_id": plan_id, "date": str(datetime.date.today())},
+        json={"routine_id": routine_id, "date": str(datetime.date.today())},
     )
     assert session_resp.status_code == 201
     session = session_resp.json()
@@ -74,10 +74,10 @@ async def test_records_computes_weight_1rm_and_volume(auth_client, exercise):
 
 async def test_records_ignore_incomplete_sets(auth_client, exercise):
     """A heavier but uncompleted set does not count toward records."""
-    plan_id = await _plan_with_exercise(auth_client, exercise)
+    routine_id = await _routine_with_exercise(auth_client, exercise)
     session_resp = await auth_client.post(
         "/sessions",
-        json={"plan_id": plan_id, "date": str(datetime.date.today())},
+        json={"routine_id": routine_id, "date": str(datetime.date.today())},
     )
     session = session_resp.json()
     session_id = session["id"]

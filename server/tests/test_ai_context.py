@@ -88,11 +88,11 @@ def _mock_lm_response(content: str):
     return mock_resp
 
 
-async def _make_plan_session_completed(auth_client, exercise):
-    plan = await auth_client.post(
-        "/plans",
+async def _make_routine_session_completed(auth_client, exercise):
+    routine = await auth_client.post(
+        "/routines",
         json={
-            "name": "Ctx Plan",
+            "name": "Ctx Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),
@@ -105,9 +105,9 @@ async def _make_plan_session_completed(auth_client, exercise):
             ],
         },
     )
-    plan_id = plan.json()["id"]
+    routine_id = routine.json()["id"]
     sess = await auth_client.post(
-        "/sessions", json={"plan_id": plan_id, "date": str(datetime.date.today())}
+        "/sessions", json={"routine_id": routine_id, "date": str(datetime.date.today())}
     )
     for sl in sess.json()["set_logs"]:
         await auth_client.patch(
@@ -116,7 +116,7 @@ async def _make_plan_session_completed(auth_client, exercise):
 
 
 async def test_logged_history_reaches_the_llm_system_prompt(auth_client, exercise):
-    await _make_plan_session_completed(auth_client, exercise)
+    await _make_routine_session_completed(auth_client, exercise)
 
     captured = {}
 
@@ -215,18 +215,18 @@ async def test_greeting_with_active_program_is_context_aware_and_makes_no_plan(
     # Active program but nothing completed yet → early stage.
     assert "Athlete status: early" in system_msg
     body = resp.json()
-    assert body["suggested_plan"] is None
+    assert body["suggested_routine"] is None
     assert body["suggested_program"] is None
 
 
 async def test_prior_bests_includes_suggested_weight(auth_client, exercise):
     # First session: complete all sets at 135 lb
-    await _make_plan_session_completed(auth_client, exercise)
+    await _make_routine_session_completed(auth_client, exercise)
 
-    # Second session from the same plan
-    plan = (await auth_client.get("/plans")).json()[0]
+    # Second session from the same routine
+    routine = (await auth_client.get("/routines")).json()[0]
     s2 = await auth_client.post(
-        "/sessions", json={"plan_id": plan["id"], "date": str(datetime.date.today())}
+        "/sessions", json={"routine_id": routine["id"], "date": str(datetime.date.today())}
     )
     resp = await auth_client.get(f"/sessions/{s2.json()['id']}/prior-bests")
     assert resp.status_code == 200

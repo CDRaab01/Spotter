@@ -9,11 +9,11 @@ import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
-import com.spotter.data.model.PlanCreate
-import com.spotter.data.model.SuggestedPlan
+import com.spotter.data.model.RoutineCreate
+import com.spotter.data.model.SuggestedRoutine
 import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.repository.AiRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
@@ -36,7 +36,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AiChatViewModel @Inject constructor(
     private val aiRepository: AiRepository,
-    private val planRepository: PlanRepository,
+    private val routineRepository: RoutineRepository,
     private val programRepository: ProgramRepository,
     private val chatMessageDao: ChatMessageDao,
     private val sessionDao: WorkoutSessionDao,
@@ -54,14 +54,14 @@ class AiChatViewModel @Inject constructor(
     private val _sendState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val sendState: StateFlow<UiState<Unit>> = _sendState
 
-    private val _pendingPlan = MutableStateFlow<SuggestedPlan?>(null)
-    val pendingPlan: StateFlow<SuggestedPlan?> = _pendingPlan.asStateFlow()
+    private val _pendingRoutine = MutableStateFlow<SuggestedRoutine?>(null)
+    val pendingRoutine: StateFlow<SuggestedRoutine?> = _pendingRoutine.asStateFlow()
 
     private val _pendingProgram = MutableStateFlow<SuggestedProgram?>(null)
     val pendingProgram: StateFlow<SuggestedProgram?> = _pendingProgram.asStateFlow()
 
-    private val _planSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val planSaved: SharedFlow<String> = _planSaved
+    private val _routineSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val routineSaved: SharedFlow<String> = _routineSaved
 
     private val _programSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val programSaved: SharedFlow<String> = _programSaved
@@ -106,11 +106,11 @@ class AiChatViewModel @Inject constructor(
                     if (program != null) {
                         _pendingProgram.value = program
                     } else {
-                        response.suggestedPlan?.let { _pendingPlan.value = it }
+                        response.suggestedRoutine?.let { _pendingRoutine.value = it }
                     }
                 }
                 val gotNothing = response.reply.isBlank() &&
-                    response.suggestedProgram == null && response.suggestedPlan == null
+                    response.suggestedProgram == null && response.suggestedRoutine == null
                 _sendState.value = if (gotNothing) {
                     UiState.Error("The coach didn't have a response — please try again.")
                 } else {
@@ -122,27 +122,27 @@ class AiChatViewModel @Inject constructor(
         }
     }
 
-    fun savePlan() {
-        val plan = _pendingPlan.value ?: return
+    fun saveRoutine() {
+        val routine = _pendingRoutine.value ?: return
         viewModelScope.launch {
             try {
-                val result = planRepository.createPlan(
-                    PlanCreate(
-                        name = plan.name,
+                val result = routineRepository.createRoutine(
+                    RoutineCreate(
+                        name = routine.name,
                         source = "ai",
-                        exercises = plan.exercises,
+                        exercises = routine.exercises,
                     )
                 )
-                _pendingPlan.value = null
-                _planSaved.emit(result.name)
+                _pendingRoutine.value = null
+                _routineSaved.emit(result.name)
             } catch (e: Exception) {
-                _sendState.value = UiState.Error(e.message ?: "Failed to save plan.")
+                _sendState.value = UiState.Error(e.message ?: "Failed to save routine.")
             }
         }
     }
 
-    fun dismissPlan() {
-        _pendingPlan.value = null
+    fun dismissRoutine() {
+        _pendingRoutine.value = null
     }
 
     fun saveProgram() {
@@ -152,10 +152,10 @@ class AiChatViewModel @Inject constructor(
                 val result = aiRepository.acceptProgram(
                     AcceptProgramRequest(name = program.name, days = program.days)
                 )
-                // Pull the new program + its plans into the local cache so Home/Calendar
+                // Pull the new program + its routines into the local cache so Home/Calendar
                 // immediately reflect the now-active program.
                 runCatching { programRepository.sync() }
-                runCatching { planRepository.sync() }
+                runCatching { routineRepository.sync() }
                 _pendingProgram.value = null
                 _programSaved.emit(result.name)
             } catch (e: Exception) {

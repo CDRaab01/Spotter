@@ -40,7 +40,7 @@ async def test_null_content_returns_soft_reply(auth_client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["reply"].strip()  # a friendly non-empty reply, not a crash
-    assert body["suggested_plan"] is None
+    assert body["suggested_routine"] is None
     assert body["suggested_program"] is None
 
 

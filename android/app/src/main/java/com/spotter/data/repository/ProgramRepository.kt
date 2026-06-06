@@ -81,6 +81,6 @@ private fun ProgramOut.toEntity() = WorkoutProgramEntity(
 )
 
 private fun ProgramDayOut.toEntity(programId: String) = ProgramDayEntity(
-    id = id, programId = programId, planId = planId,
-    label = label, order = order, planName = planName,
+    id = id, programId = programId, routineId = routineId,
+    label = label, order = order, routineName = routineName,
 )

@@ -323,7 +323,7 @@ class WorkoutViewModelTest {
     private fun fakeSession(id: String = "session-1") = SessionOut(
         id = id,
         userId = "user-1",
-        planId = null,
+        routineId = null,
         date = "2025-06-01",
         status = "in_progress",
         durationSeconds = null,

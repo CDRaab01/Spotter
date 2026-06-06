@@ -60,7 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.data.model.SuggestedPlan
+import com.spotter.data.model.SuggestedRoutine
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.GradientButton
 import com.spotter.util.UiState
@@ -73,7 +73,7 @@ fun AiChatScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val sendState by viewModel.sendState.collectAsState()
-    val pendingPlan by viewModel.pendingPlan.collectAsState()
+    val pendingRoutine by viewModel.pendingRoutine.collectAsState()
     val pendingProgram by viewModel.pendingProgram.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var overflowExpanded by remember { mutableStateOf(false) }
@@ -97,9 +97,9 @@ fun AiChatScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.planSaved.collect { planName ->
+        viewModel.routineSaved.collect { routineName ->
             snackbarHostState.showSnackbar(
-                message = "Plan \"$planName\" saved!",
+                message = "Routine \"$routineName\" saved!",
                 duration = SnackbarDuration.Short,
             )
         }
@@ -185,12 +185,12 @@ fun AiChatScreen(
                 }
             }
 
-            AnimatedVisibility(visible = pendingPlan != null) {
-                pendingPlan?.let { plan ->
-                    SuggestedPlanCard(
-                        plan = plan,
-                        onSave = { viewModel.savePlan() },
-                        onDismiss = { viewModel.dismissPlan() },
+            AnimatedVisibility(visible = pendingRoutine != null) {
+                pendingRoutine?.let { routine ->
+                    SuggestedRoutineCard(
+                        routine = routine,
+                        onSave = { viewModel.saveRoutine() },
+                        onDismiss = { viewModel.dismissRoutine() },
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
@@ -236,8 +236,8 @@ fun AiChatScreen(
 }
 
 @Composable
-private fun SuggestedPlanCard(
-    plan: SuggestedPlan,
+private fun SuggestedRoutineCard(
+    routine: SuggestedRoutine,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -250,12 +250,12 @@ private fun SuggestedPlanCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = plan.name,
+                text = routine.name,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                text = "${plan.exercises.size} exercise${if (plan.exercises.size != 1) "s" else ""}",
+                text = "${routine.exercises.size} exercise${if (routine.exercises.size != 1) "s" else ""}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
             )
@@ -264,7 +264,7 @@ private fun SuggestedPlanCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 GradientButton(
-                    text = "Save Plan",
+                    text = "Save Routine",
                     onClick = onSave,
                     modifier = Modifier.weight(1f),
                 )

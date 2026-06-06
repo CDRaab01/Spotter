@@ -18,6 +18,6 @@ class User(Base):
     reset_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    plans = relationship("WorkoutPlan", back_populates="user", lazy="raise")
+    routines = relationship("WorkoutRoutine", back_populates="user", lazy="raise")
     sessions = relationship("WorkoutSession", back_populates="user", lazy="raise")
     metrics = relationship("BodyMetric", back_populates="user", lazy="raise")

@@ -21,22 +21,22 @@ def _accept_body(exercise_id: str, name: str = "PPL"):
     }
 
 
-async def test_accept_program_creates_plans_and_active_program(auth_client, exercise):
+async def test_accept_program_creates_routines_and_active_program(auth_client, exercise):
     resp = await auth_client.post("/ai/programs/accept", json=_accept_body(str(exercise.id)))
     assert resp.status_code == 201, resp.text
     program = resp.json()
     assert program["is_active"] is True
     assert len(program["days"]) == 2
-    # Push day links a plan; rest day does not.
+    # Push day links a routine; rest day does not.
     push = next(d for d in program["days"] if d["label"] == "Push")
     rest = next(d for d in program["days"] if d["label"] == "Rest")
-    assert push["plan_id"] is not None
-    assert rest["plan_id"] is None
+    assert push["routine_id"] is not None
+    assert rest["routine_id"] is None
 
-    # The per-day plan was created as an AI plan.
-    plans = (await auth_client.get("/plans")).json()
-    ai_plans = [p for p in plans if p["source"] == "ai"]
-    assert any(p["id"] == push["plan_id"] for p in ai_plans)
+    # The per-day routine was created as an AI routine.
+    routines = (await auth_client.get("/routines")).json()
+    ai_routines = [r for r in routines if r["source"] == "ai"]
+    assert any(r["id"] == push["routine_id"] for r in ai_routines)
 
 
 async def test_accept_program_deactivates_previous_active(auth_client, exercise):

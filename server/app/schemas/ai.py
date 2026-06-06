@@ -2,7 +2,7 @@ import uuid
 
 from pydantic import BaseModel
 
-from app.schemas.plan import PlannedExerciseIn
+from app.schemas.routine import RoutineExerciseIn
 
 
 class ChatMessage(BaseModel):
@@ -38,9 +38,9 @@ class AiPlanDraft(BaseModel):
     exercises: list[AiPlanExercise]
 
 
-class SuggestedPlan(BaseModel):
+class SuggestedRoutine(BaseModel):
     name: str
-    exercises: list[PlannedExerciseIn]
+    exercises: list[RoutineExerciseIn]
 
 
 # ── Multi-day program generation ────────────────────────────────────────────
@@ -59,7 +59,7 @@ class AiProgramDraft(BaseModel):
 
 class SuggestedProgramDay(BaseModel):
     label: str
-    exercises: list[PlannedExerciseIn] = []  # resolved + clamped; empty = rest day
+    exercises: list[RoutineExerciseIn] = []  # resolved + clamped; empty = rest day
     order: int = 0
 
 
@@ -70,12 +70,12 @@ class SuggestedProgram(BaseModel):
 
 class AcceptProgramRequest(BaseModel):
     """Client echoes back the suggested program it showed; the server re-validates
-    bounds via PlannedExerciseIn before persisting."""
+    bounds via RoutineExerciseIn before persisting."""
     name: str
     days: list[SuggestedProgramDay]
 
 
 class ChatResponse(BaseModel):
     reply: str
-    suggested_plan: SuggestedPlan | None = None
+    suggested_routine: SuggestedRoutine | None = None
     suggested_program: SuggestedProgram | None = None

@@ -219,7 +219,7 @@ fun CalendarScreen(
                             projection != null -> UpcomingDetailCard(
                                 workout = projection,
                                 onStart = {
-                                    projection.planId?.let { viewModel.startProjectedSession(it) }
+                                    projection.routineId?.let { viewModel.startProjectedSession(it) }
                                 },
                             )
 
@@ -373,7 +373,7 @@ private fun SessionDetailCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = entry.planName ?: "Free session",
+                    text = entry.routineName ?: "Free session",
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Spacer(Modifier.height(6.dp))
@@ -415,7 +415,7 @@ private fun UpcomingDetailCard(
             color = MaterialTheme.colorScheme.primary,
         )
         Text(
-            text = workout.planName ?: workout.dayLabel,
+            text = workout.routineName ?: workout.dayLabel,
             style = MaterialTheme.typography.titleMedium,
         )
         if (workout.lifts.isNotEmpty()) {
@@ -425,7 +425,7 @@ private fun UpcomingDetailCard(
                 Spacer(Modifier.height(2.dp))
             }
         }
-        if (workout.planId != null) {
+        if (workout.routineId != null) {
             Spacer(Modifier.height(12.dp))
             GradientButton(
                 text = "Start workout now",

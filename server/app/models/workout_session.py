@@ -13,8 +13,8 @@ class WorkoutSession(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    plan_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("workout_plans.id", ondelete="SET NULL"), nullable=True
+    routine_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workout_routines.id", ondelete="SET NULL"), nullable=True
     )
     date: Mapped[datetime.date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), default="in_progress")
@@ -23,7 +23,7 @@ class WorkoutSession(Base):
     exercise_notes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user = relationship("User", back_populates="sessions", lazy="raise")
-    plan = relationship("WorkoutPlan", back_populates="sessions", lazy="raise")
+    routine = relationship("WorkoutRoutine", back_populates="sessions", lazy="raise")
     set_logs = relationship(
         "SetLog",
         back_populates="session",
