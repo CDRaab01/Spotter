@@ -60,3 +60,75 @@ sudo systemctl restart spotter.service    # after pulling new code
 - Postgres must run as a systemd service named `postgresql.service` (the default on
   Debian/Ubuntu). On other distros, edit the `After=`/`Requires=` line.
 - The app finds the database via `DATABASE_URL` in `server/.env`.
+
+## Remote redeploy on push to main (self-hosted runner)
+
+Refresh the running server **without touching the machine**: when `main` updates
+and CI passes, a self-hosted GitHub Actions runner on the host pulls the new code,
+rebuilds, and restarts the Docker stack. The runner long-polls GitHub *outbound*,
+so there are **no inbound ports** to open on a home network.
+
+```
+[push to main] -> [CI green] -> [Deploy workflow] -> [self-hosted runner on host]
+                                                          |
+                                redeploy script: git reset --hard -> docker compose up -d --build -> /health
+```
+
+The redeploy logic lives in one place per OS — `deploy/redeploy.ps1` (Windows /
+Docker Desktop, the primary target) and `deploy/redeploy.sh` (Linux/macOS) — so a
+human and the workflow run the exact same steps: fetch, check out the ref, rebuild
++ restart, health-gate on `/health`, prune old images. Migrations apply
+automatically on container boot (`server/docker-entrypoint.sh`).
+
+### One-time setup
+
+1. **Install the runner on the host.** In GitHub: **Settings → Actions → Runners →
+   New self-hosted runner**, follow the download/configure steps, and give it the
+   label **`spotter`** (the `Deploy` workflow targets `runs-on: [self-hosted, spotter]`).
+   Install it as a service so it survives reboots (`svc install` / `svc start` on
+   Windows; `./svc.sh install` on Linux).
+
+2. **Point the workflow at your deployment clone.** Set a repo **Actions variable**
+   (Settings → Secrets and variables → Actions → Variables) named **`SPOTTER_DIR`**
+   to the absolute path of the clone you run `docker compose` from, e.g.
+   `C:\Spotter`. The workflow never checks out code — it drives this canonical
+   clone, which owns `server/.env` and the `pgdata` volume.
+
+3. **Windows / Docker Desktop caveat (important).** `docker compose` only works for
+   the runner if Docker Desktop is running for the runner's account:
+   - Run the runner service under a user that is in the **`docker-users`** group.
+   - Make sure **Docker Desktop is running** in that session — enable Docker
+     Desktop's *"Start Docker Desktop when you log in"* and keep that user logged
+     in, or run Docker Desktop as that same account. If the runner can't reach the
+     Docker engine, the deploy step fails fast with a clear error.
+
+### How it fires
+
+- **Automatic:** every push to `main` runs CI; when CI succeeds, the `Deploy`
+  workflow runs on the host and redeploys the CI'd commit. A red CI never deploys.
+- **Manual / rollback:** **Actions → Deploy → Run workflow**. Leave `ref` as
+  `origin/main` for a plain redeploy, or enter a **prior commit SHA** to roll back.
+  (Code rolls back via `git reset`; Alembic migrations are forward-only, so a
+  schema-changing rollback would need a down-migration.)
+
+### Confirming the deploy landed
+
+The redeploy scripts stamp the running build with the deployed commit. To verify:
+- **In the app:** **Settings → About** shows the app version and the connected
+  **Server** version + short commit (e.g. `0.1.0 · a1b2c3d`).
+- **Direct:** `curl http://127.0.0.1:8000/version` →
+  `{"name","version","commit","built_at"}`. `commit`/`built_at` are `unknown` for a
+  plain manual `docker compose up` (only the redeploy scripts stamp them).
+
+### Run it by hand
+
+You can always redeploy directly on the host without GitHub:
+
+```powershell
+pwsh deploy/redeploy.ps1            # deploy origin/main
+pwsh deploy/redeploy.ps1 -Ref 1a2b3c4   # roll back to a prior commit
+```
+```bash
+./deploy/redeploy.sh               # deploy origin/main  (Linux/macOS)
+./deploy/redeploy.sh 1a2b3c4       # roll back
+```

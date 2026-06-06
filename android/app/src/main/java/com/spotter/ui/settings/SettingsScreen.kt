@@ -77,6 +77,7 @@ fun SettingsScreen(
     val serverUrl by viewModel.serverUrl.collectAsState()
     val programs by viewModel.programs.collectAsState()
     val resetting by viewModel.resetting.collectAsState()
+    val serverVersion by viewModel.serverVersion.collectAsState()
     val context = LocalContext.current
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -309,7 +310,52 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            SettingsSection("About") {
+                VersionRow("App", viewModel.appVersion)
+                Spacer(Modifier.height(6.dp))
+                val serverValue = when (val v = serverVersion) {
+                    is UiState.Success -> {
+                        val info = v.data
+                        if (info.commit.isBlank() || info.commit == "unknown") info.version
+                        else "${info.version} · ${info.commit}"
+                    }
+                    is UiState.Error -> "Unavailable"
+                    else -> "Checking…"
+                }
+                VersionRow("Server", serverValue)
+                (serverVersion as? UiState.Success)?.data?.builtAt
+                    ?.takeIf { it.isNotBlank() && it != "unknown" }
+                    ?.let { builtAt ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Deployed $builtAt",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+            }
         }
+    }
+}
+
+/** A label + value row for the About section (e.g. "Server  0.1.0 · a1b2c3d"). */
+@Composable
+private fun VersionRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

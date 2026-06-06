@@ -78,6 +78,14 @@ Two ways to run it so the server + tunnel come up together:
 - **systemd:** see [`deploy/`](./deploy/) for `spotter.service` + `cloudflared.service` and an
   installer that enables both on boot.
 
+## Remote redeploy (refresh the server when `main` updates)
+
+To redeploy the server remotely after pushing changes — pull, rebuild, restart, no
+manual step on the box — set up a self-hosted GitHub Actions runner on the host. On
+a green CI build of `main` (or a manual button), it runs `git reset --hard` +
+`docker compose up -d --build` and health-checks `/health`. See
+[`deploy/README.md`](./deploy/README.md#remote-redeploy-on-push-to-main-self-hosted-runner).
+
 ## API Surface
 
 | Method | Path | Description |

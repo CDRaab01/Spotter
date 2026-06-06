@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # Expose the interactive API docs (/docs, /redoc, /openapi.json). Disable on public deploys.
     docs_enabled: bool = True
 
+    # Build/deploy stamp surfaced by GET /version so the app can show what's running
+    # (and confirm a redeploy landed). Injected at deploy time by deploy/redeploy.*
+    # via docker-compose; "unknown" for an unstamped manual/dev run.
+    git_sha: str = "unknown"
+    built_at: str = "unknown"
+
     # Optional SMTP — if unset, reset codes are printed to stdout instead
     smtp_host: str | None = None
     smtp_port: int = 587

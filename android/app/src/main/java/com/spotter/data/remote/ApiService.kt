@@ -34,6 +34,7 @@ import com.spotter.data.model.ResetPasswordRequest
 import com.spotter.data.model.TokenResponse
 import com.spotter.data.model.TrackedExercise
 import com.spotter.data.model.UserOut
+import com.spotter.data.model.VersionOut
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -140,6 +141,10 @@ interface ApiService {
     /** Wipes all of the current user's server data; the account (login) is kept. */
     @POST("users/reset")
     suspend fun resetAccount()
+
+    /** Server build info (unauthenticated) — shown in Settings → About. */
+    @GET("version")
+    suspend fun getServerVersion(): VersionOut
 
     // Progress
     @GET("progress/exercises")
