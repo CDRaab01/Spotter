@@ -113,6 +113,35 @@ async def test_logged_history_reaches_the_llm_system_prompt(auth_client, exercis
     assert exercise.name in system_msg
 
 
+async def _make_active_program(auth_client, exercise):
+    """Create + activate a program (one training day + a rest day) via the AI accept
+    endpoint, which auto-activates it."""
+    resp = await auth_client.post(
+        "/ai/programs/accept",
+        json={
+            "name": "Test PPL",
+            "days": [
+                {
+                    "label": "Push",
+                    "order": 0,
+                    "exercises": [
+                        {
+                            "exercise_id": str(exercise.id),
+                            "target_sets": 3,
+                            "target_reps": 8,
+                            "target_weight": 135.0,
+                            "is_bodyweight": False,
+                            "order": 0,
+                        }
+                    ],
+                },
+                {"label": "Rest", "order": 1, "exercises": []},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+
+
 async def test_new_user_chat_has_no_history_block(auth_client):
     captured = {}
 
@@ -129,7 +158,39 @@ async def test_new_user_chat_has_no_history_block(auth_client):
 
     assert resp.status_code == 200
     system_msg = captured["payload"]["messages"][0]["content"]
+    # No logged-history block, but the model is now told this is a brand-new athlete.
     assert "recent logged training data" not in system_msg
+    assert "Athlete status: new" in system_msg
+
+
+async def test_greeting_with_active_program_is_context_aware_and_makes_no_plan(
+    auth_client, exercise
+):
+    """A bare greeting from a user who already has a program must not produce a plan;
+    the system prompt should carry their active-program + status context."""
+    await _make_active_program(auth_client, exercise)
+    captured = {}
+
+    async def fake_post(url, json=None, **kwargs):
+        captured["payload"] = json
+        return _mock_lm_response("Hey! Nice work staying on it — how did the last session feel?")
+
+    with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__.return_value.post = AsyncMock(side_effect=fake_post)
+        resp = await auth_client.post(
+            "/ai/chat",
+            json={"messages": [{"role": "user", "content": "hey"}]},
+        )
+
+    assert resp.status_code == 200
+    system_msg = captured["payload"]["messages"][0]["content"]
+    assert 'Active program: "Test PPL"' in system_msg
+    assert "do not offer to create a new one" in system_msg
+    # Active program but nothing completed yet → early stage.
+    assert "Athlete status: early" in system_msg
+    body = resp.json()
+    assert body["suggested_plan"] is None
+    assert body["suggested_program"] is None
 
 
 async def test_prior_bests_includes_suggested_weight(auth_client, exercise):
