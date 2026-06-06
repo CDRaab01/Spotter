@@ -2,9 +2,11 @@ package com.spotter.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.UserOut
+import com.spotter.data.model.VersionOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.di.IoDispatcher
@@ -43,6 +45,13 @@ class SettingsViewModel @Inject constructor(
     private val _user = MutableStateFlow<UiState<UserOut>>(UiState.Loading)
     val user: StateFlow<UiState<UserOut>> = _user.asStateFlow()
 
+    /** This app build's version, e.g. "1.0 (1)". Static — read from BuildConfig. */
+    val appVersion: String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+
+    /** The connected server's build info — confirms a redeploy landed. */
+    private val _serverVersion = MutableStateFlow<UiState<VersionOut>>(UiState.Loading)
+    val serverVersion: StateFlow<UiState<VersionOut>> = _serverVersion.asStateFlow()
+
     /** All programs (incl. AI-generated), surfaced for the Programs settings section. */
     val programs: StateFlow<List<WorkoutProgramEntity>> = programRepository.programs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -80,6 +89,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadUser()
+        loadServerVersion()
         viewModelScope.launch { runCatching { programRepository.sync() } }
     }
 
@@ -91,6 +101,17 @@ class SettingsViewModel @Inject constructor(
                 _user.value = UiState.Success(result)
             } catch (e: Exception) {
                 _user.value = UiState.Error(e.message ?: "Failed to load user")
+            }
+        }
+    }
+
+    fun loadServerVersion() {
+        viewModelScope.launch {
+            _serverVersion.value = UiState.Loading
+            try {
+                _serverVersion.value = UiState.Success(api.getServerVersion())
+            } catch (e: Exception) {
+                _serverVersion.value = UiState.Error(e.message ?: "Couldn't reach server")
             }
         }
     }

@@ -34,9 +34,12 @@ echo "Ref:    $REF"
 # 1 + 2. Fetch and check out the exact ref (clean, reproducible deploy).
 git -C "$REPO_DIR" fetch --prune origin
 git -C "$REPO_DIR" reset --hard "$REF"
-echo "Deployed commit: $(git -C "$REPO_DIR" rev-parse HEAD)"
+echo "Deployed commit: $(git -C "$REPO_DIR" rev-parse --short HEAD)"
 
 # 3. Rebuild + restart. Migrations run on container boot via the entrypoint.
+#    Stamp the build so GET /version reports what's actually running.
+export GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
+export BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 docker compose --project-directory "$REPO_DIR" up -d --build
 
 # 4. Health gate — fail the run if the API doesn't come back healthy.

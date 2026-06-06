@@ -7,10 +7,13 @@ from app.config import settings
 from app.limiter import limiter
 from app.routers import ai, auth, calendar, exercises, metrics, routines, progress, programs, sessions, users
 
+# Single source for the human-facing version, reused by GET /version below.
+APP_VERSION = "0.1.0"
+
 # Interactive docs are handy locally but are an unnecessary surface on a public deployment.
 app = FastAPI(
     title="Spotter API",
-    version="0.1.0",
+    version=APP_VERSION,
     docs_url="/docs" if settings.docs_enabled else None,
     redoc_url="/redoc" if settings.docs_enabled else None,
     openapi_url="/openapi.json" if settings.docs_enabled else None,
@@ -56,3 +59,15 @@ app.include_router(programs.router)
 @app.get("/health", tags=["health"])
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/version", tags=["version"])
+async def version() -> dict:
+    # Unauthenticated (like /health) so the app can show what's running before/after login.
+    # `commit`/`built_at` are stamped at deploy time (deploy/redeploy.*); "unknown" otherwise.
+    return {
+        "name": app.title,
+        "version": APP_VERSION,
+        "commit": settings.git_sha,
+        "built_at": settings.built_at,
+    }

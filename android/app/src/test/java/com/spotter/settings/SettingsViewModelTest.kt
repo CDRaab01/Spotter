@@ -2,6 +2,7 @@ package com.spotter.settings
 
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.model.UserOut
+import com.spotter.data.model.VersionOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.ui.settings.SettingsViewModel
@@ -56,6 +57,9 @@ class SettingsViewModelTest {
         whenever(programRepository.programs).thenReturn(flowOf(emptyList()))
     }
 
+    private val sampleVersion =
+        VersionOut(name = "Spotter API", version = "0.1.0", commit = "a1b2c3d", builtAt = "2026-06-06T12:00:00Z")
+
     private fun createViewModel() =
         SettingsViewModel(api, tokenStore, appPreferences, database, programRepository, testDispatcher)
 
@@ -74,6 +78,29 @@ class SettingsViewModelTest {
 
         assertIs<UiState.Success<UserOut>>(viewModel.user.value)
         assertEquals(user, (viewModel.user.value as UiState.Success).data)
+    }
+
+    @Test
+    fun `init loads server version`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        whenever(api.getServerVersion()).thenReturn(sampleVersion)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        assertIs<UiState.Success<VersionOut>>(viewModel.serverVersion.value)
+        assertEquals(sampleVersion, (viewModel.serverVersion.value as UiState.Success).data)
+    }
+
+    @Test
+    fun `server version reflects an unreachable server as error`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        whenever(api.getServerVersion()).thenThrow(RuntimeException("timeout"))
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        assertIs<UiState.Error>(viewModel.serverVersion.value)
     }
 
     @Test

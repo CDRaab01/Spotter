@@ -63,10 +63,13 @@ Invoke-Checked git @("-C", $RepoDir, "fetch", "--prune", "origin")
 
 # 2. Check out the exact ref (clean, reproducible deploy).
 Invoke-Checked git @("-C", $RepoDir, "reset", "--hard", $Ref)
-$deployedSha = (& git -C $RepoDir rev-parse HEAD).Trim()
+$deployedSha = (& git -C $RepoDir rev-parse --short HEAD).Trim()
 Write-Host "Deployed commit: $deployedSha"
 
 # 3. Rebuild + restart. Migrations run on container boot via the entrypoint.
+#    Stamp the build so GET /version reports what's actually running.
+$env:GIT_SHA = $deployedSha
+$env:BUILT_AT = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 Invoke-Checked docker @("compose", "--project-directory", $RepoDir, "up", "-d", "--build")
 
 # 4. Health gate — fail the run if the API doesn't come back healthy.

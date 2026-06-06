@@ -24,6 +24,10 @@ services:
     environment:
       # Reach Postgres over the compose network; overrides DATABASE_URL from .env.
       DATABASE_URL: postgresql+asyncpg://spotter:spotter@db:5432/spotter
+      # Deploy stamp surfaced by GET /version. deploy/redeploy.* exports these before
+      # `compose up`; default to "unknown" for a plain manual `docker compose up`.
+      GIT_SHA: ${GIT_SHA:-unknown}
+      BUILT_AT: ${BUILT_AT:-unknown}
     depends_on:
       db:
         condition: service_healthy

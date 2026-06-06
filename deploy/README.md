@@ -111,6 +111,15 @@ automatically on container boot (`server/docker-entrypoint.sh`).
   (Code rolls back via `git reset`; Alembic migrations are forward-only, so a
   schema-changing rollback would need a down-migration.)
 
+### Confirming the deploy landed
+
+The redeploy scripts stamp the running build with the deployed commit. To verify:
+- **In the app:** **Settings → About** shows the app version and the connected
+  **Server** version + short commit (e.g. `0.1.0 · a1b2c3d`).
+- **Direct:** `curl http://127.0.0.1:8000/version` →
+  `{"name","version","commit","built_at"}`. `commit`/`built_at` are `unknown` for a
+  plain manual `docker compose up` (only the redeploy scripts stamp them).
+
 ### Run it by hand
 
 You can always redeploy directly on the host without GitHub:
