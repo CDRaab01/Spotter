@@ -66,6 +66,11 @@ async def chat(
                     "model": model,
                     "messages": messages,
                     "temperature": 0.4 if is_plan else 0.7,
+                    # Gemma 4 recommended nucleus/top-k sampling. Pinned explicitly so
+                    # output doesn't drift with LM Studio's UI defaults; temperature still
+                    # carries the plan-vs-chat distinction above.
+                    "top_p": 0.95,
+                    "top_k": 64,
                 },
             )
             resp.raise_for_status()
