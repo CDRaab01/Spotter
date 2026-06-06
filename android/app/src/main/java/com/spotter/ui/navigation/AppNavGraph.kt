@@ -19,8 +19,8 @@ import com.spotter.ui.exercise.ExerciseLibraryScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
 import com.spotter.ui.onboarding.OnboardingScreen
-import com.spotter.ui.plan.CreatePlanScreen
-import com.spotter.ui.plan.PlanDetailScreen
+import com.spotter.ui.plan.CreateRoutineScreen
+import com.spotter.ui.plan.RoutineDetailScreen
 import com.spotter.ui.progress.ProgressScreen
 import com.spotter.ui.settings.SettingsScreen
 import com.spotter.ui.program.ProgramDetailScreen
@@ -125,15 +125,15 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
         ) {
             AiChatScreen(navController = navController)
         }
-        composable(Screen.CreatePlan.route) {
-            CreatePlanScreen(navController = navController)
+        composable(Screen.CreateRoutine.route) {
+            CreateRoutineScreen(navController = navController)
         }
         composable(
-            route = Screen.PlanDetail.route,
-            arguments = listOf(navArgument("planId") { type = NavType.StringType }),
+            route = Screen.RoutineDetail.route,
+            arguments = listOf(navArgument("routineId") { type = NavType.StringType }),
         ) { backStack ->
-            val planId = backStack.arguments?.getString("planId") ?: ""
-            PlanDetailScreen(planId = planId, navController = navController)
+            val routineId = backStack.arguments?.getString("routineId") ?: ""
+            RoutineDetailScreen(routineId = routineId, navController = navController)
         }
         composable(Screen.SessionHistory.route) {
             SessionHistoryScreen(navController = navController)

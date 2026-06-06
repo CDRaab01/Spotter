@@ -48,8 +48,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.data.local.entity.PlannedExerciseEntity
-import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.ui.components.ExercisePreviewRow
 import com.spotter.ui.components.GradientButton
 import com.spotter.ui.components.SpotterCard
@@ -65,7 +65,7 @@ fun ProgramDetailScreen(
     val programName by viewModel.programName.collectAsState()
     val days by viewModel.days.collectAsState()
     val dayExercises by viewModel.dayExercises.collectAsState()
-    val availablePlans by viewModel.availablePlans.collectAsState()
+    val availableRoutines by viewModel.availableRoutines.collectAsState()
     val error by viewModel.error.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -109,8 +109,8 @@ fun ProgramDetailScreen(
             Spacer(Modifier.height(8.dp))
 
             AddDayRow(
-                plans = availablePlans,
-                onAdd = { plan, label -> viewModel.addDay(plan, label) },
+                routines = availableRoutines,
+                onAdd = { routine, label -> viewModel.addDay(routine, label) },
             )
 
             Spacer(Modifier.height(8.dp))
@@ -121,7 +121,7 @@ fun ProgramDetailScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "No days yet. Add a plan above to build this program.",
+                        "No days yet. Add a routine above to build this program.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -135,15 +135,15 @@ fun ProgramDetailScreen(
                         DayRow(
                             index = index,
                             label = day.label,
-                            planName = day.planName,
-                            exercises = day.planId?.let { dayExercises[it] }.orEmpty(),
+                            routineName = day.routineName,
+                            exercises = day.routineId?.let { dayExercises[it] }.orEmpty(),
                             canMoveUp = index > 0,
                             canMoveDown = index < days.size - 1,
                             onMoveUp = { viewModel.moveDay(index, -1) },
                             onMoveDown = { viewModel.moveDay(index, 1) },
                             onRemove = { viewModel.removeDay(index) },
-                            onEdit = day.planId?.let { planId ->
-                                { navController.navigate(Screen.PlanDetail.createRoute(planId)) }
+                            onEdit = day.routineId?.let { routineId ->
+                                { navController.navigate(Screen.RoutineDetail.createRoute(routineId)) }
                             },
                         )
                     }
@@ -163,10 +163,10 @@ fun ProgramDetailScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddDayRow(
-    plans: List<WorkoutPlanEntity>,
-    onAdd: (WorkoutPlanEntity?, String) -> Unit,
+    routines: List<WorkoutRoutineEntity>,
+    onAdd: (WorkoutRoutineEntity?, String) -> Unit,
 ) {
-    var selectedPlan by remember { mutableStateOf<WorkoutPlanEntity?>(null) }
+    var selectedRoutine by remember { mutableStateOf<WorkoutRoutineEntity?>(null) }
     var label by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
 
@@ -175,18 +175,18 @@ private fun AddDayRow(
             OutlinedButton(
                 onClick = { expanded = true },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = plans.isNotEmpty(),
+                enabled = routines.isNotEmpty(),
             ) {
                 Text(
-                    selectedPlan?.name
-                        ?: if (plans.isEmpty()) "No plans available" else "Choose a plan",
+                    selectedRoutine?.name
+                        ?: if (routines.isEmpty()) "No routines available" else "Choose a routine",
                 )
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                plans.forEach { plan ->
+                routines.forEach { routine ->
                     DropdownMenuItem(
-                        text = { Text(plan.name) },
-                        onClick = { selectedPlan = plan; expanded = false },
+                        text = { Text(routine.name) },
+                        onClick = { selectedRoutine = routine; expanded = false },
                     )
                 }
             }
@@ -205,11 +205,11 @@ private fun AddDayRow(
             )
             Button(
                 onClick = {
-                    onAdd(selectedPlan, label)
-                    selectedPlan = null
+                    onAdd(selectedRoutine, label)
+                    selectedRoutine = null
                     label = ""
                 },
-                enabled = selectedPlan != null || label.isNotBlank(),
+                enabled = selectedRoutine != null || label.isNotBlank(),
             ) {
                 Text("Add")
             }
@@ -221,8 +221,8 @@ private fun AddDayRow(
 private fun DayRow(
     index: Int,
     label: String,
-    planName: String?,
-    exercises: List<PlannedExerciseEntity>,
+    routineName: String?,
+    exercises: List<RoutineExerciseEntity>,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMoveUp: () -> Unit,
@@ -246,7 +246,7 @@ private fun DayRow(
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        planName ?: "Rest / no plan",
+                        routineName ?: "Rest / no routine",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

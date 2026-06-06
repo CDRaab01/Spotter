@@ -1,16 +1,16 @@
 package com.spotter.plan
 
 import com.spotter.data.model.ExerciseOut
-import com.spotter.data.model.PlannedExerciseIn
-import com.spotter.data.model.PlannedExerciseOut
-import com.spotter.data.model.PlanOut
+import com.spotter.data.model.RoutineExerciseIn
+import com.spotter.data.model.RoutineExerciseOut
+import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.SessionOut
 import com.spotter.data.repository.ExerciseRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.plan.DraftExercise
-import com.spotter.ui.plan.PlanDetailViewModel
+import com.spotter.ui.plan.RoutineDetailViewModel
 import com.spotter.util.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -32,21 +32,21 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class PlanDetailViewModelTest {
+class RoutineDetailViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    private lateinit var planRepository: PlanRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var exerciseRepository: ExerciseRepository
     private lateinit var sessionRepository: SessionRepository
-    private lateinit var viewModel: PlanDetailViewModel
+    private lateinit var viewModel: RoutineDetailViewModel
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        planRepository = mock()
+        routineRepository = mock()
         exerciseRepository = mock()
         sessionRepository = mock()
-        viewModel = PlanDetailViewModel(planRepository, exerciseRepository, sessionRepository)
+        viewModel = RoutineDetailViewModel(routineRepository, exerciseRepository, sessionRepository)
     }
 
     @After
@@ -54,15 +54,15 @@ class PlanDetailViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun fakePlan() = PlanOut(
-        id = "plan-1",
+    private fun fakeRoutine() = RoutineOut(
+        id = "routine-1",
         userId = "user-1",
-        name = "My Plan",
+        name = "My Routine",
         source = "manual",
         createdAt = "2026-06-01T00:00:00Z",
         exercises = listOf(
-            PlannedExerciseOut(
-                id = "pe-1",
+            RoutineExerciseOut(
+                id = "re-1",
                 exerciseId = "ex-1",
                 targetSets = 3,
                 targetReps = 8,
@@ -75,23 +75,23 @@ class PlanDetailViewModelTest {
     )
 
     @Test
-    fun `loadPlan transitions to Success`() = runTest(testDispatcher) {
-        val plan = fakePlan()
-        whenever(planRepository.getPlan("plan-1")).thenReturn(plan)
+    fun `loadRoutine transitions to Success`() = runTest(testDispatcher) {
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
 
-        viewModel.loadPlan("plan-1")
+        viewModel.loadRoutine("routine-1")
         advanceTimeBy(200)
 
-        assertIs<UiState.Success<PlanOut>>(viewModel.plan.value)
-        assertEquals(plan, (viewModel.plan.value as UiState.Success).data)
+        assertIs<UiState.Success<RoutineOut>>(viewModel.routine.value)
+        assertEquals(routine, (viewModel.routine.value as UiState.Success).data)
     }
 
     @Test
-    fun `startEdit populates draftExercises from plan`() = runTest(testDispatcher) {
-        val plan = fakePlan()
-        whenever(planRepository.getPlan("plan-1")).thenReturn(plan)
+    fun `startEdit populates draftExercises from routine`() = runTest(testDispatcher) {
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
 
-        viewModel.loadPlan("plan-1")
+        viewModel.loadRoutine("routine-1")
         advanceTimeBy(200)
 
         viewModel.startEdit()
@@ -104,10 +104,10 @@ class PlanDetailViewModelTest {
 
     @Test
     fun `cancelEdit clears isEditing`() = runTest(testDispatcher) {
-        val plan = fakePlan()
-        whenever(planRepository.getPlan("plan-1")).thenReturn(plan)
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
 
-        viewModel.loadPlan("plan-1")
+        viewModel.loadRoutine("routine-1")
         advanceTimeBy(200)
         viewModel.startEdit()
         assertTrue(viewModel.isEditing.value)
@@ -120,10 +120,10 @@ class PlanDetailViewModelTest {
 
     @Test
     fun `addExercise appends to draftExercises`() = runTest(testDispatcher) {
-        val plan = fakePlan()
-        whenever(planRepository.getPlan("plan-1")).thenReturn(plan)
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
 
-        viewModel.loadPlan("plan-1")
+        viewModel.loadRoutine("routine-1")
         advanceTimeBy(200)
         viewModel.startEdit()
 
@@ -136,10 +136,10 @@ class PlanDetailViewModelTest {
 
     @Test
     fun `removeExercise removes by index`() = runTest(testDispatcher) {
-        val plan = fakePlan()
-        whenever(planRepository.getPlan("plan-1")).thenReturn(plan)
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
 
-        viewModel.loadPlan("plan-1")
+        viewModel.loadRoutine("routine-1")
         advanceTimeBy(200)
         viewModel.startEdit()
 
@@ -154,19 +154,19 @@ class PlanDetailViewModelTest {
     }
 
     @Test
-    fun `saveEdits calls repository and reloads plan`() = runTest(testDispatcher) {
-        val plan = fakePlan()
-        whenever(planRepository.getPlan("plan-1")).thenReturn(plan)
-        whenever(planRepository.updateExercises(any(), any())).thenReturn(plan)
+    fun `saveEdits calls repository and reloads routine`() = runTest(testDispatcher) {
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
+        whenever(routineRepository.updateExercises(any(), any())).thenReturn(routine)
 
-        viewModel.loadPlan("plan-1")
+        viewModel.loadRoutine("routine-1")
         advanceTimeBy(200)
         viewModel.startEdit()
 
-        viewModel.saveEdits("plan-1")
+        viewModel.saveEdits("routine-1")
         advanceTimeBy(200)
 
-        verify(planRepository).updateExercises(any(), any())
+        verify(routineRepository).updateExercises(any(), any())
         assertFalse(viewModel.isEditing.value)
     }
 }

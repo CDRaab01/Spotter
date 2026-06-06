@@ -18,9 +18,9 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String? = null) =
             if (sessionId != null) "ai_chat?sessionId=$sessionId" else "ai_chat"
     }
-    data object CreatePlan : Screen("create_plan")
-    data object PlanDetail : Screen("plan_detail/{planId}") {
-        fun createRoute(planId: String) = "plan_detail/$planId"
+    data object CreateRoutine : Screen("create_routine")
+    data object RoutineDetail : Screen("routine_detail/{routineId}") {
+        fun createRoute(routineId: String) = "routine_detail/$routineId"
     }
     data object SessionHistory : Screen("session_history")
     data object Settings : Screen("settings")

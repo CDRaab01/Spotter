@@ -14,15 +14,15 @@ data class ChatRequest(
 )
 
 @Serializable
-data class SuggestedPlan(
+data class SuggestedRoutine(
     val name: String,
-    val exercises: List<PlannedExerciseIn>,
+    val exercises: List<RoutineExerciseIn>,
 )
 
 @Serializable
 data class SuggestedProgramDay(
     val label: String,
-    val exercises: List<PlannedExerciseIn> = emptyList(),
+    val exercises: List<RoutineExerciseIn> = emptyList(),
     val order: Int = 0,
 )
 
@@ -41,6 +41,6 @@ data class AcceptProgramRequest(
 @Serializable
 data class ChatResponse(
     val reply: String,
-    @SerialName("suggested_plan") val suggestedPlan: SuggestedPlan? = null,
+    @SerialName("suggested_routine") val suggestedRoutine: SuggestedRoutine? = null,
     @SerialName("suggested_program") val suggestedProgram: SuggestedProgram? = null,
 )

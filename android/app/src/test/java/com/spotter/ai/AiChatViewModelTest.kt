@@ -3,15 +3,15 @@ package com.spotter.ai
 import com.spotter.data.local.dao.ChatMessageDao
 import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.model.ChatResponse
-import com.spotter.data.model.PlannedExerciseIn
-import com.spotter.data.model.PlanOut
+import com.spotter.data.model.RoutineExerciseIn
+import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.ProgramOut
-import com.spotter.data.model.SuggestedPlan
+import com.spotter.data.model.SuggestedRoutine
 import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.model.SuggestedProgramDay
 import androidx.lifecycle.SavedStateHandle
 import com.spotter.data.repository.AiRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.ui.ai.AiChatViewModel
 import com.spotter.util.AppPreferences
@@ -55,7 +55,7 @@ class AiChatViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var aiRepository: AiRepository
-    private lateinit var planRepository: PlanRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var programRepository: ProgramRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var fakeChatDao: FakeChatMessageDao
@@ -65,13 +65,13 @@ class AiChatViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         aiRepository = mock()
-        planRepository = mock()
+        routineRepository = mock()
         programRepository = mock()
         appPreferences = mock()
         fakeChatDao = FakeChatMessageDao()
         whenever(appPreferences.userProfile).thenReturn(flowOf(UserProfile()))
         viewModel = AiChatViewModel(
-            aiRepository, planRepository, programRepository, fakeChatDao, mock(), appPreferences,
+            aiRepository, routineRepository, programRepository, fakeChatDao, mock(), appPreferences,
             SavedStateHandle(),
         )
     }
@@ -84,7 +84,7 @@ class AiChatViewModelTest {
     @Test
     fun `send appends user message and assistant reply on success`() = runTest(testDispatcher) {
         whenever(aiRepository.chat(any()))
-            .thenReturn(ChatResponse(reply = "Great! Let's build your plan."))
+            .thenReturn(ChatResponse(reply = "Great! Let's build your routine."))
 
         viewModel.send("I want to build muscle")
         advanceTimeBy(200)
@@ -94,7 +94,7 @@ class AiChatViewModelTest {
         assertEquals("user", messages[0].role)
         assertEquals("I want to build muscle", messages[0].content)
         assertEquals("assistant", messages[1].role)
-        assertEquals("Great! Let's build your plan.", messages[1].content)
+        assertEquals("Great! Let's build your routine.", messages[1].content)
     }
 
     @Test
@@ -135,90 +135,90 @@ class AiChatViewModelTest {
     }
 
     @Test
-    fun `send stores suggestedPlan when response includes one`() = runTest(testDispatcher) {
-        val plan = SuggestedPlan(
+    fun `send stores suggestedRoutine when response includes one`() = runTest(testDispatcher) {
+        val routine = SuggestedRoutine(
             name = "Upper Body Push",
             exercises = listOf(
-                PlannedExerciseIn(exerciseId = "ex-uuid-1", targetSets = 3, targetReps = 8)
+                RoutineExerciseIn(exerciseId = "ex-uuid-1", targetSets = 3, targetReps = 8)
             ),
         )
         whenever(aiRepository.chat(any()))
-            .thenReturn(ChatResponse(reply = "Here is your plan.", suggestedPlan = plan))
+            .thenReturn(ChatResponse(reply = "Here is your routine.", suggestedRoutine = routine))
 
-        viewModel.send("give me a plan")
+        viewModel.send("give me a routine")
         advanceTimeBy(200)
 
-        assertNotNull(viewModel.pendingPlan.value)
-        assertEquals("Upper Body Push", viewModel.pendingPlan.value?.name)
+        assertNotNull(viewModel.pendingRoutine.value)
+        assertEquals("Upper Body Push", viewModel.pendingRoutine.value?.name)
     }
 
     @Test
-    fun `send without plan leaves pendingPlan null`() = runTest(testDispatcher) {
+    fun `send without routine leaves pendingRoutine null`() = runTest(testDispatcher) {
         whenever(aiRepository.chat(any()))
             .thenReturn(ChatResponse(reply = "What equipment do you have?"))
 
         viewModel.send("I want to get fit")
         advanceTimeBy(200)
 
-        assertNull(viewModel.pendingPlan.value)
+        assertNull(viewModel.pendingRoutine.value)
     }
 
     @Test
-    fun `savePlan calls planRepository and emits planSaved`() = runTest(testDispatcher) {
-        val plan = SuggestedPlan(
+    fun `saveRoutine calls routineRepository and emits routineSaved`() = runTest(testDispatcher) {
+        val routine = SuggestedRoutine(
             name = "Full Body A",
             exercises = listOf(
-                PlannedExerciseIn(exerciseId = "ex-1", targetSets = 3, targetReps = 8)
+                RoutineExerciseIn(exerciseId = "ex-1", targetSets = 3, targetReps = 8)
             ),
         )
-        val fakePlanOut = PlanOut(
+        val fakeRoutineOut = RoutineOut(
             id = "p-1",
             userId = "u-1",
             name = "Full Body A",
             source = "ai",
             createdAt = "2026-06-01T00:00:00Z",
         )
-        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "Plan!", suggestedPlan = plan))
-        whenever(planRepository.createPlan(any())).thenReturn(fakePlanOut)
+        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "Routine!", suggestedRoutine = routine))
+        whenever(routineRepository.createRoutine(any())).thenReturn(fakeRoutineOut)
 
-        viewModel.send("plan")
+        viewModel.send("routine")
         advanceTimeBy(200)
 
         val savedNames = mutableListOf<String>()
-        val job = launch { viewModel.planSaved.collect { savedNames.add(it) } }
+        val job = launch { viewModel.routineSaved.collect { savedNames.add(it) } }
 
-        viewModel.savePlan()
+        viewModel.saveRoutine()
         advanceTimeBy(200)
 
-        assertNull(viewModel.pendingPlan.value)
+        assertNull(viewModel.pendingRoutine.value)
         assertEquals(1, savedNames.size)
         assertEquals("Full Body A", savedNames[0])
         job.cancel()
     }
 
     @Test
-    fun `dismissPlan clears pendingPlan`() = runTest(testDispatcher) {
-        val plan = SuggestedPlan(name = "Plan", exercises = emptyList())
-        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "ok", suggestedPlan = plan))
+    fun `dismissRoutine clears pendingRoutine`() = runTest(testDispatcher) {
+        val routine = SuggestedRoutine(name = "Routine", exercises = emptyList())
+        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "ok", suggestedRoutine = routine))
 
         viewModel.send("go")
         advanceTimeBy(200)
-        assertNotNull(viewModel.pendingPlan.value)
+        assertNotNull(viewModel.pendingRoutine.value)
 
-        viewModel.dismissPlan()
+        viewModel.dismissRoutine()
 
-        assertNull(viewModel.pendingPlan.value)
+        assertNull(viewModel.pendingRoutine.value)
     }
 
     @Test
-    fun `send prefers program over plan when both present`() = runTest(testDispatcher) {
-        val plan = SuggestedPlan(name = "Plan", exercises = emptyList())
+    fun `send prefers program over routine when both present`() = runTest(testDispatcher) {
+        val routine = SuggestedRoutine(name = "Routine", exercises = emptyList())
         val program = SuggestedProgram(
             name = "PPL",
             days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
         )
         whenever(aiRepository.chat(any())).thenReturn(
-            ChatResponse(reply = "Here's your split.", suggestedPlan = plan, suggestedProgram = program)
+            ChatResponse(reply = "Here's your split.", suggestedRoutine = routine, suggestedProgram = program)
         )
 
         viewModel.send("give me a ppl program")
@@ -226,7 +226,7 @@ class AiChatViewModelTest {
 
         assertNotNull(viewModel.pendingProgram.value)
         assertEquals("PPL", viewModel.pendingProgram.value?.name)
-        assertNull(viewModel.pendingPlan.value)
+        assertNull(viewModel.pendingRoutine.value)
     }
 
     @Test

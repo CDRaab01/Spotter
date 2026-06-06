@@ -2,12 +2,12 @@ package com.spotter.ui.program
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.spotter.data.local.dao.PlannedExerciseDao
-import com.spotter.data.local.entity.PlannedExerciseEntity
-import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.data.local.dao.RoutineExerciseDao
+import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.model.ProgramDayIn
 import com.spotter.data.model.ProgramDaysUpdate
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,16 +21,16 @@ import javax.inject.Inject
 
 /** A program day being edited before it is persisted via replaceDays. */
 data class DraftDay(
-    val planId: String?,
-    val planName: String?,
+    val routineId: String?,
+    val routineName: String?,
     val label: String,
 )
 
 @HiltViewModel
 class ProgramDetailViewModel @Inject constructor(
     private val programRepository: ProgramRepository,
-    private val planRepository: PlanRepository,
-    private val plannedExerciseDao: PlannedExerciseDao,
+    private val routineRepository: RoutineRepository,
+    private val routineExerciseDao: RoutineExerciseDao,
 ) : ViewModel() {
 
     private val _programName = MutableStateFlow("Program")
@@ -39,12 +39,12 @@ class ProgramDetailViewModel @Inject constructor(
     private val _days = MutableStateFlow<List<DraftDay>>(emptyList())
     val days: StateFlow<List<DraftDay>> = _days
 
-    /** Per-plan exercise breakdown, keyed by planId, for the day expansion view. */
-    private val _dayExercises = MutableStateFlow<Map<String, List<PlannedExerciseEntity>>>(emptyMap())
-    val dayExercises: StateFlow<Map<String, List<PlannedExerciseEntity>>> = _dayExercises
+    /** Per-routine exercise breakdown, keyed by routineId, for the day expansion view. */
+    private val _dayExercises = MutableStateFlow<Map<String, List<RoutineExerciseEntity>>>(emptyMap())
+    val dayExercises: StateFlow<Map<String, List<RoutineExerciseEntity>>> = _dayExercises
 
-    val availablePlans: StateFlow<List<WorkoutPlanEntity>> =
-        planRepository.plans.stateIn(
+    val availableRoutines: StateFlow<List<WorkoutRoutineEntity>> =
+        routineRepository.routines.stateIn(
             viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
         )
 
@@ -60,37 +60,37 @@ class ProgramDetailViewModel @Inject constructor(
         programId = id
         viewModelScope.launch {
             try { programRepository.sync() } catch (_: Exception) {}
-            try { planRepository.sync() } catch (_: Exception) {}
+            try { routineRepository.sync() } catch (_: Exception) {}
             _programName.value = programRepository.programName(id) ?: "Program"
             val days = programRepository.daysFor(id)
             _days.value = days.map {
-                DraftDay(planId = it.planId, planName = it.planName, label = it.label)
+                DraftDay(routineId = it.routineId, routineName = it.routineName, label = it.label)
             }
-            // Load each linked plan's exercises for the expandable breakdown.
+            // Load each linked routine's exercises for the expandable breakdown.
             _dayExercises.value = days
-                .mapNotNull { it.planId }
+                .mapNotNull { it.routineId }
                 .distinct()
-                .associateWith { plannedExerciseDao.getByPlanId(it) }
+                .associateWith { routineExerciseDao.getByRoutineId(it) }
         }
     }
 
-    /** Re-load the breakdown for a single plan after it was edited in PlanDetail. */
-    fun refreshPlanExercises(planId: String) {
+    /** Re-load the breakdown for a single routine after it was edited in RoutineDetail. */
+    fun refreshRoutineExercises(routineId: String) {
         viewModelScope.launch {
-            val updated = plannedExerciseDao.getByPlanId(planId)
-            _dayExercises.value = _dayExercises.value.toMutableMap().apply { put(planId, updated) }
+            val updated = routineExerciseDao.getByRoutineId(routineId)
+            _dayExercises.value = _dayExercises.value.toMutableMap().apply { put(routineId, updated) }
         }
     }
 
-    /** Append a day. Falls back to the plan name (or an ordinal) when no label is typed. */
-    fun addDay(plan: WorkoutPlanEntity?, label: String) {
+    /** Append a day. Falls back to the routine name (or an ordinal) when no label is typed. */
+    fun addDay(routine: WorkoutRoutineEntity?, label: String) {
         val trimmed = label.trim()
         val finalLabel = when {
             trimmed.isNotEmpty() -> trimmed
-            plan != null -> plan.name
+            routine != null -> routine.name
             else -> "Day ${_days.value.size + 1}"
         }
-        _days.value = _days.value + DraftDay(plan?.id, plan?.name, finalLabel)
+        _days.value = _days.value + DraftDay(routine?.id, routine?.name, finalLabel)
     }
 
     fun removeDay(index: Int) {
@@ -115,7 +115,7 @@ class ProgramDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val daysIn = _days.value.mapIndexed { i, d ->
-                    ProgramDayIn(planId = d.planId, label = d.label, order = i)
+                    ProgramDayIn(routineId = d.routineId, label = d.label, order = i)
                 }
                 programRepository.replaceDays(programId, ProgramDaysUpdate(daysIn))
                 _saved.emit(Unit)

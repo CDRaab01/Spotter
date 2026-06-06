@@ -9,7 +9,7 @@ class WorkoutProjectionTest {
 
     private val today = LocalDate.of(2026, 6, 2)
 
-    private fun day(planId: String) = ProjectionDay(planId = planId, label = planId, planName = planId)
+    private fun day(routineId: String) = ProjectionDay(routineId = routineId, label = routineId, routineName = routineId)
 
     @Test
     fun `no sessions starts today and spaces by cadence`() {
@@ -18,9 +18,9 @@ class WorkoutProjectionTest {
 
         assertEquals(2, slots.size)
         assertEquals(today, slots[0].date)
-        assertEquals("A", slots[0].planId)
+        assertEquals("A", slots[0].routineId)
         assertEquals(today.plusDays(3), slots[1].date)
-        assertEquals("B", slots[1].planId)
+        assertEquals("B", slots[1].routineId)
     }
 
     @Test
@@ -34,7 +34,7 @@ class WorkoutProjectionTest {
         val days = listOf(day("A"))
         val slots = WorkoutProjection.project(today, cadenceDays = 2, anchor = null, days = days, count = 2)
 
-        assertEquals(listOf("A", "A"), slots.map { it.planId })
+        assertEquals(listOf("A", "A"), slots.map { it.routineId })
         assertEquals(today, slots[0].date)
         assertEquals(today.plusDays(2), slots[1].date)
     }
@@ -42,19 +42,19 @@ class WorkoutProjectionTest {
     @Test
     fun `in progress session today projects next day at today plus cadence`() {
         val days = listOf(day("A"), day("B"), day("C"))
-        val anchor = SessionAnchor(date = today, planId = "A", status = "in_progress")
+        val anchor = SessionAnchor(date = today, routineId = "A", status = "in_progress")
         val slots = WorkoutProjection.project(today, cadenceDays = 2, anchor = anchor, days = days, count = 2)
 
         assertEquals(today.plusDays(2), slots[0].date)
-        assertEquals("B", slots[0].planId)
+        assertEquals("B", slots[0].routineId)
         assertEquals(today.plusDays(4), slots[1].date)
-        assertEquals("C", slots[1].planId)
+        assertEquals("C", slots[1].routineId)
     }
 
     @Test
     fun `stale past anchor rolls forward to first date on or after today`() {
         val days = listOf(day("A"), day("B"))
-        val anchor = SessionAnchor(date = today.minusDays(5), planId = "A", status = "completed")
+        val anchor = SessionAnchor(date = today.minusDays(5), routineId = "A", status = "completed")
         val slots = WorkoutProjection.project(today, cadenceDays = 2, anchor = anchor, days = days, count = 2)
 
         // (today-5)+2=-3, +2=-1, +2=+1 -> first projected date is today+1
@@ -78,21 +78,21 @@ class WorkoutProjectionTest {
     }
 
     @Test
-    fun `anchor plan not in program falls back to first day`() {
+    fun `anchor routine not in program falls back to first day`() {
         val days = listOf(day("A"), day("B"))
-        val anchor = SessionAnchor(date = today, planId = "X", status = "completed")
+        val anchor = SessionAnchor(date = today, routineId = "X", status = "completed")
         val slots = WorkoutProjection.project(today, cadenceDays = 2, anchor = anchor, days = days, count = 2)
 
-        assertEquals("A", slots[0].planId)
-        assertEquals("B", slots[1].planId)
+        assertEquals("A", slots[0].routineId)
+        assertEquals("B", slots[1].routineId)
     }
 
     @Test
     fun `cycling wraps around the ordered days`() {
         val days = listOf(day("A"), day("B"), day("C"))
-        val anchor = SessionAnchor(date = today, planId = "B", status = "completed")
+        val anchor = SessionAnchor(date = today, routineId = "B", status = "completed")
         val slots = WorkoutProjection.project(today, cadenceDays = 1, anchor = anchor, days = days, count = 2)
 
-        assertEquals(listOf("C", "A"), slots.map { it.planId })
+        assertEquals(listOf("C", "A"), slots.map { it.routineId })
     }
 }

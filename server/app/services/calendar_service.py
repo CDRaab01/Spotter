@@ -23,7 +23,7 @@ async def get_calendar(
             WorkoutSession.date <= to_date,
         )
         .options(
-            joinedload(WorkoutSession.plan),
+            joinedload(WorkoutSession.routine),
             selectinload(WorkoutSession.set_logs),
         )
     )
@@ -32,7 +32,7 @@ async def get_calendar(
         CalendarEntry(
             session_id=s.id,
             date=s.date,
-            plan_name=s.plan.name if s.plan else None,
+            routine_name=s.routine.name if s.routine else None,
             status=s.status,
             set_count=len(s.set_logs),
         )

@@ -6,42 +6,42 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spotter.data.local.dao.BodyMetricDao
 import com.spotter.data.local.dao.ChatMessageDao
-import com.spotter.data.local.dao.PlannedExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
-import com.spotter.data.local.dao.WorkoutPlanDao
 import com.spotter.data.local.dao.WorkoutProgramDao
+import com.spotter.data.local.dao.WorkoutRoutineDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.local.entity.ChatMessageEntity
-import com.spotter.data.local.entity.PlannedExerciseEntity
 import com.spotter.data.local.entity.ProgramDayEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.SetLogEntity
-import com.spotter.data.local.entity.WorkoutPlanEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
 
 @Database(
     entities = [
-        WorkoutPlanEntity::class,
+        WorkoutRoutineEntity::class,
         WorkoutSessionEntity::class,
         SetLogEntity::class,
         BodyMetricEntity::class,
         ChatMessageEntity::class,
-        PlannedExerciseEntity::class,
+        RoutineExerciseEntity::class,
         WorkoutProgramEntity::class,
         ProgramDayEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
-    abstract fun workoutPlanDao(): WorkoutPlanDao
+    abstract fun workoutRoutineDao(): WorkoutRoutineDao
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun setLogDao(): SetLogDao
     abstract fun bodyMetricDao(): BodyMetricDao
     abstract fun chatMessageDao(): ChatMessageDao
-    abstract fun plannedExerciseDao(): PlannedExerciseDao
+    abstract fun routineExerciseDao(): RoutineExerciseDao
     abstract fun workoutProgramDao(): WorkoutProgramDao
     abstract fun programDayDao(): ProgramDayDao
 
@@ -98,6 +98,75 @@ abstract class SpotterDatabase : RoomDatabase() {
                         planName TEXT
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Rename workout_plans → workout_routines
+                db.execSQL("ALTER TABLE workout_plans RENAME TO workout_routines")
+
+                // Recreate workout_sessions to rename planId → routineId
+                db.execSQL("""
+                    CREATE TABLE workout_sessions_new (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        userId TEXT NOT NULL,
+                        routineId TEXT,
+                        date TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        durationSeconds INTEGER,
+                        note TEXT,
+                        exerciseNotes TEXT,
+                        serverId TEXT,
+                        syncPending INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL(
+                    "INSERT INTO workout_sessions_new SELECT id,userId,planId,date,status," +
+                    "durationSeconds,note,exerciseNotes,serverId,syncPending FROM workout_sessions"
+                )
+                db.execSQL("DROP TABLE workout_sessions")
+                db.execSQL("ALTER TABLE workout_sessions_new RENAME TO workout_sessions")
+
+                // Recreate planned_exercises with routineId column (SQLite can't rename columns directly)
+                db.execSQL("""
+                    CREATE TABLE routine_exercises (
+                        routineId TEXT NOT NULL,
+                        exerciseId TEXT NOT NULL,
+                        exerciseName TEXT,
+                        targetSets INTEGER NOT NULL,
+                        targetReps INTEGER NOT NULL,
+                        targetWeight REAL,
+                        isBodyweight INTEGER NOT NULL,
+                        `order` INTEGER NOT NULL,
+                        supersetGroup INTEGER,
+                        PRIMARY KEY(routineId, exerciseId)
+                    )
+                """.trimIndent())
+                db.execSQL(
+                    "INSERT INTO routine_exercises SELECT planId,exerciseId,exerciseName," +
+                    "targetSets,targetReps,targetWeight,isBodyweight,`order`,supersetGroup " +
+                    "FROM planned_exercises"
+                )
+                db.execSQL("DROP TABLE planned_exercises")
+
+                // Recreate program_days with routineId/routineName columns
+                db.execSQL("""
+                    CREATE TABLE program_days_new (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        programId TEXT NOT NULL,
+                        routineId TEXT,
+                        label TEXT NOT NULL,
+                        `order` INTEGER NOT NULL DEFAULT 0,
+                        routineName TEXT
+                    )
+                """.trimIndent())
+                db.execSQL(
+                    "INSERT INTO program_days_new SELECT id,programId,planId,label,`order`,planName " +
+                    "FROM program_days"
+                )
+                db.execSQL("DROP TABLE program_days")
+                db.execSQL("ALTER TABLE program_days_new RENAME TO program_days")
             }
         }
     }

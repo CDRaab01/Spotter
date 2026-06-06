@@ -52,11 +52,11 @@ import com.spotter.ui.theme.formatWeightLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreatePlanScreen(
+fun CreateRoutineScreen(
     navController: NavController,
-    viewModel: CreatePlanViewModel = hiltViewModel(),
+    viewModel: CreateRoutineViewModel = hiltViewModel(),
 ) {
-    val planName by viewModel.planName.collectAsState()
+    val routineName by viewModel.routineName.collectAsState()
     val exercises by viewModel.exercises.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
@@ -82,7 +82,7 @@ fun CreatePlanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("New Plan") },
+                title = { Text("New Routine") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -101,9 +101,9 @@ fun CreatePlanScreen(
             Spacer(Modifier.height(8.dp))
 
             OutlinedTextField(
-                value = planName,
-                onValueChange = { viewModel.planName.value = it },
-                label = { Text("Plan name") },
+                value = routineName,
+                onValueChange = { viewModel.routineName.value = it },
+                label = { Text("Routine name") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
@@ -157,7 +157,7 @@ fun CreatePlanScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "Search for exercises above to add them to your plan.",
+                        "Search for exercises above to add them to your routine.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -180,147 +180,13 @@ fun CreatePlanScreen(
             Spacer(Modifier.height(8.dp))
 
             GradientButton(
-                text = "Save Plan",
-                onClick = { viewModel.savePlan() },
+                text = "Save Routine",
+                onClick = { viewModel.saveRoutine() },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = planName.isNotBlank() && exercises.isNotEmpty(),
+                enabled = routineName.isNotBlank() && exercises.isNotEmpty(),
             )
 
             Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-
-@Composable
-internal fun DraftExerciseRow(
-    draft: DraftExercise,
-    onUpdate: (DraftExercise) -> Unit,
-    onRemove: () -> Unit,
-) {
-    var setsText by remember(draft.exerciseId) { mutableStateOf(draft.targetSets.toString()) }
-    var repsText by remember(draft.exerciseId) { mutableStateOf(draft.targetReps.toString()) }
-    var weightText by remember(draft.exerciseId) {
-        mutableStateOf(draft.targetWeight?.toString() ?: "")
-    }
-
-    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 12.dp) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    draft.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = onRemove) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Remove",
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = setsText,
-                    onValueChange = { v ->
-                        setsText = v
-                        v.toIntOrNull()?.let { onUpdate(draft.copy(targetSets = it)) }
-                    },
-                    label = { Text("Sets") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = repsText,
-                    onValueChange = { v ->
-                        repsText = v
-                        v.toIntOrNull()?.let { onUpdate(draft.copy(targetReps = it)) }
-                    },
-                    label = { Text("Reps") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                )
-                if (!draft.isBodyweight) {
-                    OutlinedTextField(
-                        value = weightText,
-                        onValueChange = { v ->
-                            weightText = v.filter { c -> c.isDigit() || c == '.' }
-                            onUpdate(draft.copy(targetWeight = weightText.toDoubleOrNull()))
-                        },
-                        label = { Text(LocalWeightUnit.current.formatWeightLabel()) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                    )
-                } else {
-                    Box(modifier = Modifier.weight(1f)) {
-                        OutlinedTextField(
-                            value = "BW",
-                            onValueChange = {},
-                            label = { Text("Weight") },
-                            enabled = false,
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                        )
-                    }
-                }
-                SupersetSelector(
-                    group = draft.supersetGroup,
-                    onChange = { onUpdate(draft.copy(supersetGroup = it)) },
-                    modifier = Modifier.weight(0.9f),
-                )
-            }
-        }
-    }
-}
-
-/** Renders a superset group number as its workout-screen letter (1 -> "A"). */
-internal fun supersetLabel(group: Int?): String =
-    if (group == null || group < 1) "" else ('A' + group - 1).toString()
-
-/**
- * Letter-based picker for the superset group, mapping None/A/B/C/D to the
- * nullable Int the API expects. Matches the "Superset A" rendering used in
- * workout mode ([com.spotter.ui.workout.WorkoutScreen]).
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun SupersetSelector(
-    group: Int?,
-    onChange: (Int?) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val options = listOf<Int?>(null, 1, 2, 3, 4)
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-        modifier = modifier,
-    ) {
-        OutlinedTextField(
-            value = if (group == null) "None" else supersetLabel(group),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Superset") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
-            singleLine = true,
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { opt ->
-                DropdownMenuItem(
-                    text = { Text(if (opt == null) "None" else "Group ${supersetLabel(opt)}") },
-                    onClick = { onChange(opt); expanded = false },
-                )
-            }
         }
     }
 }

@@ -158,12 +158,12 @@ async def test_finish_session(auth_client):
     assert resp.json()["duration_seconds"] == 3600
 
 
-async def test_session_with_plan_pre_populates_set_logs(auth_client, exercise):
-    # Create a plan with one exercise (3 sets)
-    plan_resp = await auth_client.post(
-        "/plans",
+async def test_session_with_routine_pre_populates_set_logs(auth_client, exercise):
+    # Create a routine with one exercise (3 sets)
+    routine_resp = await auth_client.post(
+        "/routines",
         json={
-            "name": "Test Plan",
+            "name": "Test Routine",
             "source": "manual",
             "exercises": [
                 {
@@ -177,13 +177,13 @@ async def test_session_with_plan_pre_populates_set_logs(auth_client, exercise):
             ],
         },
     )
-    assert plan_resp.status_code == 201
-    plan_id = plan_resp.json()["id"]
+    assert routine_resp.status_code == 201
+    routine_id = routine_resp.json()["id"]
 
-    # Start a session from that plan
+    # Start a session from that routine
     session_resp = await auth_client.post(
         "/sessions",
-        json={"plan_id": plan_id, "date": str(datetime.date.today())},
+        json={"routine_id": routine_id, "date": str(datetime.date.today())},
     )
     assert session_resp.status_code == 201
     data = session_resp.json()
@@ -194,11 +194,11 @@ async def test_session_with_plan_pre_populates_set_logs(auth_client, exercise):
     assert all(not sl["completed"] for sl in data["set_logs"])
 
 
-async def _make_plan_and_session(auth_client, exercise) -> tuple[str, dict]:
-    plan_resp = await auth_client.post(
-        "/plans",
+async def _make_routine_and_session(auth_client, exercise) -> tuple[str, dict]:
+    routine_resp = await auth_client.post(
+        "/routines",
         json={
-            "name": "Test Plan",
+            "name": "Test Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),
@@ -211,15 +211,15 @@ async def _make_plan_and_session(auth_client, exercise) -> tuple[str, dict]:
             ],
         },
     )
-    plan_id = plan_resp.json()["id"]
+    routine_id = routine_resp.json()["id"]
     sess_resp = await auth_client.post(
-        "/sessions", json={"plan_id": plan_id, "date": str(datetime.date.today())}
+        "/sessions", json={"routine_id": routine_id, "date": str(datetime.date.today())}
     )
-    return plan_id, sess_resp.json()
+    return routine_id, sess_resp.json()
 
 
 async def test_prior_bests_empty_for_first_session(auth_client, exercise):
-    _, session = await _make_plan_and_session(auth_client, exercise)
+    _, session = await _make_routine_and_session(auth_client, exercise)
     resp = await auth_client.get(f"/sessions/{session['id']}/prior-bests")
     assert resp.status_code == 200
     assert resp.json() == []
@@ -228,15 +228,15 @@ async def test_prior_bests_empty_for_first_session(auth_client, exercise):
 async def test_prior_bests_returns_data_after_completed_prior_session(
     auth_client, exercise
 ):
-    _, s1 = await _make_plan_and_session(auth_client, exercise)
+    _, s1 = await _make_routine_and_session(auth_client, exercise)
     # Complete the first set of session 1
     first_set_id = s1["set_logs"][0]["id"]
     await auth_client.patch(
         f"/sessions/{s1['id']}/sets/{first_set_id}", json={"completed": True}
     )
 
-    # Start a second session from the same plan
-    _, s2 = await _make_plan_and_session(auth_client, exercise)
+    # Start a second session from the same routine
+    _, s2 = await _make_routine_and_session(auth_client, exercise)
     resp = await auth_client.get(f"/sessions/{s2['id']}/prior-bests")
     assert resp.status_code == 200
     bests = resp.json()
@@ -247,7 +247,7 @@ async def test_prior_bests_returns_data_after_completed_prior_session(
 
 
 async def test_exercise_notes_patch_and_retrieve(auth_client, exercise):
-    _, session = await _make_plan_and_session(auth_client, exercise)
+    _, session = await _make_routine_and_session(auth_client, exercise)
     exercise_id = str(exercise.id)
 
     patch_resp = await auth_client.patch(
@@ -261,10 +261,10 @@ async def test_exercise_notes_patch_and_retrieve(auth_client, exercise):
     assert get_resp.json()["exercise_notes"][exercise_id] == "Keep elbows tucked"
 
 
-async def test_session_includes_plan_name(auth_client, exercise):
-    _, session = await _make_plan_and_session(auth_client, exercise)
+async def test_session_includes_routine_name(auth_client, exercise):
+    _, session = await _make_routine_and_session(auth_client, exercise)
     resp = await auth_client.get(f"/sessions/{session['id']}")
-    assert resp.json()["plan_name"] == "Test Plan"
+    assert resp.json()["routine_name"] == "Test Routine"
 
 
 async def test_prior_bests_404_for_unknown_session(auth_client):
@@ -297,7 +297,7 @@ async def test_cannot_access_another_users_session(client, exercise):
 
 
 async def test_session_includes_muscle_groups_after_completed_sets(auth_client, exercise):
-    _, session = await _make_plan_and_session(auth_client, exercise)
+    _, session = await _make_routine_and_session(auth_client, exercise)
     for sl in session["set_logs"]:
         await auth_client.patch(
             f"/sessions/{session['id']}/sets/{sl['id']}", json={"completed": True}
@@ -311,13 +311,13 @@ async def test_session_includes_muscle_groups_after_completed_sets(auth_client, 
 
 
 async def test_prior_bests_includes_last_sets_after_prior_session(auth_client, exercise):
-    _, s1 = await _make_plan_and_session(auth_client, exercise)
+    _, s1 = await _make_routine_and_session(auth_client, exercise)
     for sl in s1["set_logs"][:2]:
         await auth_client.patch(
             f"/sessions/{s1['id']}/sets/{sl['id']}", json={"completed": True}
         )
 
-    _, s2 = await _make_plan_and_session(auth_client, exercise)
+    _, s2 = await _make_routine_and_session(auth_client, exercise)
     resp = await auth_client.get(f"/sessions/{s2['id']}/prior-bests")
     assert resp.status_code == 200
     bests = resp.json()
@@ -327,11 +327,11 @@ async def test_prior_bests_includes_last_sets_after_prior_session(auth_client, e
     assert all(sl["completed"] is True for sl in last_sets)
 
 
-async def test_set_log_superset_group_propagated_from_plan(auth_client, exercise):
-    plan_resp = await auth_client.post(
-        "/plans",
+async def test_set_log_superset_group_propagated_from_routine(auth_client, exercise):
+    routine_resp = await auth_client.post(
+        "/routines",
         json={
-            "name": "Superset Plan",
+            "name": "Superset Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),
@@ -344,11 +344,11 @@ async def test_set_log_superset_group_propagated_from_plan(auth_client, exercise
             ],
         },
     )
-    assert plan_resp.status_code == 201
-    plan_id = plan_resp.json()["id"]
+    assert routine_resp.status_code == 201
+    routine_id = routine_resp.json()["id"]
 
     sess_resp = await auth_client.post(
-        "/sessions", json={"plan_id": plan_id, "date": str(datetime.date.today())}
+        "/sessions", json={"routine_id": routine_id, "date": str(datetime.date.today())}
     )
     assert sess_resp.status_code == 201
     set_logs = sess_resp.json()["set_logs"]

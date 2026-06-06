@@ -1,6 +1,6 @@
 package com.spotter.data.repository
 
-import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.SetLogEntity
@@ -24,7 +24,7 @@ class SessionRepository @Inject constructor(
     private val api: ApiService,
     private val sessionDao: WorkoutSessionDao,
     private val setLogDao: SetLogDao,
-    private val plannedExerciseDao: PlannedExerciseDao,
+    private val routineExerciseDao: RoutineExerciseDao,
     private val tokenStore: TokenStore,
 ) {
     // ── Session creation ──────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ class SessionRepository @Inject constructor(
         val localId = UUID.randomUUID().toString()
 
         val sessionEntity = WorkoutSessionEntity(
-            id = localId, userId = userId, planId = req.planId, date = req.date,
+            id = localId, userId = userId, routineId = req.routineId, date = req.date,
             status = "in_progress", durationSeconds = null, note = req.note,
             exerciseNotes = null, serverId = null, syncPending = true,
         )
@@ -42,7 +42,7 @@ class SessionRepository @Inject constructor(
 
         // Build set log shells from cached plan exercises so the workout
         // screen is immediately populated even when offline.
-        val planExercises = req.planId?.let { plannedExerciseDao.getByPlanId(it) } ?: emptyList()
+        val planExercises = req.routineId?.let { routineExerciseDao.getByRoutineId(it) } ?: emptyList()
         val localSetLogs = planExercises.flatMap { ex ->
             (1..ex.targetSets).map { setNum ->
                 SetLogEntity(
@@ -249,7 +249,7 @@ class SessionRepository @Inject constructor(
             sessionDao.getAll().map { s ->
                 val sets = setLogDao.getBySession(s.id)
                 SessionSummary(
-                    id = s.id, date = s.date, planName = null,
+                    id = s.id, date = s.date, routineName = null,
                     status = s.status, durationSeconds = s.durationSeconds,
                     totalSets = sets.size,
                     completedSets = sets.count { it.completed },
@@ -275,7 +275,7 @@ class SessionRepository @Inject constructor(
         for (session in sessionDao.getUnsynced()) {
             try {
                 val serverSession = api.createSession(
-                    SessionCreate(planId = session.planId, date = session.date, note = session.note)
+                    SessionCreate(routineId = session.routineId, date = session.date, note = session.note)
                 )
                 sessionDao.upsert(session.copy(serverId = serverSession.id, syncPending = false))
                 val localLogs = setLogDao.getBySession(session.id)
@@ -354,14 +354,14 @@ class SessionRepository @Inject constructor(
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
     private fun WorkoutSessionEntity.toSessionOut(sets: List<SetLogEntity>) = SessionOut(
-        id = id, userId = userId, planId = planId, date = date,
+        id = id, userId = userId, routineId = routineId, date = date,
         status = status, durationSeconds = durationSeconds, note = note,
         exerciseNotes = exerciseNotes?.let { decodeNotes(it) },
         setLogs = sets.map { it.toSetLogOut() },
     )
 
     private fun SessionOut.toEntity() = WorkoutSessionEntity(
-        id = id, userId = userId, planId = planId, date = date,
+        id = id, userId = userId, routineId = routineId, date = date,
         status = status, durationSeconds = durationSeconds, note = note,
         exerciseNotes = exerciseNotes?.let { encodeNotes(it) },
         serverId = null, syncPending = false,

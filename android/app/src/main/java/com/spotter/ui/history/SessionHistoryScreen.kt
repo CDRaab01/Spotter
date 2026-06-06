@@ -155,7 +155,7 @@ private fun SessionCard(
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        session.planName ?: "No Plan",
+                        session.routineName ?: "No Routine",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -3,9 +3,9 @@ import uuid
 
 
 async def _seed_user_data(auth_client, exercise_id: str):
-    """Create a plan, a session with a logged set, and a body metric for the user."""
-    plan = await auth_client.post(
-        "/plans",
+    """Create a routine, a session with a logged set, and a body metric for the user."""
+    routine = await auth_client.post(
+        "/routines",
         json={
             "name": "Push Day",
             "source": "manual",
@@ -21,7 +21,7 @@ async def _seed_user_data(auth_client, exercise_id: str):
             ],
         },
     )
-    assert plan.status_code == 201, plan.text
+    assert routine.status_code == 201, routine.text
 
     session = await auth_client.post(
         "/sessions", json={"date": str(datetime.date.today())}
@@ -44,7 +44,7 @@ async def test_reset_wipes_all_user_data(auth_client, exercise):
     await _seed_user_data(auth_client, str(exercise.id))
 
     # Sanity: the data exists before reset.
-    assert len((await auth_client.get("/plans")).json()) == 1
+    assert len((await auth_client.get("/routines")).json()) == 1
     assert len((await auth_client.get("/sessions")).json()) == 1
     assert len((await auth_client.get("/metrics/weight")).json()) == 1
 
@@ -52,7 +52,7 @@ async def test_reset_wipes_all_user_data(auth_client, exercise):
     assert resp.status_code == 204, resp.text
 
     # Everything is gone.
-    assert (await auth_client.get("/plans")).json() == []
+    assert (await auth_client.get("/routines")).json() == []
     assert (await auth_client.get("/sessions")).json() == []
     assert (await auth_client.get("/metrics/weight")).json() == []
 
@@ -92,11 +92,11 @@ async def test_reset_only_affects_current_user(client, exercise):
     client.headers["Authorization"] = f"Bearer {token_b}"
     await _seed_user_data(client, str(exercise.id))
     assert (await client.post("/users/reset")).status_code == 204
-    assert (await client.get("/plans")).json() == []
+    assert (await client.get("/routines")).json() == []
 
     # User A's data is untouched.
     client.headers["Authorization"] = f"Bearer {token_a}"
-    assert len((await client.get("/plans")).json()) == 1
+    assert len((await client.get("/routines")).json()) == 1
 
 
 async def test_reset_requires_auth(client):

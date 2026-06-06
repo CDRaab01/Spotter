@@ -40,7 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.data.model.PlannedExerciseOut
+import com.spotter.data.model.RoutineExerciseOut
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.GradientButton
 import com.spotter.ui.components.LoadingState
@@ -52,20 +52,20 @@ import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlanDetailScreen(
-    planId: String,
+fun RoutineDetailScreen(
+    routineId: String,
     navController: NavController,
-    viewModel: PlanDetailViewModel = hiltViewModel(),
+    viewModel: RoutineDetailViewModel = hiltViewModel(),
 ) {
-    val planState by viewModel.plan.collectAsState()
+    val routineState by viewModel.routine.collectAsState()
     val isEditing by viewModel.isEditing.collectAsState()
     val draftExercises by viewModel.draftExercises.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     var searchExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(planId) {
-        viewModel.loadPlan(planId)
+    LaunchedEffect(routineId) {
+        viewModel.loadRoutine(routineId)
     }
 
     LaunchedEffect(Unit) {
@@ -82,20 +82,20 @@ fun PlanDetailScreen(
         topBar = {
             if (isEditing) {
                 TopAppBar(
-                    title = { Text("Edit Plan") },
+                    title = { Text("Edit Routine") },
                     navigationIcon = {
                         IconButton(onClick = { viewModel.cancelEdit() }) {
                             Icon(Icons.Default.Close, contentDescription = "Cancel")
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.saveEdits(planId) }) {
+                        IconButton(onClick = { viewModel.saveEdits(routineId) }) {
                             Icon(Icons.Default.Check, contentDescription = "Save")
                         }
                     },
                 )
             } else {
-                val title = (planState as? UiState.Success)?.data?.name ?: "Plan"
+                val title = (routineState as? UiState.Success)?.data?.name ?: "Routine"
                 TopAppBar(
                     title = { Text(title) },
                     navigationIcon = {
@@ -193,15 +193,15 @@ fun PlanDetailScreen(
                 }
             }
 
-            planState is UiState.Loading -> LoadingState(Modifier.padding(padding))
+            routineState is UiState.Loading -> LoadingState(Modifier.padding(padding))
 
-            planState is UiState.Error -> ErrorState(
-                message = (planState as UiState.Error).message,
+            routineState is UiState.Error -> ErrorState(
+                message = (routineState as UiState.Error).message,
                 modifier = Modifier.padding(padding),
             )
 
-            planState is UiState.Success -> {
-                val plan = (planState as UiState.Success).data
+            routineState is UiState.Success -> {
+                val routine = (routineState as UiState.Success).data
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -212,14 +212,14 @@ fun PlanDetailScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        itemsIndexed(plan.exercises, key = { _, ex -> ex.id }) { _, ex ->
+                        itemsIndexed(routine.exercises, key = { _, ex -> ex.id }) { _, ex ->
                             ExerciseViewRow(exercise = ex)
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     GradientButton(
                         text = "Start Workout",
-                        onClick = { viewModel.startWorkout(planId) },
+                        onClick = { viewModel.startWorkout(routineId) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
@@ -234,7 +234,7 @@ fun PlanDetailScreen(
 }
 
 @Composable
-private fun ExerciseViewRow(exercise: PlannedExerciseOut) {
+private fun ExerciseViewRow(exercise: RoutineExerciseOut) {
     val weightUnit = LocalWeightUnit.current
     SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Row(

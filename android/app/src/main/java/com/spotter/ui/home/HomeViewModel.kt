@@ -2,24 +2,24 @@ package com.spotter.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
-import com.spotter.data.local.entity.PlannedExerciseEntity
-import com.spotter.data.local.entity.WorkoutPlanEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
-import com.spotter.data.model.PlanCreate
-import com.spotter.data.model.PlanUpdate
+import com.spotter.data.model.RoutineCreate
+import com.spotter.data.model.RoutineUpdate
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
@@ -46,7 +46,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val planRepository: PlanRepository,
+    private val routineRepository: RoutineRepository,
     private val sessionRepository: SessionRepository,
     private val metricRepository: MetricRepository,
     private val aiRepository: AiRepository,
@@ -56,11 +56,11 @@ class HomeViewModel @Inject constructor(
     private val sessionDao: WorkoutSessionDao,
     private val programDao: WorkoutProgramDao,
     private val programDayDao: ProgramDayDao,
-    private val plannedExerciseDao: PlannedExerciseDao,
+    private val routineExerciseDao: RoutineExerciseDao,
 ) : ViewModel() {
 
-    private val _plans = MutableStateFlow<UiState<List<WorkoutPlanEntity>>>(UiState.Loading)
-    val plans: StateFlow<UiState<List<WorkoutPlanEntity>>> = _plans
+    private val _routines = MutableStateFlow<UiState<List<WorkoutRoutineEntity>>>(UiState.Loading)
+    val routines: StateFlow<UiState<List<WorkoutRoutineEntity>>> = _routines
 
     private val _startState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val startState: StateFlow<UiState<Unit>> = _startState
@@ -92,8 +92,8 @@ class HomeViewModel @Inject constructor(
     private val _greeting = MutableStateFlow(greetingForTime(LocalTime.now()))
     val greeting: StateFlow<String> = _greeting.asStateFlow()
 
-    private val _planExercises = MutableStateFlow<Map<String, List<PlannedExerciseEntity>>>(emptyMap())
-    val planExercises: StateFlow<Map<String, List<PlannedExerciseEntity>>> = _planExercises.asStateFlow()
+    private val _routineExercises = MutableStateFlow<Map<String, List<RoutineExerciseEntity>>>(emptyMap())
+    val routineExercises: StateFlow<Map<String, List<RoutineExerciseEntity>>> = _routineExercises.asStateFlow()
 
     /** Latest logged bodyweight in pounds, or null when none has been recorded. */
     private val _bodyweight = MutableStateFlow<Double?>(null)
@@ -102,7 +102,7 @@ class HomeViewModel @Inject constructor(
     private var autoGenerateTriggered = false
 
     init {
-        observePlans()
+        observeRoutines()
         observeBodyweight()
         sync()
         loadStats()
@@ -184,7 +184,7 @@ class HomeViewModel @Inject constructor(
                     return@launch
                 }
                 val days = programDayDao.getByProgram(active.id)
-                    .map { ProjectionDay(it.planId, it.label, it.planName) }
+                    .map { ProjectionDay(it.routineId, it.label, it.routineName) }
                 if (days.isEmpty()) {
                     _upcoming.value = UiState.Success(emptyList())
                     return@launch
@@ -194,16 +194,16 @@ class HomeViewModel @Inject constructor(
                     .filter { it.status == "completed" || it.status == "in_progress" }
                     .mapNotNull { s ->
                         runCatching { LocalDate.parse(s.date) }.getOrNull()
-                            ?.let { SessionAnchor(it, s.planId, s.status) }
+                            ?.let { SessionAnchor(it, s.routineId, s.status) }
                     }
                     .maxByOrNull { it.date }
 
                 val slots = WorkoutProjection.project(LocalDate.now(), cadence, anchor, days, count = 4)
                 val result = slots.map { slot ->
-                    val lifts = slot.planId
-                        ?.let { plannedExerciseDao.getByPlanId(it).take(4) }
+                    val lifts = slot.routineId
+                        ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
                         ?: emptyList()
-                    UpcomingWorkout(slot.date, slot.label, slot.planId, slot.planName, lifts)
+                    UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts)
                 }
                 _upcoming.value = UiState.Success(result)
             } catch (_: Exception) {
@@ -212,37 +212,37 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun observePlans() {
+    private fun observeRoutines() {
         viewModelScope.launch {
-            planRepository.plans
-                .onStart { _plans.value = UiState.Loading }
-                .catch { _plans.value = UiState.Error(it.message ?: "Unknown error") }
-                .collect { localPlans ->
-                    _plans.value = UiState.Success(localPlans)
-                    loadPlanExercises(localPlans)
-                    if (!autoGenerateTriggered && localPlans.isEmpty()) {
+            routineRepository.routines
+                .onStart { _routines.value = UiState.Loading }
+                .catch { _routines.value = UiState.Error(it.message ?: "Unknown error") }
+                .collect { localRoutines ->
+                    _routines.value = UiState.Success(localRoutines)
+                    loadRoutineExercises(localRoutines)
+                    if (!autoGenerateTriggered && localRoutines.isEmpty()) {
                         val onboardingDone = appPreferences.onboardingDone.first()
                         if (onboardingDone) {
                             autoGenerateTriggered = true
-                            generateInitialPlan()
+                            generateInitialRoutine()
                         }
                     }
                 }
         }
     }
 
-    private fun loadPlanExercises(plans: List<WorkoutPlanEntity>) {
+    private fun loadRoutineExercises(routines: List<WorkoutRoutineEntity>) {
         viewModelScope.launch {
-            val map = plans.associate { plan ->
-                plan.id to plannedExerciseDao.getByPlanId(plan.id).take(4)
+            val map = routines.associate { routine ->
+                routine.id to routineExerciseDao.getByRoutineId(routine.id).take(4)
             }
-            _planExercises.value = map
+            _routineExercises.value = map
         }
     }
 
     fun sync() {
         viewModelScope.launch {
-            try { planRepository.sync() } catch (_: Exception) {}
+            try { routineRepository.sync() } catch (_: Exception) {}
             try { sessionRepository.syncPending() } catch (_: Exception) {}
             try { programRepository.sync() } catch (_: Exception) {}
             try { metricRepository.sync() } catch (_: Exception) {}
@@ -252,7 +252,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun generateInitialPlan() {
+    fun generateInitialRoutine() {
         viewModelScope.launch {
             _generatingPlan.value = true
             try {
@@ -276,34 +276,34 @@ class HomeViewModel @Inject constructor(
                     aiRepository.acceptProgram(
                         AcceptProgramRequest(name = program.name, days = program.days)
                     )
-                    // Pull the new program AND its per-day plans into the local cache, or
+                    // Pull the new program AND its per-day routines into the local cache, or
                     // Home keeps showing the empty "ask the coach" prompt (which pushes the
                     // user into the chat) even though a program now exists.
                     runCatching { programRepository.sync() }
-                    runCatching { planRepository.sync() }
+                    runCatching { routineRepository.sync() }
                     refresh()
                 } else {
-                    response.suggestedPlan?.let { plan ->
-                        planRepository.createPlan(
-                            PlanCreate(name = plan.name, source = "ai", exercises = plan.exercises)
+                    response.suggestedRoutine?.let { routine ->
+                        routineRepository.createRoutine(
+                            RoutineCreate(name = routine.name, source = "ai", exercises = routine.exercises)
                         )
                     }
                 }
             } catch (_: Exception) {
-                // silent — user can still create a plan manually
+                // silent — user can still create a routine manually
             } finally {
                 _generatingPlan.value = false
             }
         }
     }
 
-    fun startSession(planId: String) {
+    fun startSession(routineId: String) {
         if (_startState.value is UiState.Loading) return
         viewModelScope.launch {
             _startState.value = UiState.Loading
             try {
                 val session = sessionRepository.createSession(
-                    SessionCreate(planId = planId, date = LocalDate.now().toString()),
+                    SessionCreate(routineId = routineId, date = LocalDate.now().toString()),
                 )
                 _navigateToWorkout.emit(session.id)
             } catch (e: Exception) {
@@ -314,23 +314,23 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun deletePlan(planId: String) {
+    fun deleteRoutine(routineId: String) {
         viewModelScope.launch {
             try {
-                planRepository.deletePlan(planId)
+                routineRepository.deleteRoutine(routineId)
             } catch (e: Exception) {
-                _actionError.value = e.message ?: "Could not delete plan"
+                _actionError.value = e.message ?: "Could not delete routine"
             }
         }
     }
 
-    fun renamePlan(planId: String, newName: String) {
+    fun renameRoutine(routineId: String, newName: String) {
         if (newName.isBlank()) return
         viewModelScope.launch {
             try {
-                planRepository.renamePlan(planId, PlanUpdate(name = newName.trim()))
+                routineRepository.renameRoutine(routineId, RoutineUpdate(name = newName.trim()))
             } catch (e: Exception) {
-                _actionError.value = e.message ?: "Could not rename plan"
+                _actionError.value = e.message ?: "Could not rename routine"
             }
         }
     }

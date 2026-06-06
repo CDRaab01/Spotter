@@ -5,11 +5,11 @@ import datetime
 import pytest
 
 
-async def test_plan_rejects_out_of_range_reps(auth_client, exercise):
+async def test_routine_rejects_out_of_range_reps(auth_client, exercise):
     resp = await auth_client.post(
-        "/plans",
+        "/routines",
         json={
-            "name": "Bad Plan",
+            "name": "Bad Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),
@@ -24,11 +24,11 @@ async def test_plan_rejects_out_of_range_reps(auth_client, exercise):
     assert resp.status_code == 422
 
 
-async def test_plan_rejects_out_of_range_sets_and_weight(auth_client, exercise):
+async def test_routine_rejects_out_of_range_sets_and_weight(auth_client, exercise):
     resp = await auth_client.post(
-        "/plans",
+        "/routines",
         json={
-            "name": "Bad Plan",
+            "name": "Bad Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),

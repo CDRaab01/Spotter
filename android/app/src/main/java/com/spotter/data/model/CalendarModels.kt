@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class CalendarEntry(
     @SerialName("session_id") val sessionId: String,
     val date: String,
-    @SerialName("plan_name") val planName: String? = null,
+    @SerialName("routine_name") val routineName: String? = null,
     val status: String,
     @SerialName("set_count") val setCount: Int,
 )
