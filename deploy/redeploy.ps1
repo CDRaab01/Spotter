@@ -45,12 +45,14 @@ $ErrorActionPreference = "Stop"
 # Repo root = parent of this script's directory (deploy/).
 $RepoDir = Split-Path -Parent $PSScriptRoot
 
+# $ArgList (not $Args — that's an automatic variable) so splatting is unambiguous
+# under both Windows PowerShell 5.1 and PowerShell 7.
 function Invoke-Checked {
-  param([string]$Exe, [string[]]$Args)
-  Write-Host "> $Exe $($Args -join ' ')"
-  & $Exe @Args
+  param([string]$Exe, [string[]]$ArgList)
+  Write-Host "> $Exe $($ArgList -join ' ')"
+  & $Exe @ArgList
   if ($LASTEXITCODE -ne 0) {
-    throw "Command failed ($LASTEXITCODE): $Exe $($Args -join ' ')"
+    throw "Command failed ($LASTEXITCODE): $Exe $($ArgList -join ' ')"
   }
 }
 
