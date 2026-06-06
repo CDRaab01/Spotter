@@ -13,11 +13,11 @@ class ProgramDay(Base):
     program_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workout_programs.id", ondelete="CASCADE")
     )
-    plan_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("workout_plans.id", ondelete="SET NULL"), nullable=True
+    routine_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workout_routines.id", ondelete="SET NULL"), nullable=True
     )
     label: Mapped[str] = mapped_column(String(100))
     order: Mapped[int] = mapped_column(Integer, default=0)
 
     program = relationship("WorkoutProgram", back_populates="days", lazy="raise")
-    plan = relationship("WorkoutPlan", lazy="raise")
+    routine = relationship("WorkoutRoutine", lazy="raise")

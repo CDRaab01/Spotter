@@ -1,24 +1,24 @@
 package com.spotter.home
 
-import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
-import com.spotter.data.local.entity.PlannedExerciseEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
-import com.spotter.data.model.PlanOut
+import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.SessionSummary
-import com.spotter.data.model.PlanUpdate
+import com.spotter.data.model.RoutineUpdate
 import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.MetricRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.home.HomeViewModel
@@ -53,7 +53,7 @@ import kotlin.test.assertTrue
 class HomeViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    private lateinit var planRepository: PlanRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var sessionRepository: SessionRepository
     private lateinit var metricRepository: MetricRepository
     private lateinit var aiRepository: AiRepository
@@ -62,14 +62,14 @@ class HomeViewModelTest {
     private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var programDao: WorkoutProgramDao
     private lateinit var programDayDao: ProgramDayDao
-    private lateinit var plannedExerciseDao: PlannedExerciseDao
+    private lateinit var routineExerciseDao: RoutineExerciseDao
     private lateinit var apiService: ApiService
     private lateinit var viewModel: HomeViewModel
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        planRepository = mock()
+        routineRepository = mock()
         sessionRepository = mock()
         metricRepository = mock()
         aiRepository = mock()
@@ -78,9 +78,9 @@ class HomeViewModelTest {
         sessionDao = mock()
         programDao = mock()
         programDayDao = mock()
-        plannedExerciseDao = mock()
+        routineExerciseDao = mock()
         apiService = mock()
-        whenever(planRepository.plans).thenReturn(emptyFlow())
+        whenever(routineRepository.routines).thenReturn(emptyFlow())
         whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(metricRepository.metrics).thenReturn(emptyFlow())
@@ -91,7 +91,7 @@ class HomeViewModelTest {
     }
 
     private fun createViewModel() = HomeViewModel(
-        planRepository,
+        routineRepository,
         sessionRepository,
         metricRepository,
         aiRepository,
@@ -101,7 +101,7 @@ class HomeViewModelTest {
         sessionDao,
         programDao,
         programDayDao,
-        plannedExerciseDao,
+        routineExerciseDao,
     )
 
     @After
@@ -110,18 +110,18 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `deletePlan delegates to repository`() = runTest(testDispatcher) {
-        viewModel.deletePlan("plan-1")
+    fun `deleteRoutine delegates to repository`() = runTest(testDispatcher) {
+        viewModel.deleteRoutine("routine-1")
         advanceTimeBy(200)
 
-        verify(planRepository).deletePlan("plan-1")
+        verify(routineRepository).deleteRoutine("routine-1")
     }
 
     @Test
-    fun `renamePlan delegates to repository with trimmed name`() = runTest(testDispatcher) {
-        whenever(planRepository.renamePlan(any(), any())).thenReturn(
-            PlanOut(
-                id = "plan-1",
+    fun `renameRoutine delegates to repository with trimmed name`() = runTest(testDispatcher) {
+        whenever(routineRepository.renameRoutine(any(), any())).thenReturn(
+            RoutineOut(
+                id = "routine-1",
                 userId = "user-1",
                 name = "New Name",
                 source = "manual",
@@ -129,18 +129,18 @@ class HomeViewModelTest {
             )
         )
 
-        viewModel.renamePlan("plan-1", "  New Name  ")
+        viewModel.renameRoutine("routine-1", "  New Name  ")
         advanceTimeBy(200)
 
-        verify(planRepository).renamePlan("plan-1", PlanUpdate(name = "New Name"))
+        verify(routineRepository).renameRoutine("routine-1", RoutineUpdate(name = "New Name"))
     }
 
     @Test
-    fun `renamePlan ignores blank names`() = runTest(testDispatcher) {
-        viewModel.renamePlan("plan-1", "   ")
+    fun `renameRoutine ignores blank names`() = runTest(testDispatcher) {
+        viewModel.renameRoutine("routine-1", "   ")
         advanceTimeBy(200)
 
-        verify(planRepository, never()).renamePlan(any(), any())
+        verify(routineRepository, never()).renameRoutine(any(), any())
     }
 
     @Test
@@ -206,22 +206,22 @@ class HomeViewModelTest {
         whenever(programDao.getActive()).thenReturn(WorkoutProgramEntity("prog-1", "PPL", isActive = true))
         whenever(programDayDao.getByProgram(any())).thenReturn(
             listOf(
-                ProgramDayEntity("d1", "prog-1", "plan-A", "Push", 0, "Push"),
-                ProgramDayEntity("d2", "prog-1", "plan-B", "Pull", 1, "Pull"),
+                ProgramDayEntity("d1", "prog-1", "routine-A", "Push", 0, "Push"),
+                ProgramDayEntity("d2", "prog-1", "routine-B", "Pull", 1, "Pull"),
             )
         )
         whenever(sessionDao.getAll()).thenReturn(
             listOf(
                 WorkoutSessionEntity(
-                    id = "s1", userId = "u1", planId = "plan-A",
+                    id = "s1", userId = "u1", routineId = "routine-A",
                     date = LocalDate.now().toString(), status = "completed",
                     durationSeconds = null, note = null,
                 )
             )
         )
-        whenever(plannedExerciseDao.getByPlanId(any())).thenReturn(
+        whenever(routineExerciseDao.getByRoutineId(any())).thenReturn(
             (1..6).map {
-                PlannedExerciseEntity("plan-B", "ex-$it", "Lift $it", 3, 8, 100.0, false, it)
+                RoutineExerciseEntity("routine-B", "ex-$it", "Lift $it", 3, 8, 100.0, false, it)
             }
         )
 
@@ -232,7 +232,7 @@ class HomeViewModelTest {
         assertIs<UiState.Success<List<com.spotter.util.UpcomingWorkout>>>(state)
         assertEquals(4, state.data.size)
         // Completed Push -> next slot is Pull, capped at 4 lifts.
-        assertEquals("plan-B", state.data[0].planId)
+        assertEquals("routine-B", state.data[0].routineId)
         assertEquals(4, state.data[0].lifts.size)
         // activeProgramId is surfaced for the tappable upcoming block.
         assertEquals("prog-1", viewModel.activeProgramId.value)

@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.limiter import limiter
-from app.routers import ai, auth, calendar, exercises, metrics, plans, progress, programs, sessions, users
+from app.routers import ai, auth, calendar, exercises, metrics, routines, progress, programs, sessions, users
 
 # Interactive docs are handy locally but are an unnecessary surface on a public deployment.
 app = FastAPI(
@@ -42,7 +42,7 @@ async def security_headers(request: Request, call_next) -> Response:
 
 
 app.include_router(auth.router)
-app.include_router(plans.router)
+app.include_router(routines.router)
 app.include_router(sessions.router)
 app.include_router(metrics.router)
 app.include_router(ai.router)

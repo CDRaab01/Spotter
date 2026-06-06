@@ -3,10 +3,11 @@ package com.spotter.ui.plan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.ExerciseOut
-import com.spotter.data.model.PlannedExerciseIn
-import com.spotter.data.model.PlanOut
+import com.spotter.data.model.RoutineExerciseIn
+import com.spotter.data.model.RoutineOut
+import com.spotter.data.model.SessionCreate
 import com.spotter.data.repository.ExerciseRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,14 +29,14 @@ import javax.inject.Inject
 
 @HiltViewModel
 @OptIn(FlowPreview::class)
-class PlanDetailViewModel @Inject constructor(
-    private val planRepository: PlanRepository,
+class RoutineDetailViewModel @Inject constructor(
+    private val routineRepository: RoutineRepository,
     private val exerciseRepository: ExerciseRepository,
     private val sessionRepository: SessionRepository,
 ) : ViewModel() {
 
-    private val _plan = MutableStateFlow<UiState<PlanOut>>(UiState.Loading)
-    val plan: StateFlow<UiState<PlanOut>> = _plan.asStateFlow()
+    private val _routine = MutableStateFlow<UiState<RoutineOut>>(UiState.Loading)
+    val routine: StateFlow<UiState<RoutineOut>> = _routine.asStateFlow()
 
     private val _isEditing = MutableStateFlow(false)
     val isEditing: StateFlow<Boolean> = _isEditing.asStateFlow()
@@ -69,20 +70,20 @@ class PlanDetailViewModel @Inject constructor(
     private val _navigateToWorkout = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
 
-    fun loadPlan(planId: String) {
+    fun loadRoutine(routineId: String) {
         viewModelScope.launch {
-            _plan.value = UiState.Loading
+            _routine.value = UiState.Loading
             try {
-                val result = planRepository.getPlan(planId)
-                _plan.value = UiState.Success(result)
+                val result = routineRepository.getRoutine(routineId)
+                _routine.value = UiState.Success(result)
             } catch (e: Exception) {
-                _plan.value = UiState.Error(e.message ?: "Failed to load plan")
+                _routine.value = UiState.Error(e.message ?: "Failed to load routine")
             }
         }
     }
 
     fun startEdit() {
-        val current = (_plan.value as? UiState.Success)?.data ?: return
+        val current = (_routine.value as? UiState.Success)?.data ?: return
         _draftExercises.value = current.exercises.map { pe ->
             DraftExercise(
                 exerciseId = pe.exerciseId,
@@ -131,11 +132,11 @@ class PlanDetailViewModel @Inject constructor(
         }
     }
 
-    fun saveEdits(planId: String) {
+    fun saveEdits(routineId: String) {
         viewModelScope.launch {
             try {
                 val exercises = _draftExercises.value.mapIndexed { i, ex ->
-                    PlannedExerciseIn(
+                    RoutineExerciseIn(
                         exerciseId = ex.exerciseId,
                         targetSets = ex.targetSets,
                         targetReps = ex.targetReps,
@@ -144,8 +145,8 @@ class PlanDetailViewModel @Inject constructor(
                         order = i,
                     )
                 }
-                planRepository.updateExercises(planId, exercises)
-                loadPlan(planId)
+                routineRepository.updateExercises(routineId, exercises)
+                loadRoutine(routineId)
                 cancelEdit()
             } catch (e: Exception) {
                 // Errors silently ignored; could expose error state if needed
@@ -153,12 +154,12 @@ class PlanDetailViewModel @Inject constructor(
         }
     }
 
-    fun startWorkout(planId: String) {
+    fun startWorkout(routineId: String) {
         viewModelScope.launch {
             try {
                 val session = sessionRepository.createSession(
-                    com.spotter.data.model.SessionCreate(
-                        planId = planId,
+                    SessionCreate(
+                        routineId = routineId,
                         date = LocalDate.now().toString(),
                     )
                 )

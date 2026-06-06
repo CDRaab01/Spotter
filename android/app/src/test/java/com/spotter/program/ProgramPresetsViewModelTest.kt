@@ -5,7 +5,7 @@ import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ProgramOut
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.ExerciseRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.ui.program.PresetDay
 import com.spotter.ui.program.PresetExercise
@@ -37,7 +37,7 @@ class ProgramPresetsViewModelTest {
     private lateinit var exerciseRepository: ExerciseRepository
     private lateinit var aiRepository: AiRepository
     private lateinit var programRepository: ProgramRepository
-    private lateinit var planRepository: PlanRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var viewModel: ProgramPresetsViewModel
 
     private val preset = PresetProgram(
@@ -61,9 +61,9 @@ class ProgramPresetsViewModelTest {
         exerciseRepository = mock()
         aiRepository = mock()
         programRepository = mock()
-        planRepository = mock()
+        routineRepository = mock()
         viewModel = ProgramPresetsViewModel(
-            exerciseRepository, aiRepository, programRepository, planRepository,
+            exerciseRepository, aiRepository, programRepository, routineRepository,
         )
     }
 
@@ -95,7 +95,7 @@ class ProgramPresetsViewModelTest {
             assertEquals("bench-id", req.days[0].exercises[0].exerciseId)
             assertEquals(listOf("Test Program"), applied)
             verify(programRepository).sync()
-            verify(planRepository).sync()
+            verify(routineRepository).sync()
             job.cancel()
         }
 

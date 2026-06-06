@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class SessionCreate(
-    @SerialName("plan_id") val planId: String? = null,
+    @SerialName("routine_id") val routineId: String? = null,
     val date: String,
     val note: String? = null,
 )
@@ -62,8 +62,8 @@ data class MuscleGroupSummary(
 data class SessionOut(
     val id: String,
     @SerialName("user_id") val userId: String,
-    @SerialName("plan_id") val planId: String? = null,
-    @SerialName("plan_name") val planName: String? = null,
+    @SerialName("routine_id") val routineId: String? = null,
+    @SerialName("routine_name") val routineName: String? = null,
     val date: String,
     val status: String,
     @SerialName("duration_seconds") val durationSeconds: Int? = null,
@@ -84,7 +84,7 @@ data class ExerciseSummary(
 data class SessionSummary(
     val id: String,
     val date: String,
-    @SerialName("plan_name") val planName: String? = null,
+    @SerialName("routine_name") val routineName: String? = null,
     val status: String,
     @SerialName("duration_seconds") val durationSeconds: Int? = null,
     @SerialName("total_sets") val totalSets: Int,

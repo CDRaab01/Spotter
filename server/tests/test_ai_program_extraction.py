@@ -44,7 +44,7 @@ async def test_valid_program_json_populates_suggested_program(auth_client, exerc
     resp = await _chat(auth_client, f"Here's your split:\n```json\n{_program_json(exercise.name)}\n```\nProgress weekly.")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["suggested_plan"] is None
+    assert data["suggested_routine"] is None
     prog = data["suggested_program"]
     assert prog is not None
     assert prog["name"] == "Push/Pull/Legs"
@@ -98,12 +98,12 @@ async def test_malformed_program_json_returns_none(auth_client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["suggested_program"] is None
-    assert data["suggested_plan"] is None
+    assert data["suggested_routine"] is None
 
 
-async def test_single_plan_still_returns_plan_not_program(auth_client, exercise):
-    """Backward compat: a single-plan JSON (top-level exercises) yields suggested_plan."""
-    plan_json = json.dumps(
+async def test_single_routine_still_returns_routine_not_program(auth_client, exercise):
+    """A single-routine JSON (top-level exercises) yields suggested_routine, not suggested_program."""
+    routine_json = json.dumps(
         {
             "name": "Single Day",
             "source": "ai",
@@ -112,12 +112,12 @@ async def test_single_plan_still_returns_plan_not_program(auth_client, exercise)
             ],
         }
     )
-    resp = await _chat(auth_client, f"```json\n{plan_json}\n```")
+    resp = await _chat(auth_client, f"```json\n{routine_json}\n```")
     assert resp.status_code == 200
     data = resp.json()
     assert data["suggested_program"] is None
-    assert data["suggested_plan"] is not None
-    assert data["suggested_plan"]["name"] == "Single Day"
+    assert data["suggested_routine"] is not None
+    assert data["suggested_routine"]["name"] == "Single Day"
 
 
 async def test_program_reply_strips_json_block(auth_client, exercise):

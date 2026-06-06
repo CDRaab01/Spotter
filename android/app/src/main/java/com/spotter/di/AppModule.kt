@@ -7,6 +7,7 @@ import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_2_3
 import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_3_4
+import com.spotter.data.local.SpotterDatabase.Companion.MIGRATION_4_5
 import com.spotter.data.remote.ApiService
 import com.spotter.data.remote.AuthInterceptor
 import com.spotter.data.remote.HostSelectionInterceptor
@@ -83,7 +84,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): SpotterDatabase =
         Room.databaseBuilder(ctx, SpotterDatabase::class.java, "spotter.db")
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             // Safety net for schema versions that predate MIGRATION_2_3 (i.e. v1).
             // Room is a server mirror only — no data is user-originated, so clearing
             // and re-syncing is safe.

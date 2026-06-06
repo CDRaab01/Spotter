@@ -1,11 +1,11 @@
 package com.spotter.plan
 
 import com.spotter.data.model.ExerciseOut
-import com.spotter.data.model.PlanCreate
-import com.spotter.data.model.PlanOut
+import com.spotter.data.model.RoutineCreate
+import com.spotter.data.model.RoutineOut
 import com.spotter.data.repository.ExerciseRepository
-import com.spotter.data.repository.PlanRepository
-import com.spotter.ui.plan.CreatePlanViewModel
+import com.spotter.data.repository.RoutineRepository
+import com.spotter.ui.plan.CreateRoutineViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -26,19 +26,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class CreatePlanViewModelTest {
+class CreateRoutineViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    private lateinit var planRepository: PlanRepository
+    private lateinit var routineRepository: RoutineRepository
     private lateinit var exerciseRepository: ExerciseRepository
-    private lateinit var viewModel: CreatePlanViewModel
+    private lateinit var viewModel: CreateRoutineViewModel
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        planRepository = mock()
+        routineRepository = mock()
         exerciseRepository = mock()
-        viewModel = CreatePlanViewModel(planRepository, exerciseRepository)
+        viewModel = CreateRoutineViewModel(routineRepository, exerciseRepository)
     }
 
     @After
@@ -86,48 +86,48 @@ class CreatePlanViewModelTest {
     }
 
     @Test
-    fun `savePlan calls planRepository and navigates back`() = runTest(testDispatcher) {
-        val fakePlan = PlanOut(
+    fun `saveRoutine calls routineRepository and navigates back`() = runTest(testDispatcher) {
+        val fakeRoutine = RoutineOut(
             id = "p-1",
             userId = "u-1",
-            name = "My Plan",
+            name = "My Routine",
             source = "manual",
             createdAt = "2026-06-01T00:00:00Z",
         )
-        whenever(planRepository.createPlan(any())).thenReturn(fakePlan)
+        whenever(routineRepository.createRoutine(any())).thenReturn(fakeRoutine)
 
-        viewModel.planName.value = "My Plan"
+        viewModel.routineName.value = "My Routine"
         viewModel.addExercise(ExerciseOut(id = "ex-1", name = "Squat", muscleGroup = null, equipment = null))
 
         val events = mutableListOf<Unit>()
         val job = launch { viewModel.navigateBack.collect { events.add(it) } }
 
-        viewModel.savePlan()
+        viewModel.saveRoutine()
         advanceTimeBy(200)
 
         assertEquals(1, events.size)
-        verify(planRepository).createPlan(any<PlanCreate>())
+        verify(routineRepository).createRoutine(any<RoutineCreate>())
         job.cancel()
     }
 
     @Test
-    fun `savePlan with blank name does nothing`() = runTest(testDispatcher) {
+    fun `saveRoutine with blank name does nothing`() = runTest(testDispatcher) {
         viewModel.addExercise(ExerciseOut(id = "ex-1", name = "Squat", muscleGroup = null, equipment = null))
 
-        viewModel.savePlan()
+        viewModel.saveRoutine()
         advanceTimeBy(200)
 
-        verify(planRepository, never()).createPlan(any())
+        verify(routineRepository, never()).createRoutine(any())
     }
 
     @Test
-    fun `savePlan with no exercises does nothing`() = runTest(testDispatcher) {
-        viewModel.planName.value = "My Plan"
+    fun `saveRoutine with no exercises does nothing`() = runTest(testDispatcher) {
+        viewModel.routineName.value = "My Routine"
 
-        viewModel.savePlan()
+        viewModel.saveRoutine()
         advanceTimeBy(200)
 
-        verify(planRepository, never()).createPlan(any())
+        verify(routineRepository, never()).createRoutine(any())
     }
 
     @Test
@@ -137,11 +137,11 @@ class CreatePlanViewModelTest {
 
     @Test
     fun `clearError resets saveError`() = runTest(testDispatcher) {
-        whenever(planRepository.createPlan(any())).thenThrow(RuntimeException("Network error"))
+        whenever(routineRepository.createRoutine(any())).thenThrow(RuntimeException("Network error"))
 
-        viewModel.planName.value = "My Plan"
+        viewModel.routineName.value = "My Routine"
         viewModel.addExercise(ExerciseOut(id = "ex-1", name = "Squat", muscleGroup = null, equipment = null))
-        viewModel.savePlan()
+        viewModel.saveRoutine()
         advanceTimeBy(200)
 
         viewModel.clearError()

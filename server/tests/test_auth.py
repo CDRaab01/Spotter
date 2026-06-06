@@ -54,8 +54,8 @@ async def test_refresh_issues_new_access_token(client):
     assert "access_token" in resp2.json()
 
 
-async def test_plans_require_auth(client):
-    resp = await client.get("/plans")
+async def test_routines_require_auth(client):
+    resp = await client.get("/routines")
     assert resp.status_code == 401
 
 

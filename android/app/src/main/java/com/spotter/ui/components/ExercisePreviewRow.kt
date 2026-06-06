@@ -5,7 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.spotter.data.local.entity.PlannedExerciseEntity
+import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight
 
@@ -16,7 +16,7 @@ import com.spotter.ui.theme.formatWeight
  */
 @Composable
 fun ExercisePreviewRow(
-    exercise: PlannedExerciseEntity,
+    exercise: RoutineExerciseEntity,
     modifier: Modifier = Modifier,
 ) {
     val weightUnit = LocalWeightUnit.current

@@ -4,10 +4,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class PlanUpdate(val name: String)
+data class RoutineUpdate(val name: String)
 
 @Serializable
-data class PlannedExerciseIn(
+data class RoutineExerciseIn(
     @SerialName("exercise_id") val exerciseId: String,
     @SerialName("target_sets") val targetSets: Int,
     @SerialName("target_reps") val targetReps: Int,
@@ -18,14 +18,14 @@ data class PlannedExerciseIn(
 )
 
 @Serializable
-data class PlanCreate(
+data class RoutineCreate(
     val name: String,
     val source: String = "manual",
-    val exercises: List<PlannedExerciseIn> = emptyList(),
+    val exercises: List<RoutineExerciseIn> = emptyList(),
 )
 
 @Serializable
-data class PlannedExerciseOut(
+data class RoutineExerciseOut(
     val id: String,
     @SerialName("exercise_id") val exerciseId: String,
     @SerialName("target_sets") val targetSets: Int,
@@ -38,14 +38,14 @@ data class PlannedExerciseOut(
 )
 
 @Serializable
-data class PlannedExercisesUpdate(val exercises: List<PlannedExerciseIn>)
+data class RoutineExercisesUpdate(val exercises: List<RoutineExerciseIn>)
 
 @Serializable
-data class PlanOut(
+data class RoutineOut(
     val id: String,
     @SerialName("user_id") val userId: String,
     val name: String,
     val source: String,
     @SerialName("created_at") val createdAt: String,
-    val exercises: List<PlannedExerciseOut> = emptyList(),
+    val exercises: List<RoutineExerciseOut> = emptyList(),
 )

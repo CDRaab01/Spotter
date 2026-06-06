@@ -3,10 +3,10 @@ package com.spotter.ui.plan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.ExerciseOut
-import com.spotter.data.model.PlanCreate
-import com.spotter.data.model.PlannedExerciseIn
+import com.spotter.data.model.RoutineCreate
+import com.spotter.data.model.RoutineExerciseIn
 import com.spotter.data.repository.ExerciseRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -39,12 +39,12 @@ data class DraftExercise(
 
 @HiltViewModel
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-class CreatePlanViewModel @Inject constructor(
-    private val planRepository: PlanRepository,
+class CreateRoutineViewModel @Inject constructor(
+    private val routineRepository: RoutineRepository,
     private val exerciseRepository: ExerciseRepository,
 ) : ViewModel() {
 
-    val planName = MutableStateFlow("")
+    val routineName = MutableStateFlow("")
 
     private val _exercises = MutableStateFlow<List<DraftExercise>>(emptyList())
     val exercises: StateFlow<List<DraftExercise>> = _exercises.asStateFlow()
@@ -105,16 +105,16 @@ class CreatePlanViewModel @Inject constructor(
         }
     }
 
-    fun savePlan() {
-        if (planName.value.isBlank() || _exercises.value.isEmpty()) return
+    fun saveRoutine() {
+        if (routineName.value.isBlank() || _exercises.value.isEmpty()) return
         viewModelScope.launch {
             try {
-                planRepository.createPlan(
-                    PlanCreate(
-                        name = planName.value.trim(),
+                routineRepository.createRoutine(
+                    RoutineCreate(
+                        name = routineName.value.trim(),
                         source = "manual",
                         exercises = _exercises.value.mapIndexed { i, ex ->
-                            PlannedExerciseIn(
+                            RoutineExerciseIn(
                                 exerciseId = ex.exerciseId,
                                 targetSets = ex.targetSets,
                                 targetReps = ex.targetReps,
@@ -128,7 +128,7 @@ class CreatePlanViewModel @Inject constructor(
                 )
                 _navigateBack.emit(Unit)
             } catch (e: Exception) {
-                _saveError.value = e.message ?: "Failed to save plan."
+                _saveError.value = e.message ?: "Failed to save routine."
             }
         }
     }

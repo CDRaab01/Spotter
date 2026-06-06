@@ -33,11 +33,11 @@ async def test_list_sessions_returns_created_session(auth_client):
 
 async def test_list_sessions_includes_exercise_summary(auth_client, exercise):
     """After logging a set, GET /sessions includes that exercise in the summary."""
-    # Create a plan + session
-    plan_resp = await auth_client.post(
-        "/plans",
+    # Create a routine + session
+    routine_resp = await auth_client.post(
+        "/routines",
         json={
-            "name": "History Test Plan",
+            "name": "History Test Routine",
             "exercises": [
                 {
                     "exercise_id": str(exercise.id),
@@ -50,12 +50,12 @@ async def test_list_sessions_includes_exercise_summary(auth_client, exercise):
             ],
         },
     )
-    assert plan_resp.status_code == 201
-    plan_id = plan_resp.json()["id"]
+    assert routine_resp.status_code == 201
+    routine_id = routine_resp.json()["id"]
 
     session_resp = await auth_client.post(
         "/sessions",
-        json={"plan_id": plan_id, "date": str(datetime.date.today())},
+        json={"routine_id": routine_id, "date": str(datetime.date.today())},
     )
     assert session_resp.status_code == 201
     session = session_resp.json()

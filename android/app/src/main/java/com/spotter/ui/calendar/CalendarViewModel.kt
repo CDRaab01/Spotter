@@ -2,14 +2,14 @@ package com.spotter.ui.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.spotter.data.local.dao.PlannedExerciseDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.model.CalendarEntry
 import com.spotter.data.model.SessionCreate
 import com.spotter.data.repository.CalendarRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
@@ -37,12 +37,12 @@ class CalendarViewModel @Inject constructor(
     private val calendarRepository: CalendarRepository,
     private val sessionRepository: SessionRepository,
     private val programRepository: ProgramRepository,
-    private val planRepository: PlanRepository,
+    private val routineRepository: RoutineRepository,
     private val appPreferences: AppPreferences,
     private val sessionDao: WorkoutSessionDao,
     private val programDao: WorkoutProgramDao,
     private val programDayDao: ProgramDayDao,
-    private val plannedExerciseDao: PlannedExerciseDao,
+    private val routineExerciseDao: RoutineExerciseDao,
 ) : ViewModel() {
 
     private val _displayedMonth = MutableStateFlow(YearMonth.now())
@@ -77,11 +77,11 @@ class CalendarViewModel @Inject constructor(
         _selectedDate.value = null
         _projected.value = emptyList()
         viewModelScope.launch {
-            // Pull the active program + its plans (and push pending sessions) so the
+            // Pull the active program + its routines (and push pending sessions) so the
             // schedule reflects server state, not just whatever happens to be cached.
             if (sync) {
                 runCatching { programRepository.sync() }
-                runCatching { planRepository.sync() }
+                runCatching { routineRepository.sync() }
                 runCatching { sessionRepository.syncPending() }
             }
             _entries.value = UiState.Loading
@@ -116,7 +116,7 @@ class CalendarViewModel @Inject constructor(
 
         if (active == null) return emptyList()
         val days = programDayDao.getByProgram(active.id)
-            .map { ProjectionDay(it.planId, it.label, it.planName) }
+            .map { ProjectionDay(it.routineId, it.label, it.routineName) }
         if (days.isEmpty()) return emptyList()
 
         val cadence = appPreferences.workoutCadenceDays.first()
@@ -124,7 +124,7 @@ class CalendarViewModel @Inject constructor(
             .filter { it.status == "completed" || it.status == "in_progress" }
             .mapNotNull { s ->
                 runCatching { LocalDate.parse(s.date) }.getOrNull()
-                    ?.let { SessionAnchor(it, s.planId, s.status) }
+                    ?.let { SessionAnchor(it, s.routineId, s.status) }
             }
             .maxByOrNull { it.date }
 
@@ -136,10 +136,10 @@ class CalendarViewModel @Inject constructor(
         return WorkoutProjection.project(today, cadence, anchor, days, count)
             .filter { !it.date.isBefore(monthStart) && !it.date.isAfter(monthEnd) && it.date !in realDates }
             .map { slot ->
-                val lifts = slot.planId
-                    ?.let { plannedExerciseDao.getByPlanId(it).take(4) }
+                val lifts = slot.routineId
+                    ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
                     ?: emptyList()
-                UpcomingWorkout(slot.date, slot.label, slot.planId, slot.planName, lifts)
+                UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts)
             }
     }
 
@@ -151,11 +151,11 @@ class CalendarViewModel @Inject constructor(
     }
 
     /** Starts a workout today from a projected day and navigates into the session. */
-    fun startProjectedSession(planId: String) {
+    fun startProjectedSession(routineId: String) {
         viewModelScope.launch {
             try {
                 val session = sessionRepository.createSession(
-                    SessionCreate(planId = planId, date = LocalDate.now().toString()),
+                    SessionCreate(routineId = routineId, date = LocalDate.now().toString()),
                 )
                 _navigateToWorkout.emit(session.id)
             } catch (_: Exception) {

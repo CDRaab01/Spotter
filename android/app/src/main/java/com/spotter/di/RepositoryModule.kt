@@ -2,11 +2,11 @@ package com.spotter.di
 
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.local.dao.BodyMetricDao
-import com.spotter.data.local.dao.PlannedExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
+import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
-import com.spotter.data.local.dao.WorkoutPlanDao
 import com.spotter.data.local.dao.WorkoutProgramDao
+import com.spotter.data.local.dao.WorkoutRoutineDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import dagger.Module
 import dagger.Provides
@@ -20,7 +20,7 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun provideWorkoutPlanDao(db: SpotterDatabase): WorkoutPlanDao = db.workoutPlanDao()
+    fun provideWorkoutRoutineDao(db: SpotterDatabase): WorkoutRoutineDao = db.workoutRoutineDao()
 
     @Provides
     @Singleton
@@ -36,7 +36,7 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun providePlannedExerciseDao(db: SpotterDatabase): PlannedExerciseDao = db.plannedExerciseDao()
+    fun provideRoutineExerciseDao(db: SpotterDatabase): RoutineExerciseDao = db.routineExerciseDao()
 
     @Provides
     @Singleton

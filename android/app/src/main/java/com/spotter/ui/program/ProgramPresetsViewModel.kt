@@ -3,11 +3,11 @@ package com.spotter.ui.program
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.AcceptProgramRequest
-import com.spotter.data.model.PlannedExerciseIn
+import com.spotter.data.model.RoutineExerciseIn
 import com.spotter.data.model.SuggestedProgramDay
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.ExerciseRepository
-import com.spotter.data.repository.PlanRepository
+import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,7 +24,7 @@ class ProgramPresetsViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val aiRepository: AiRepository,
     private val programRepository: ProgramRepository,
-    private val planRepository: PlanRepository,
+    private val routineRepository: RoutineRepository,
 ) : ViewModel() {
 
     /** Id of the preset currently being applied (drives a per-card spinner), or null. */
@@ -52,7 +52,7 @@ class ProgramPresetsViewModel @Inject constructor(
                 val days = preset.days.mapIndexed { i, day ->
                     val exercises = day.exercises.mapNotNull { ex ->
                         byName[ex.name.trim().lowercase()]?.let { match ->
-                            PlannedExerciseIn(
+                            RoutineExerciseIn(
                                 exerciseId = match.id,
                                 targetSets = ex.sets,
                                 targetReps = ex.reps,
@@ -74,7 +74,7 @@ class ProgramPresetsViewModel @Inject constructor(
                     AcceptProgramRequest(name = preset.displayName, days = days)
                 )
                 runCatching { programRepository.sync() }
-                runCatching { planRepository.sync() }
+                runCatching { routineRepository.sync() }
                 _applied.emit(result.name)
             } catch (e: Exception) {
                 _error.emit(e.message ?: "Couldn't add this program. Try again.")

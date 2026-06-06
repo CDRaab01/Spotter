@@ -20,19 +20,19 @@ from app.schemas.program import (
 async def _to_out(program: WorkoutProgram) -> ProgramOut:
     day_outs = []
     for day in program.days:
-        plan_name: str | None = None
-        if hasattr(day, "plan") and day.plan is not None:
+        routine_name: str | None = None
+        if hasattr(day, "routine") and day.routine is not None:
             try:
-                plan_name = day.plan.name
+                routine_name = day.routine.name
             except Exception:
                 pass
         day_outs.append(
             ProgramDayOut(
                 id=day.id,
-                plan_id=day.plan_id,
+                routine_id=day.routine_id,
                 label=day.label,
                 order=day.order,
-                plan_name=plan_name,
+                routine_name=routine_name,
             )
         )
     return ProgramOut(
@@ -47,7 +47,7 @@ async def list_programs(db: AsyncSession, user_id: uuid.UUID) -> list[ProgramOut
     result = await db.execute(
         select(WorkoutProgram)
         .where(WorkoutProgram.user_id == user_id)
-        .options(selectinload(WorkoutProgram.days).selectinload(ProgramDay.plan))
+        .options(selectinload(WorkoutProgram.days).selectinload(ProgramDay.routine))
     )
     return [await _to_out(p) for p in result.scalars().all()]
 
@@ -70,7 +70,7 @@ async def get_program(
     result = await db.execute(
         select(WorkoutProgram)
         .where(WorkoutProgram.id == program_id, WorkoutProgram.user_id == user_id)
-        .options(selectinload(WorkoutProgram.days).selectinload(ProgramDay.plan))
+        .options(selectinload(WorkoutProgram.days).selectinload(ProgramDay.routine))
     )
     program = result.scalar_one_or_none()
     if not program:
@@ -154,7 +154,7 @@ async def get_next_day(
     active_result = await db.execute(
         select(WorkoutProgram)
         .where(WorkoutProgram.user_id == user_id, WorkoutProgram.is_active == True)  # noqa: E712
-        .options(selectinload(WorkoutProgram.days).selectinload(ProgramDay.plan))
+        .options(selectinload(WorkoutProgram.days).selectinload(ProgramDay.routine))
     )
     program = active_result.scalar_one_or_none()
     if not program or not program.days:
@@ -170,31 +170,31 @@ async def get_next_day(
     last_session = last_session_result.scalar_one_or_none()
 
     days = sorted(program.days, key=lambda d: d.order)
-    if not last_session or not last_session.plan_id:
+    if not last_session or not last_session.routine_id:
         next_day = days[0]
     else:
-        # Find the last day whose plan matches. When multiple days share a plan
+        # Find the last day whose routine matches. When multiple days share a routine
         # (e.g. two "Full Body" days) we pick the last matching occurrence so the
         # rotation advances past the most recently used position, not always from
         # the first occurrence. This is a best-effort heuristic; a future improvement
         # is to store program_day_id on WorkoutSession for exact tracking.
         matching_index = None
         for i, d in enumerate(days):
-            if d.plan_id == last_session.plan_id:
+            if d.routine_id == last_session.routine_id:
                 matching_index = i
         if matching_index is None:
             next_day = days[0]
         else:
             next_day = days[(matching_index + 1) % len(days)]
 
-    plan_name: str | None = None
-    if next_day.plan:
-        plan_name = next_day.plan.name
+    routine_name: str | None = None
+    if next_day.routine:
+        routine_name = next_day.routine.name
 
     return ProgramDayOut(
         id=next_day.id,
-        plan_id=next_day.plan_id,
+        routine_id=next_day.routine_id,
         label=next_day.label,
         order=next_day.order,
-        plan_name=plan_name,
+        routine_name=routine_name,
     )

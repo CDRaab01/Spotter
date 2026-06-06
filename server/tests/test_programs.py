@@ -2,11 +2,11 @@ import datetime
 import uuid
 
 
-async def _make_plan(auth_client, exercise_id: str) -> str:
+async def _make_routine(auth_client, exercise_id: str) -> str:
     resp = await auth_client.post(
-        "/plans",
+        "/routines",
         json={
-            "name": f"Plan {uuid.uuid4().hex[:4]}",
+            "name": f"Routine {uuid.uuid4().hex[:4]}",
             "exercises": [
                 {
                     "exercise_id": exercise_id,
@@ -25,14 +25,14 @@ async def _make_plan(auth_client, exercise_id: str) -> str:
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 async def test_create_program(auth_client, exercise):
-    plan_id = await _make_plan(auth_client, str(exercise.id))
+    routine_id = await _make_routine(auth_client, str(exercise.id))
     resp = await auth_client.post(
         "/programs",
         json={
             "name": "PPL",
             "days": [
-                {"plan_id": plan_id, "label": "Push", "order": 0},
-                {"plan_id": None, "label": "Rest", "order": 1},
+                {"routine_id": routine_id, "label": "Push", "order": 0},
+                {"routine_id": None, "label": "Rest", "order": 1},
             ],
         },
     )
@@ -54,10 +54,10 @@ async def test_list_programs(auth_client):
 
 
 async def test_get_program(auth_client, exercise):
-    plan_id = await _make_plan(auth_client, str(exercise.id))
+    routine_id = await _make_routine(auth_client, str(exercise.id))
     create = await auth_client.post(
         "/programs",
-        json={"name": "Full Body", "days": [{"plan_id": plan_id, "label": "Day A", "order": 0}]},
+        json={"name": "Full Body", "days": [{"routine_id": routine_id, "label": "Day A", "order": 0}]},
     )
     prog_id = create.json()["id"]
 
@@ -112,7 +112,7 @@ async def test_delete_nonexistent_program_returns_404(auth_client):
 
 
 async def test_replace_program_days(auth_client, exercise):
-    plan_id = await _make_plan(auth_client, str(exercise.id))
+    routine_id = await _make_routine(auth_client, str(exercise.id))
     create = await auth_client.post(
         "/programs",
         json={"name": "Prog", "days": [{"label": "Old Day", "order": 0}]},
@@ -124,7 +124,7 @@ async def test_replace_program_days(auth_client, exercise):
         json={
             "days": [
                 {"label": "Push", "order": 0},
-                {"plan_id": plan_id, "label": "Pull", "order": 1},
+                {"routine_id": routine_id, "label": "Pull", "order": 1},
             ]
         },
     )
@@ -142,13 +142,13 @@ async def test_get_next_day_no_active_program_returns_null(auth_client):
 
 
 async def test_get_next_day_with_no_prior_session_returns_first_day(auth_client, exercise):
-    plan_id = await _make_plan(auth_client, str(exercise.id))
+    routine_id = await _make_routine(auth_client, str(exercise.id))
     create = await auth_client.post(
         "/programs",
         json={
             "name": "PPL",
             "days": [
-                {"plan_id": plan_id, "label": "Push", "order": 0},
+                {"routine_id": routine_id, "label": "Push", "order": 0},
                 {"label": "Pull", "order": 1},
             ],
         },
@@ -162,13 +162,13 @@ async def test_get_next_day_with_no_prior_session_returns_first_day(auth_client,
 
 
 async def test_get_next_day_cycles_after_completed_session(auth_client, exercise):
-    plan_id = await _make_plan(auth_client, str(exercise.id))
+    routine_id = await _make_routine(auth_client, str(exercise.id))
     create = await auth_client.post(
         "/programs",
         json={
             "name": "AB",
             "days": [
-                {"plan_id": plan_id, "label": "Day A", "order": 0},
+                {"routine_id": routine_id, "label": "Day A", "order": 0},
                 {"label": "Day B", "order": 1},
             ],
         },
@@ -176,9 +176,9 @@ async def test_get_next_day_cycles_after_completed_session(auth_client, exercise
     prog_id = create.json()["id"]
     await auth_client.patch(f"/programs/{prog_id}", json={"is_active": True})
 
-    # Create and complete a session from the plan
+    # Create and complete a session from the routine
     sess = await auth_client.post(
-        "/sessions", json={"plan_id": plan_id, "date": str(datetime.date.today())}
+        "/sessions", json={"routine_id": routine_id, "date": str(datetime.date.today())}
     )
     sess_id = sess.json()["id"]
     await auth_client.patch(

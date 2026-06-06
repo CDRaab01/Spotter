@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.body_metric import BodyMetric
 from app.models.set_log import SetLog
-from app.models.workout_plan import WorkoutPlan
+from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
 
 # Bounds that keep the injected context small regardless of history size.
@@ -124,15 +124,15 @@ async def _recent_sessions(
 
 async def _current_plan_line(db: AsyncSession, user_id: uuid.UUID) -> str | None:
     result = await db.execute(
-        select(WorkoutPlan)
-        .where(WorkoutPlan.user_id == user_id)
-        .order_by(WorkoutPlan.created_at.desc())
+        select(WorkoutRoutine)
+        .where(WorkoutRoutine.user_id == user_id)
+        .order_by(WorkoutRoutine.created_at.desc())
         .limit(1)
     )
-    plan = result.scalar_one_or_none()
-    if not plan:
+    routine = result.scalar_one_or_none()
+    if not routine:
         return None
-    return f"Current plan: \"{plan.name}\" (source: {plan.source})."
+    return f"Current routine: \"{routine.name}\" (source: {routine.source})."
 
 
 async def _bodyweight_line(db: AsyncSession, user_id: uuid.UUID) -> str | None:

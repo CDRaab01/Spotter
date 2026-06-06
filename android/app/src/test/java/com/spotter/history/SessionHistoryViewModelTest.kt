@@ -43,7 +43,7 @@ class SessionHistoryViewModelTest {
             SessionSummary(
                 id = "s-1",
                 date = "2026-06-01",
-                planName = "My Plan",
+                routineName = "My Plan",
                 status = "completed",
                 durationSeconds = 3600,
                 totalSets = 9,
