@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -37,11 +38,21 @@ fun LoginScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val authState by viewModel.authState.collectAsState()
+    val serverUrl by viewModel.serverUrl.collectAsState()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var showServerDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(authState) {
         if (authState is UiState.Success) onLoginSuccess(viewModel.isOnboardingDone())
+    }
+
+    if (showServerDialog) {
+        ServerUrlDialog(
+            currentUrl = serverUrl,
+            onDismiss = { showServerDialog = false },
+            onSave = { viewModel.setServerUrl(it) },
+        )
     }
 
     Column(
@@ -101,5 +112,65 @@ fun LoginScreen(
         TextButton(onClick = onNavigateToRegister) {
             Text("Don't have an account? Create one")
         }
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = { showServerDialog = true }) {
+            Text(
+                "Server settings",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
+}
+
+/**
+ * Pre-login editor for the server URL. The in-app Settings screen is only reachable once signed in,
+ * so this lets the user point the app at the right server (and see where it's currently pointed)
+ * before they can authenticate. Persists via [AuthViewModel.setServerUrl]; the change takes effect
+ * on the next request via the host-selection interceptor.
+ */
+@Composable
+private fun ServerUrlDialog(
+    currentUrl: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Boolean,
+) {
+    var input by remember(currentUrl) { mutableStateOf(currentUrl) }
+    var error by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Server URL") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = {
+                        input = it
+                        error = false
+                    },
+                    label = { Text("Server URL") },
+                    supportingText = {
+                        Text(
+                            if (error) "Enter a valid URL, e.g. https://spotter.example.com/"
+                            else "e.g. https://spotter.example.com/",
+                        )
+                    },
+                    isError = error,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (onSave(input)) onDismiss() else error = true
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
