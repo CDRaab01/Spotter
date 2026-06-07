@@ -102,6 +102,34 @@ automatically on container boot (`server/docker-entrypoint.sh`).
      in, or run Docker Desktop as that same account. If the runner can't reach the
      Docker engine, the deploy step fails fast with a clear error.
 
+### Cloudflare Tunnel users — keep the tunnel up across deploys
+
+`cloudflared` lives behind the `tunnel` profile in `docker-compose.yml`, so a plain
+`docker compose up -d --build` (what the redeploy runs) **excludes it** — a deploy
+would tear the tunnel down and your public hostname would start returning Cloudflare
+`530` errors. To keep it in the managed set on every deploy, add this to the **root
+`.env`** (next to `docker-compose.yml`, where `TUNNEL_TOKEN` already lives):
+
+```
+COMPOSE_PROFILES=tunnel
+```
+
+Compose reads `COMPOSE_PROFILES` automatically, so `up` always includes `cloudflared`.
+It's gitignored, so `git reset --hard` never touches it.
+
+### LM Studio from inside the Docker container
+
+Inside the `server` container, `localhost` is the container — not your host — so the
+default `LM_STUDIO_BASE_URL=http://localhost:1234/v1` can't reach LM Studio running on
+the machine, and `/ai/chat` returns `503`. For the Docker deployment, set this in
+`server/.env`:
+
+```
+LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+```
+
+(A `530` instead of `503` means the Cloudflare tunnel itself is down — see above.)
+
 ### How it fires
 
 - **Automatic:** every push to `main` runs CI; when CI succeeds, the `Deploy`
@@ -122,11 +150,12 @@ The redeploy scripts stamp the running build with the deployed commit. To verify
 
 ### Run it by hand
 
-You can always redeploy directly on the host without GitHub:
+You can always redeploy directly on the host without GitHub (Windows PowerShell —
+no PowerShell 7 needed, matching the Deploy workflow):
 
 ```powershell
-pwsh deploy/redeploy.ps1            # deploy origin/main
-pwsh deploy/redeploy.ps1 -Ref 1a2b3c4   # roll back to a prior commit
+powershell -ExecutionPolicy Bypass -File .\deploy\redeploy.ps1            # deploy origin/main
+powershell -ExecutionPolicy Bypass -File .\deploy\redeploy.ps1 -Ref 1a2b3c4   # roll back
 ```
 ```bash
 ./deploy/redeploy.sh               # deploy origin/main  (Linux/macOS)
