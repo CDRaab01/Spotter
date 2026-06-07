@@ -73,9 +73,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'http://10.0.2.2:8000/' }}" >> local.properties
+      - run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - run: ./gradlew :app:testDebugUnitTest --no-daemon
 
   android-screenshots:
@@ -92,9 +90,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'http://10.0.2.2:8000/' }}" >> local.properties
+      - run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       # Compare mode: renders the redesigned UI and diffs it against the committed baselines
       # in app/screenshots/. It produces actual/compare images without failing on pixel drift,
       # so every PR gets a fresh visual gallery. (Flip to `-Proborazzi.test.verify=true` to gate
@@ -126,9 +122,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'http://10.0.2.2:8000/' }}" >> local.properties
+      - run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - run: ./gradlew :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
@@ -151,9 +145,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'http://10.0.2.2:8000/' }}" >> local.properties
+      - run: echo "sdk.dir=$ANDROID_HOME" > local.properties
       - name: Decode keystore
         run: echo "$KEYSTORE_BASE64" | base64 -d > app/keystore.jks
         env:
