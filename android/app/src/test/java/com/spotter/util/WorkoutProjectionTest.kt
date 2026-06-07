@@ -95,4 +95,34 @@ class WorkoutProjectionTest {
 
         assertEquals(listOf("C", "A"), slots.map { it.routineId })
     }
+
+    private fun restDay() = ProjectionDay(routineId = null, label = "Rest", routineName = null)
+
+    @Test
+    fun `program with rest days uses step 1 regardless of cadence`() {
+        // 4 workout + 3 rest = 7-day cycle; cadence pref = 2 should be ignored
+        val days = listOf(day("Upper1"), day("Lower1"), restDay(), day("Upper2"), day("Lower2"), restDay(), restDay())
+        val slots = WorkoutProjection.project(today, cadenceDays = 2, anchor = null, days = days, count = 7)
+
+        // Every slot is exactly 1 day apart
+        for (i in 1 until slots.size) {
+            assertEquals(1L, slots[i].date.toEpochDay() - slots[i - 1].date.toEpochDay())
+        }
+        // 4 out of 7 days are workout days
+        assertEquals(4, slots.count { it.routineId != null })
+        // Cycle completes in 7 calendar days
+        assertEquals(today.plusDays(6), slots.last().date)
+    }
+
+    @Test
+    fun `effectiveCadence returns 1 when rest days present`() {
+        val withRest = listOf(day("A"), restDay())
+        assertEquals(1, WorkoutProjection.effectiveCadence(2, withRest))
+    }
+
+    @Test
+    fun `effectiveCadence returns cadence when no rest days`() {
+        val noRest = listOf(day("A"), day("B"), day("C"))
+        assertEquals(3, WorkoutProjection.effectiveCadence(3, noRest))
+    }
 }
