@@ -1,7 +1,9 @@
+import asyncio
 import logging
 import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from fastapi import HTTPException, status
@@ -77,7 +79,7 @@ async def forgot_password(db: AsyncSession, req: ForgotPasswordRequest) -> None:
     )
     await db.commit()
 
-    _deliver_reset_token(req.email, token)
+    await _deliver_reset_token(req.email, token)
 
 
 async def reset_password(db: AsyncSession, req: ResetPasswordRequest) -> None:
@@ -98,9 +100,12 @@ async def reset_password(db: AsyncSession, req: ResetPasswordRequest) -> None:
     await db.commit()
 
 
-def _deliver_reset_token(email: str, token: str) -> None:
+async def _deliver_reset_token(email: str, token: str) -> None:
     if settings.smtp_host and settings.smtp_user and settings.smtp_password:
-        _send_email(email, token)
+        try:
+            await asyncio.to_thread(_send_email_blocking, email, token)
+        except Exception as exc:
+            log.error("Failed to send reset email to %s: %s", email, exc)
     else:
         log.warning(
             "SMTP not configured — password reset code for %s: %s (valid %d min)",
@@ -110,21 +115,41 @@ def _deliver_reset_token(email: str, token: str) -> None:
         )
 
 
-def _send_email(to: str, token: str) -> None:
-    body = (
-        f"Your Spotter password reset token is:\n\n{token}\n\n"
-        f"Paste this token into the app to reset your password. "
+def _send_email_blocking(to: str, token: str) -> None:
+    plain = (
+        f"Your Spotter password reset code is:\n\n"
+        f"  {token}\n\n"
+        f"Open the Spotter app, tap 'Forgot password?', then enter the code above.\n"
         f"It expires in {RESET_TOKEN_EXPIRY_MINUTES} minutes.\n\n"
-        "If you didn't request this, you can ignore this email."
+        "If you didn't request this, you can safely ignore this email."
     )
-    msg = MIMEText(body)
+    html = f"""\
+<html><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+  <h2 style="margin-bottom:4px">Reset your Spotter password</h2>
+  <p>Enter the code below in the Spotter app to set a new password.</p>
+  <div style="background:#f4f4f5;border-radius:8px;padding:20px 24px;margin:20px 0;text-align:center">
+    <code style="font-size:1.4rem;letter-spacing:.05em;word-break:break-all">{token}</code>
+  </div>
+  <p style="color:#6b7280;font-size:.9rem">
+    This code expires in <strong>{RESET_TOKEN_EXPIRY_MINUTES} minutes</strong>.<br>
+    If you didn't request a password reset you can safely ignore this email.
+  </p>
+</body></html>"""
+
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = "Spotter — password reset code"
     msg["From"] = settings.smtp_from
     msg["To"] = to
-    try:
+    msg.attach(MIMEText(plain, "plain"))
+    msg.attach(MIMEText(html, "html"))
+
+    if settings.smtp_use_ssl:
+        ctx = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port)
+        with ctx as smtp:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+            smtp.sendmail(settings.smtp_from, [to], msg.as_string())
+    else:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
             smtp.starttls()
             smtp.login(settings.smtp_user, settings.smtp_password)
             smtp.sendmail(settings.smtp_from, [to], msg.as_string())
-    except Exception as exc:
-        log.error("Failed to send reset email to %s: %s", to, exc)

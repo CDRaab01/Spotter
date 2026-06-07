@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from: str = "noreply@spotter.local"
+    # True = SSL on port 465 (Outlook, Yahoo). False (default) = STARTTLS on port 587 (Gmail).
+    smtp_use_ssl: bool = False
 
 
 settings = Settings()
