@@ -102,3 +102,4 @@ a green CI build of `main` (or a manual button), it runs `git reset --hard` +
 | GET | `/calendar` | Sessions in a date range |
 | POST | `/ai/chat` | Chat with the AI coach |
 | GET | `/health` | Server health check |
+| GET | `/version` | Running build (name, version, commit, built_at) |
