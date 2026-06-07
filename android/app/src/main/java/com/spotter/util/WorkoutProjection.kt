@@ -46,18 +46,29 @@ data class UpcomingWorkout(
 object WorkoutProjection {
 
     /**
+     * Returns the effective cadence to use for projection.
+     *
+     * When the program has explicit rest days (routineId == null), the program itself encodes the
+     * weekly structure, so each day maps to one calendar day (step = 1). The user's cadence
+     * preference applies only to programs where every day is a workout day.
+     */
+    fun effectiveCadence(cadenceDays: Int, days: List<ProjectionDay>): Int =
+        if (days.any { it.routineId == null }) 1 else cadenceDays.coerceAtLeast(1)
+
+    /**
      * @param today the current date.
-     * @param cadenceDays N — days between workouts (coerced to >= 1).
+     * @param cadenceDays N — days between workouts (coerced to >= 1). Ignored when the program
+     *   has rest days; see [effectiveCadence].
      * @param anchor the most recent session (completed OR in_progress), or null if none.
      * @param days the active program's days, ordered by `order`. Empty ⇒ no projection.
      * @param count how many upcoming slots to produce.
      *
      * Date rules:
-     *  - With an anchor: first date = anchor.date + N, advanced forward in +N steps until it is
-     *    >= today (handles a stale past anchor). An in_progress session dated today therefore
-     *    yields a first date of today + N.
+     *  - With an anchor: first date = anchor.date + step, advanced forward in +step steps until it
+     *    is >= today (handles a stale past anchor). An in_progress session dated today therefore
+     *    yields a first date of today + step.
      *  - Without an anchor: first date = today.
-     *  - Each later slot is +N after the previous.
+     *  - Each later slot is +step after the previous.
      *
      * Day-selection rules (mirrors the server `get_next_day` cyclic logic, extended to N slots):
      *  - startIndex = index of the day whose routineId == anchor.routineId, else -1 (no match / no anchor).
@@ -72,7 +83,7 @@ object WorkoutProjection {
     ): List<ProjectedSlot> {
         if (days.isEmpty() || count <= 0) return emptyList()
         val n = days.size
-        val step = cadenceDays.coerceAtLeast(1).toLong()
+        val step = effectiveCadence(cadenceDays, days).toLong()
 
         val firstDate = if (anchor != null) {
             var d = anchor.date.plusDays(step)

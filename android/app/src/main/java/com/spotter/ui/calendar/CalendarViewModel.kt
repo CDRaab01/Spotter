@@ -120,6 +120,7 @@ class CalendarViewModel @Inject constructor(
         if (days.isEmpty()) return emptyList()
 
         val cadence = appPreferences.workoutCadenceDays.first()
+        val effectiveStep = WorkoutProjection.effectiveCadence(cadence, days)
         val anchor = sessionDao.getAll()
             .filter { it.status == "completed" || it.status == "in_progress" }
             .mapNotNull { s ->
@@ -130,7 +131,7 @@ class CalendarViewModel @Inject constructor(
 
         // Enough slots to reach the end of the visible month, with headroom for cycling.
         val span = ChronoUnit.DAYS.between(today, monthEnd).coerceAtLeast(0)
-        val count = (span / cadence + days.size + 2).toInt().coerceIn(1, 200)
+        val count = (span / effectiveStep + days.size + 2).toInt().coerceIn(1, 200)
         val realDates = entries.mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }.toSet()
 
         return WorkoutProjection.project(today, cadence, anchor, days, count)
