@@ -30,6 +30,13 @@ class TokenRefreshAuthenticator @Inject constructor(
     private val refreshClient = OkHttpClient()
 
     override fun authenticate(route: Route?, response: Response): Request? {
+        // A 401 from the auth endpoints themselves (login/register/refresh/forgot/reset) means
+        // bad credentials or an invalid refresh token — NOT an expired access token. Don't try to
+        // refresh, and never sign out here: that would clear tokens and emit a logout event,
+        // bouncing the user off a failed login back to a fresh login screen. Just surface the 401
+        // so the caller (e.g. the login VM) can show the error.
+        if (response.request.url.encodedPath.contains("/auth/")) return null
+
         // Avoid infinite loops: if we already retried after a refresh, give up
         if (responseCount(response) >= 2) return signOut()
 
