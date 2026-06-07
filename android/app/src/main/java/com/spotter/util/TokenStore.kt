@@ -31,8 +31,17 @@ class TokenStore @Inject constructor(@ApplicationContext private val context: Co
         }
     }
 
+    /**
+     * Clears only the auth tokens. [TokenStore] and [AppPreferences] share a single DataStore
+     * ("spotter_prefs"), so clearing the whole store here would also wipe the configured server
+     * URL, theme, units, onboarding flag, and profile — which surfaced as the server settings
+     * silently reverting to the build default on sign-out. Remove just the token keys instead.
+     */
     suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+        context.dataStore.edit {
+            it.remove(ACCESS_TOKEN)
+            it.remove(REFRESH_TOKEN)
+        }
     }
 
     suspend fun getUserId(): String? {
