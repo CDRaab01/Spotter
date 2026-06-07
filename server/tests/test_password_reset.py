@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import select
 
@@ -70,3 +71,38 @@ async def test_forgot_password_unknown_email_still_200(client):
         "/auth/forgot-password", json={"email": "nobody@spotter.com"}
     )
     assert resp.status_code == 200
+
+
+async def test_reset_email_sent_when_smtp_configured(client, monkeypatch):
+    """When SMTP is configured, sendmail is called with the right recipient and token."""
+    email = f"smtp_{uuid.uuid4().hex[:8]}@spotter.com"
+    await _register(client, email)
+
+    smtp_instance = MagicMock()
+    smtp_ctx = MagicMock()
+    smtp_ctx.__enter__ = MagicMock(return_value=smtp_instance)
+    smtp_ctx.__exit__ = MagicMock(return_value=False)
+
+    import app.config as cfg_mod
+    monkeypatch.setattr(cfg_mod.settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(cfg_mod.settings, "smtp_port", 587)
+    monkeypatch.setattr(cfg_mod.settings, "smtp_user", "user@example.com")
+    monkeypatch.setattr(cfg_mod.settings, "smtp_password", "secret")
+    monkeypatch.setattr(cfg_mod.settings, "smtp_from", "noreply@example.com")
+    monkeypatch.setattr(cfg_mod.settings, "smtp_use_ssl", False)
+
+    with patch("smtplib.SMTP", return_value=smtp_ctx):
+        resp = await client.post("/auth/forgot-password", json={"email": email})
+
+    assert resp.status_code == 200
+    token = await _read_reset_token(email)
+    assert token is not None
+
+    smtp_instance.starttls.assert_called_once()
+    smtp_instance.login.assert_called_once_with("user@example.com", "secret")
+    call_args = smtp_instance.sendmail.call_args
+    assert call_args is not None
+    recipients = call_args[0][1]
+    assert email in recipients
+    message_body = call_args[0][2]
+    assert token in message_body
