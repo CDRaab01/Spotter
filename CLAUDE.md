@@ -77,13 +77,39 @@ The AI assists with workout planning only. The server enforces these — never r
 - `GET /exercises?search=`, `GET /users/me`
 - `GET /progress/exercises`, `GET /progress/exercises/{id}`, `GET /progress/records` (per-exercise PRs: top weight, est. 1RM, best set volume)
 - `GET/POST /programs`, `GET/PATCH/DELETE /programs/{id}`, `PUT /programs/{id}/days`, `GET /programs/active/next`
+- `GET /health` — liveness probe (`{"status":"ok"}`). **Unauthenticated.**
+- `GET /version` — running build: `{name, version, commit, built_at}`. **Unauthenticated** (so the app's Settings → About can show it pre-login). `commit`/`built_at` are stamped at deploy time (see Deployment); `"unknown"` otherwise.
 
 ## Security
-- Auth on every endpoint (token-based); no anonymous access to user data.
+- Auth on every endpoint (token-based); no anonymous access to user data. The only unauthenticated endpoints are `GET /health` and `GET /version`, which expose no user data.
 - **Rate limiting** (slowapi): `/auth/register` 5/min, `/auth/login` 10/min, `/auth/refresh` 10/min, forgot/reset 5/min, `/ai/chat` 20/min. Security headers added via middleware.
 - LM Studio bound to localhost; only FastAPI reaches it.
 - Secrets in env vars / `.env` (gitignored), never committed.
 - HTTPS between Android and server: terminate TLS at a reverse proxy for real deployments. (The debug client currently allows cleartext for localhost dev — not for production.)
+
+## Deployment
+Self-hosted via Docker Compose (root `docker-compose.yml`: `db`, `server`, and a `cloudflared`
+tunnel behind the `tunnel` profile). Migrations run automatically on container boot
+(`server/docker-entrypoint.sh` → `alembic upgrade head`). Full operator guide in `deploy/README.md`.
+
+- **Remote redeploy (`deploy/`):** a **self-hosted GitHub Actions runner** on the host
+  (`.github/workflows/deploy.yml`, label `spotter`) auto-redeploys after CI passes on `main`
+  (`workflow_run`), plus a manual `workflow_dispatch` with a `ref` input that doubles as a
+  rollback. The runner long-polls GitHub outbound — no inbound ports. The workflow uses
+  `shell: powershell` (Windows PowerShell 5.1 — no PowerShell 7 needed) and drives the canonical
+  clone via the `SPOTTER_DIR` Actions variable (no `actions/checkout`).
+- **Redeploy logic (one per OS):** `deploy/redeploy.ps1` (Windows/Docker Desktop, primary) and
+  `deploy/redeploy.sh` (Linux/macOS) — fetch → `git reset --hard <ref>` → `docker compose up -d
+  --build` → health-gate on `/health` → prune. They export `GIT_SHA`/`BUILT_AT` so `GET /version`
+  reports the running commit. `.env` (gitignored) and the `pgdata` volume survive `git reset`.
+- **Tunnel + deploys:** `cloudflared` is behind the `tunnel` profile, so a plain `docker compose
+  up` excludes it (a deploy would drop the tunnel → Cloudflare `530`s). Set `COMPOSE_PROFILES=tunnel`
+  in the **root `.env`** so Compose keeps it in the managed set across deploys.
+- **LM Studio in Docker:** inside the `server` container `localhost` is the container, so set
+  `LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1` in `server/.env` (else `/ai/chat`
+  returns `503`). A `530` (vs `503`) means the tunnel itself is down.
+- **Verify a deploy:** app **Settings → About** shows app + server version/commit, or
+  `curl http://127.0.0.1:8000/version` (locally) / the public hostname (through the tunnel).
 
 ## Testing
 - Server: pytest for routers + the AI guardrail/validation layer (mock the LLM; assert malformed/out-of-bounds output is rejected).
@@ -208,3 +234,24 @@ change is text-only, covered by the existing AI guardrail tests):
   first, treat any item already present (equipment, experience, goal, age range, limitations,
   training days) as answered, ask only for genuine gaps, and skip intake entirely when everything
   is known. Behaviour change is confined to the prompt module; no validation/scope changes.
+
+## Sprint 4 — Remote redeploy + version readout (2026-06-07)
+Delivered and **verified end-to-end on the live deployment** (server: 137 pytest green incl. new
+`tests/test_version.py`, `ruff check app` clean; Android: `:app:testDebugUnitTest` green incl. new
+`SettingsViewModelTest` cases; the self-hosted Deploy ran green on `main` and the public hostname
+served the deployed commit through the Cloudflare tunnel). See the **Deployment** section above for
+the operational model and `deploy/README.md` for the operator guide.
+- **Remote redeploy pipeline:** `.github/workflows/deploy.yml` + `deploy/redeploy.ps1` /
+  `deploy/redeploy.sh`, run by a self-hosted runner. Auto-deploys CI-green commits on `main`;
+  manual `workflow_dispatch` with a `ref` input for ad-hoc deploys/rollbacks. No inbound ports.
+- **Version readout:** server `GET /version` (unauthenticated, mirrors `/health`); `APP_VERSION`
+  is a single source reused by the FastAPI app; `git_sha`/`built_at` settings injected at deploy
+  time via `docker-compose` (`GIT_SHA`/`BUILT_AT`). Android: `VersionOut` + `ApiService.getServerVersion()`,
+  `SettingsViewModel` exposes `appVersion` (BuildConfig) and `serverVersion`, surfaced in a new
+  **Settings → About** section (app version + server version·commit + deploy timestamp).
+- **Operational notes captured in docs:** `COMPOSE_PROFILES=tunnel` (root `.env`) keeps
+  `cloudflared` up across deploys; `LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1`
+  (`server/.env`) lets the container reach LM Studio. `530` = tunnel down, `503` = LM Studio down.
+- **Deferred:** installing the runner as a Windows service (currently runs interactively via
+  `run.cmd`); the deploy recreates the `server` container each run (env stamp changes), a brief
+  blip that's acceptable for personal use.
