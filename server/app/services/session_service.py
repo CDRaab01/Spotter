@@ -27,7 +27,7 @@ from app.schemas.session import (
 )
 
 # Muscle groups that take larger linear-progression jumps (bigger, stronger muscles).
-_LOWER_BODY_GROUPS = {"legs", "quads", "hamstrings", "glutes", "back"}
+_LOWER_BODY_GROUPS = {"legs", "quads", "hamstrings", "glutes", "calves", "back"}
 
 
 def suggest_next_weight(

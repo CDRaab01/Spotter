@@ -6,8 +6,9 @@ import kotlin.test.assertTrue
 
 class ProgramPresetsTest {
 
-    /** Exact seeded exercise names from server migration 0002_seed_exercises.py. */
+    /** Exact seeded exercise names from server migrations 0002 + 0009. */
     private val seededExercises = setOf(
+        // 0002_seed_exercises.py
         "Barbell Back Squat", "Barbell Front Squat", "Conventional Deadlift", "Romanian Deadlift",
         "Bench Press", "Incline Bench Press", "Overhead Press", "Barbell Row", "Barbell Curl",
         "Close-Grip Bench Press", "Good Morning", "Rack Pull",
@@ -17,6 +18,18 @@ class ProgramPresetsTest {
         "Push-Up", "Pull-Up", "Dip", "Bodyweight Squat", "Lunge", "Glute Bridge", "Plank",
         "Hollow Hold", "Mountain Climber",
         "Lat Pulldown", "Seated Cable Row", "Cable Curl", "Leg Press", "Leg Curl", "Leg Extension",
+        // 0009_seed_accessory_exercises.py
+        "Decline Bench Press", "Dumbbell Incline Press", "Dumbbell Fly", "Cable Crossover", "Pec Deck",
+        "Chin-Up", "Inverted Row", "T-Bar Row", "Chest-Supported Row", "Straight-Arm Pulldown",
+        "Dumbbell Shrug", "Arnold Press", "Dumbbell Front Raise", "Cable Lateral Raise",
+        "Rear Delt Fly", "Face Pull", "Upright Row", "Pike Push-Up",
+        "Hammer Curl", "Incline Dumbbell Curl", "Preacher Curl", "Concentration Curl",
+        "Tricep Pushdown", "Overhead Cable Tricep Extension", "Skull Crusher", "Tricep Kickback",
+        "Bench Dip", "Bulgarian Split Squat", "Walking Lunge", "Step-Up", "Hack Squat", "Box Squat",
+        "Hip Thrust", "Cable Glute Kickback", "Seated Leg Curl", "Nordic Curl",
+        "Standing Calf Raise", "Seated Calf Raise", "Dumbbell Calf Raise",
+        "Hanging Leg Raise", "Cable Crunch", "Russian Twist", "Bicycle Crunch", "Crunch",
+        "Ab Wheel Rollout",
     )
 
     @Test
