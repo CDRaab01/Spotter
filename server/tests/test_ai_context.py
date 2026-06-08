@@ -113,6 +113,28 @@ async def test_logged_history_reaches_the_llm_system_prompt(auth_client, exercis
     assert exercise.name in system_msg
 
 
+async def test_exercise_catalog_reaches_the_llm_system_prompt(auth_client, exercise):
+    """The seeded exercise library is injected so the model only names exercises
+    that resolve — preventing full workouts from collapsing to one or two lifts."""
+    captured = {}
+
+    async def fake_post(url, json=None, **kwargs):
+        captured["payload"] = json
+        return _mock_lm_response("Sure, here's a plan.")
+
+    with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__.return_value.post = AsyncMock(side_effect=fake_post)
+        resp = await auth_client.post(
+            "/ai/chat",
+            json={"messages": [{"role": "user", "content": "build me a program"}]},
+        )
+
+    assert resp.status_code == 200
+    system_msg = captured["payload"]["messages"][0]["content"]
+    assert "Exercise Library — Allowed Exercises" in system_msg
+    assert exercise.name in system_msg
+
+
 async def test_new_user_chat_has_no_history_block(auth_client):
     captured = {}
 

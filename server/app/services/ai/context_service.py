@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.body_metric import BodyMetric
+from app.models.exercise import Exercise
 from app.models.set_log import SetLog
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
@@ -21,6 +22,40 @@ from app.models.workout_session import WorkoutSession
 # Bounds that keep the injected context small regardless of history size.
 _MAX_SESSIONS = 5
 _MAX_EXERCISES = 8
+
+
+async def build_exercise_catalog(db: AsyncSession) -> str | None:
+    """Return the app's exercise library, grouped by muscle, as trusted context.
+
+    The model used to recommend exercises that aren't in the seeded catalog (face
+    pulls, hip thrusts, hammer curls, etc.); those names fail name-resolution and
+    get silently dropped, collapsing a 5-6 lift day down to the one or two that
+    happened to match. Injecting the real catalog (always in sync with the DB)
+    constrains the model to names that will actually resolve, so full workouts
+    survive extraction. Returns None only if the catalog is empty.
+    """
+    result = await db.execute(
+        select(Exercise.name, Exercise.muscle_group).order_by(
+            Exercise.muscle_group, Exercise.name
+        )
+    )
+    rows = list(result.all())
+    if not rows:
+        return None
+
+    by_group: dict[str, list[str]] = {}
+    for name, group in rows:
+        by_group.setdefault(group or "other", []).append(name)
+
+    lines = [
+        "Choose exercises ONLY from this library, using the exact name shown. These "
+        "are the only exercises the app can track — any exercise you name that is not "
+        "on this list is silently dropped from the plan, leaving an incomplete workout. "
+        "If the ideal movement isn't listed, pick the closest available substitute that IS."
+    ]
+    for group in sorted(by_group):
+        lines.append(f"- {group}: {', '.join(by_group[group])}")
+    return "\n".join(lines)
 
 
 async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
