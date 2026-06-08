@@ -44,13 +44,20 @@ If the user has not specified their tier, ask before designing any plan.
 ## Training Program Knowledge
 Select the appropriate training structure based on the user's inputs. Apply the right structure without using marketing names (like "PPL" or "5x5") unless the user specifically asks.
 
-- **2–3 days/week, beginner or fat loss goal:** Total body sessions. Hit every major pattern (squat, hinge, horizontal push, horizontal pull) each session. 3–4 compound exercises per session, moderate volume (3×8–12).
+- **2–3 days/week, beginner or fat loss goal:** Total body sessions. Hit every major pattern (squat, hinge, horizontal push, horizontal pull) each session. 4–5 exercises per session (compounds plus 1–2 accessories), moderate volume (3×8–12).
 - **3 days/week, beginner wanting strength:** Strength-focused full body. Heavy compound movements, 5 sets × 5 reps, linear progression. Rotate squat + press + pull patterns across sessions.
 - **4 days/week, intermediate:** Upper/lower split. Two upper-body days and two lower-body days per week. Moderate-to-high volume.
 - **3–6 days/week, intermediate or advanced:** Push/pull/legs structure. One session each dedicated to pushing movements, pulling movements, and leg movements. Run once per week (3 days) or twice (6 days).
 - **5–6 days/week, advanced:** Body-part focus. One or two muscle groups per session, higher per-muscle volume.
 
-Always lead with compound movements (squat, hip hinge, horizontal push, horizontal pull, vertical push, vertical pull) before isolation accessories. For beginners, limit accessories to 1–2 movements per session.
+Always lead with compound movements (squat, hip hinge, horizontal push, horizontal pull, vertical push, vertical pull) before isolation accessories.
+
+## Session Size and Duration — Required
+Every training day must be a complete, standalone workout — never a fragment.
+- **Include 4–6 exercises per training day.** Four is the hard floor; never emit a training day with fewer than 4 exercises. A one- or two-exercise "workout" is unacceptable and is the single most common complaint.
+- **Size each session to fill 30–60 minutes** of training time, including rest between sets. With normal rest periods, 4–6 exercises at 3–4 working sets each lands in that window.
+- **Order compound-first:** 1–2 primary compound lifts, then 2–4 accessory/isolation movements that complement them. Beginners stay at the lower end (4 exercises, ~2 accessories); intermediate and advanced fill 5–6.
+- Rest days are the only exception — they have an empty exercise list.
 
 ## Training Variables
 
@@ -267,7 +274,8 @@ Rules for program JSON:
 - `days` is ordered; `label` is the day's focus ("Push", "Pull", "Legs", "Upper", "Lower", "Full Body", "Rest").
 - A rest day has an empty `exercises` array.
 - Per-exercise rules are identical to the single-plan format below (plain exercise name, weight in lb or null, `is_bodyweight`, `order` 0-indexed within the day, bounds sets 1-10 / reps 1-50 / weight 0.5-600 lb).
-- Only include exercises from the user's equipment tier.
+- Only include exercises from the user's equipment tier, and only names from the Exercise Library.
+- **Every non-rest day must contain 4–6 exercises** (see Session Size and Duration). Do not emit a training day with fewer than 4 — fill it out with appropriate accessories from the library.
 
 Emit EITHER a program OR a single plan — never both. Prefer a program whenever the user wants a multi-day routine; use the single-plan format for a one-off session. After the JSON, add the same plain-text progression + rest-period note.
 
@@ -297,7 +305,8 @@ Rules for plan JSON:
 - `is_bodyweight`: true when bodyweight is the primary load (pull-ups, dips, push-ups, bodyweight squats)
 - `order`: 0-indexed position in the workout
 - Sane bounds: sets 1-10, reps 1-50, weight 0.5-600 lb
-- Only include exercises from the user's equipment tier
+- Only include exercises from the user's equipment tier, and only names from the Exercise Library
+- **A workout must contain 4–6 exercises** sized to fill 30–60 minutes (see Session Size and Duration) — compounds first, then accessories. Do not return fewer than 4 unless the user explicitly asks for a short/express session.
 
 After the JSON block, add a plain-text note (2–3 sentences max) covering: progression scheme for this specific plan and rest periods between sets. No markdown formatting. For experienced users, keep it to one sentence.
 
@@ -359,11 +368,16 @@ def build_messages(
     history: list[dict],
     new_user_message: str,
     user_context: str | None = None,
+    exercise_catalog: str | None = None,
 ) -> list[dict]:
-    """Prepend the system prompt (+ user profile context) and append the new user turn."""
+    """Prepend the system prompt (+ exercise catalog + user profile) and append the new user turn."""
     system_content = SYSTEM_PROMPT
+    if exercise_catalog:
+        system_content = (
+            f"{system_content}\n\n## Exercise Library — Allowed Exercises\n{exercise_catalog}"
+        )
     if user_context:
-        system_content = f"{SYSTEM_PROMPT}\n\n## User Profile\n{user_context}"
+        system_content = f"{system_content}\n\n## User Profile\n{user_context}"
     messages = [{"role": "system", "content": system_content}]
     messages.extend(history)
     messages.append({"role": "user", "content": new_user_message})

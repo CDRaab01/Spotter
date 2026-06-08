@@ -24,6 +24,7 @@ from app.schemas.ai import (
 from app.schemas.routine import RoutineExerciseIn
 from app.services.ai.context_service import (
     build_current_session_context,
+    build_exercise_catalog,
     build_user_context,
 )
 from app.services.ai.prompts import build_messages, validate_request, validate_response
@@ -51,7 +52,8 @@ async def chat(
     user_context = await _merged_context(
         db, user_id, req.user_context, req.current_session_id
     )
-    messages = build_messages(history, last_user, user_context)
+    exercise_catalog = await build_exercise_catalog(db)
+    messages = build_messages(history, last_user, user_context, exercise_catalog)
 
     async with httpx.AsyncClient(timeout=settings.lm_studio_timeout) as client:
         try:
