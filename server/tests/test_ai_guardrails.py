@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 
 # ── Input guardrails (no LLM call needed) ─────────────────────────────────
 
@@ -123,3 +125,38 @@ async def test_llm_timeout_returns_504(auth_client):
         )
 
     assert resp.status_code == 504
+
+
+def _mock_lm_raw(payload):
+    """A 200 response whose body is `payload` verbatim (may be malformed)."""
+    mock_resp = MagicMock()
+    if isinstance(payload, Exception):
+        mock_resp.json.side_effect = payload
+    else:
+        mock_resp.json.return_value = payload
+    mock_resp.raise_for_status = MagicMock()
+    return mock_resp
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        ValueError("not json"),          # body isn't JSON at all
+        {},                              # missing "choices"
+        {"choices": []},                 # empty choices
+        {"choices": [{"message": {}}]},  # missing "content"
+        {"choices": [{"message": {"content": None}}]},  # content not a string
+    ],
+)
+async def test_malformed_llm_response_returns_502(auth_client, payload):
+    with patch("app.services.ai.client.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__.return_value.post = AsyncMock(
+            return_value=_mock_lm_raw(payload)
+        )
+        resp = await auth_client.post(
+            "/ai/chat",
+            json={"messages": [{"role": "user", "content": "what's a good squat program?"}]},
+        )
+
+    assert resp.status_code == 502
+    assert "malformed" in resp.json()["detail"]

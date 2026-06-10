@@ -169,4 +169,27 @@ class RoutineDetailViewModelTest {
         verify(routineRepository).updateExercises(any(), any())
         assertFalse(viewModel.isEditing.value)
     }
+
+    @Test
+    fun `saveEdits failure surfaces error and stays in edit mode`() = runTest(testDispatcher) {
+        val routine = fakeRoutine()
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
+        whenever(routineRepository.updateExercises(any(), any()))
+            .thenThrow(RuntimeException("network down"))
+
+        viewModel.loadRoutine("routine-1")
+        advanceTimeBy(200)
+        viewModel.startEdit()
+
+        viewModel.saveEdits("routine-1")
+        advanceTimeBy(200)
+
+        assertEquals("network down", viewModel.error.value)
+        // Draft must survive so the user's edits aren't lost.
+        assertTrue(viewModel.isEditing.value)
+        assertEquals(1, viewModel.draftExercises.value.size)
+
+        viewModel.clearError()
+        assertEquals(null, viewModel.error.value)
+    }
 }

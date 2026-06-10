@@ -61,4 +61,27 @@ class ProgramPresetsTest {
         val ids = ProgramPresets.all.map { it.id }
         assertTrue(ids.size == ids.toSet().size, "Duplicate preset id found")
     }
+
+    @Test
+    fun `weighted preset exercises carry a starting weight, bodyweight ones none`() {
+        ProgramPresets.all.forEach { preset ->
+            preset.days.forEach { day ->
+                day.exercises.forEach { ex ->
+                    if (ex.isBodyweight) {
+                        assertTrue(
+                            ex.weight == null,
+                            "Bodyweight '${ex.name}' in '${preset.displayName}' shouldn't set a weight",
+                        )
+                    } else {
+                        // A barbell alone is 45 lb — a weighted movement with no target
+                        // renders as "BW" in workout mode, which is wrong and unhelpful.
+                        assertTrue(
+                            ex.weight != null && ex.weight > 0.0,
+                            "Weighted '${ex.name}' in '${preset.displayName}' needs a starting weight",
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

@@ -84,8 +84,16 @@ async def chat(
                 detail="LM Studio is not reachable",
             )
 
-    data = resp.json()
-    raw_reply = data["choices"][0]["message"]["content"]
+    try:
+        data = resp.json()
+        raw_reply = data["choices"][0]["message"]["content"]
+        if not isinstance(raw_reply, str):
+            raise TypeError("content is not a string")
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="LM Studio returned a malformed response",
+        )
     # Prefer a multi-day program when the model emitted one; otherwise fall back to a
     # single-session plan. Never return both.
     suggested_program = await _extract_program(raw_reply, db)

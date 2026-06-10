@@ -2,6 +2,7 @@ package com.spotter.util
 
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /** Minimal info about the most recent local session, used to anchor projections. */
 data class SessionAnchor(
@@ -105,5 +106,39 @@ object WorkoutProjection {
                 routineName = day.routineName,
             )
         }
+    }
+
+    /**
+     * Returns all dates in [[startDate]..[endDate]] that map to program rest days
+     * (routineId == null). Uses the same anchor → index arithmetic as [project] so the
+     * mapping is consistent with the forward calendar projection.
+     *
+     * Returns an empty set when the program has no rest days (nothing to skip in the
+     * streak walk). Only meaningful when the effective cadence is 1 (i.e. the program
+     * contains rest days — which is the only situation this is called for).
+     */
+    fun restDayDatesInRange(
+        anchor: SessionAnchor?,
+        days: List<ProjectionDay>,
+        startDate: LocalDate,
+        endDate: LocalDate,
+    ): Set<LocalDate> {
+        if (days.none { it.routineId == null }) return emptySet()
+        val n = days.size
+        val anchorDate = anchor?.date ?: startDate
+        val startIndex = anchor?.routineId
+            ?.let { rid -> days.indexOfFirst { it.routineId == rid } }
+            ?: -1
+        val result = mutableSetOf<LocalDate>()
+        var d = startDate
+        while (!d.isAfter(endDate)) {
+            val offset = ChronoUnit.DAYS.between(anchorDate, d)
+            // Safe modulo for negative offsets (past dates).
+            val raw = (startIndex.toLong() + offset) % n.toLong()
+            val idx = ((raw + n.toLong()) % n.toLong()).toInt()
+            if (days[idx].routineId == null) result.add(d)
+            d = d.plusDays(1)
+        }
+        return result
     }
 }

@@ -132,13 +132,24 @@ class HomeViewModel @Inject constructor(
                     .mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }
                     .toSet()
 
-                // Streak: consecutive days with a completed workout, deduped per day.
-                // Anchor at today if trained today, else yesterday (grace day) so the
-                // streak persists through the current day until a workout is finished.
                 val today = LocalDate.now()
-                var day = if (completedDates.contains(today)) today else today.minusDays(1)
+                // Rest days are transparent to the streak: they don't increment the count
+                // but they don't break the chain either. Also treated as "done" for the
+                // grace-day anchor so a rest day today doesn't bump the anchor back.
+                val restDayDates = computeRestDayDates(today)
+
+                // Streak: consecutive workout days, skipping scheduled rest days.
+                // Anchor at today when trained or resting today; else yesterday (grace day).
+                var day = when {
+                    completedDates.contains(today) -> today
+                    restDayDates.contains(today) -> today
+                    else -> today.minusDays(1)
+                }
                 var streak = 0
-                while (completedDates.contains(day)) { streak++; day = day.minusDays(1) }
+                while (completedDates.contains(day) || restDayDates.contains(day)) {
+                    if (!restDayDates.contains(day)) streak++
+                    day = day.minusDays(1)
+                }
                 _streak.value = streak
 
                 // Active minutes: sum of completed-session durations within the current
@@ -151,6 +162,25 @@ class HomeViewModel @Inject constructor(
                     }
                     .sumOf { (it.durationSeconds ?: 0) } / 60
             } catch (_: Exception) {}
+        }
+    }
+
+    private suspend fun computeRestDayDates(today: LocalDate): Set<LocalDate> {
+        return try {
+            val active = programDao.getActive() ?: return emptySet()
+            val days = programDayDao.getByProgram(active.id)
+                .map { ProjectionDay(it.routineId, it.label, it.routineName) }
+            if (days.none { it.routineId == null }) return emptySet()
+            val anchor = sessionDao.getAll()
+                .filter { it.status == "completed" || it.status == "in_progress" }
+                .mapNotNull { s ->
+                    runCatching { LocalDate.parse(s.date) }.getOrNull()
+                        ?.let { SessionAnchor(it, s.routineId, s.status) }
+                }
+                .maxByOrNull { it.date }
+            WorkoutProjection.restDayDatesInRange(anchor, days, today.minusDays(90), today)
+        } catch (_: Exception) {
+            emptySet()
         }
     }
 

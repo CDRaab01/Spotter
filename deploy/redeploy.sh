@@ -40,7 +40,7 @@ echo "Deployed commit: $(git -C "$REPO_DIR" rev-parse --short HEAD)"
 #    Stamp the build so GET /version reports what's actually running.
 export GIT_SHA="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
 export BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-docker compose --project-directory "$REPO_DIR" up -d --build
+docker compose --project-directory "$REPO_DIR" up -d --build --remove-orphans
 
 # 4. Health gate — fail the run if the API doesn't come back healthy.
 echo "Waiting for $HEALTH_URL (timeout ${TIMEOUT_SECONDS}s)..."
@@ -58,6 +58,17 @@ if [[ $healthy -ne 1 ]]; then
   exit 1
 fi
 echo "Health check passed."
+
+# 4b. Report tunnel readiness when the tunnel profile is active (informational —
+#     /health only proves the API is up locally, not that Cloudflare can reach it).
+cf_id="$(docker compose --project-directory "$REPO_DIR" ps -q cloudflared 2>/dev/null || true)"
+if [[ -n "$cf_id" ]]; then
+  cf_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}' "$cf_id" 2>/dev/null || echo unknown)"
+  echo "Tunnel (cloudflared) health: $cf_health"
+  if [[ "$cf_health" == "unhealthy" ]]; then
+    echo "warning: cloudflared reports unhealthy — the public hostname may be returning 530s." >&2
+  fi
+fi
 
 # 5. Reclaim disk from superseded image layers.
 docker image prune -f

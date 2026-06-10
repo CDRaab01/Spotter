@@ -16,6 +16,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.Route
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +30,9 @@ class TokenRefreshAuthenticator @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
     private val refreshClient = OkHttpClient()
 
+    /** Serializes refreshes so N concurrent 401s trigger one refresh, not N. */
+    private val refreshLock = Any()
+
     override fun authenticate(route: Route?, response: Response): Request? {
         // A 401 from the auth endpoints themselves (login/register/refresh/forgot/reset) means
         // bad credentials or an invalid refresh token — NOT an expired access token. Don't try to
@@ -40,37 +44,58 @@ class TokenRefreshAuthenticator @Inject constructor(
         // Avoid infinite loops: if we already retried after a refresh, give up
         if (responseCount(response) >= 2) return signOut()
 
-        val refreshToken = runBlocking { tokenStore.refreshToken.firstOrNull() }
-            ?: return signOut()
+        synchronized(refreshLock) {
+            // Another request holding the lock may have refreshed while we waited. If the
+            // stored token differs from the one this request failed with, retry with it
+            // instead of refreshing again.
+            val failedToken = response.request.header("Authorization")?.removePrefix("Bearer ")
+            val storedToken = runBlocking { tokenStore.accessToken.firstOrNull() }
+            if (storedToken != null && storedToken != failedToken) {
+                return response.request.newBuilder()
+                    .header("Authorization", "Bearer $storedToken")
+                    .build()
+            }
 
-        val serverUrl = runBlocking { appPreferences.serverUrl.firstOrNull() }
-            ?: BuildConfig.SERVER_URL
-        val refreshUrl = serverUrl.trimEnd('/') + "/auth/refresh"
+            val refreshToken = runBlocking { tokenStore.refreshToken.firstOrNull() }
+                ?: return signOut()
 
-        val body = json.encodeToString(RefreshRequest(refreshToken))
-            .toRequestBody("application/json".toMediaType())
-        val refreshRequest = Request.Builder().url(refreshUrl).post(body).build()
+            val serverUrl = runBlocking { appPreferences.serverUrl.firstOrNull() }
+                ?: BuildConfig.SERVER_URL
+            val refreshUrl = serverUrl.trimEnd('/') + "/auth/refresh"
 
-        val refreshResponse = try {
-            refreshClient.newCall(refreshRequest).execute()
-        } catch (_: Exception) {
-            return signOut()
+            val body = json.encodeToString(RefreshRequest(refreshToken))
+                .toRequestBody("application/json".toMediaType())
+            val refreshRequest = Request.Builder().url(refreshUrl).post(body).build()
+
+            val refreshResponse = try {
+                refreshClient.newCall(refreshRequest).execute()
+            } catch (_: IOException) {
+                // Transient network failure mid-refresh: fail this request but keep the
+                // tokens — the refresh token is still valid and the next request retries.
+                return null
+            }
+
+            // Only an explicit auth rejection invalidates the refresh token; a 5xx or
+            // other server hiccup shouldn't wipe the session.
+            if (refreshResponse.code == 401 || refreshResponse.code == 403) return signOut()
+            if (!refreshResponse.isSuccessful) {
+                refreshResponse.close()
+                return null
+            }
+
+            val tokenResponse = try {
+                val bodyStr = refreshResponse.body?.string() ?: return null
+                json.decodeFromString<TokenResponse>(bodyStr)
+            } catch (_: Exception) {
+                return null
+            }
+
+            runBlocking { tokenStore.save(tokenResponse.accessToken, tokenResponse.refreshToken) }
+
+            return response.request.newBuilder()
+                .header("Authorization", "Bearer ${tokenResponse.accessToken}")
+                .build()
         }
-
-        if (!refreshResponse.isSuccessful) return signOut()
-
-        val tokenResponse = try {
-            val bodyStr = refreshResponse.body?.string() ?: return signOut()
-            json.decodeFromString<TokenResponse>(bodyStr)
-        } catch (_: Exception) {
-            return signOut()
-        }
-
-        runBlocking { tokenStore.save(tokenResponse.accessToken, tokenResponse.refreshToken) }
-
-        return response.request.newBuilder()
-            .header("Authorization", "Bearer ${tokenResponse.accessToken}")
-            .build()
     }
 
     private fun responseCount(response: Response): Int {
