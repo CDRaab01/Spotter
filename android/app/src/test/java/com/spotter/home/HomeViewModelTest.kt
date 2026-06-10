@@ -274,6 +274,73 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `streak is not broken by a scheduled rest day between two workout days`() = runTest(testDispatcher) {
+        // Mon=Push(completed), Tue=Rest(scheduled), Wed=Pull(completed), Thu=today(no session).
+        // Old logic: streak=1 (stops at Tue gap). New logic: streak=2 (skips Tue rest day).
+        val mon = LocalDate.now().minusDays(3).toString()
+        val wed = LocalDate.now().minusDays(1).toString()
+        whenever(sessionRepository.listSessions()).thenReturn(
+            listOf(
+                SessionSummary(id = "s1", date = mon, status = "completed", durationSeconds = 3600, totalSets = 5, completedSets = 5),
+                SessionSummary(id = "s2", date = wed, status = "completed", durationSeconds = 3600, totalSets = 5, completedSets = 5),
+            )
+        )
+        val program = WorkoutProgramEntity("prog-1", "Push-Rest-Pull", isActive = true)
+        whenever(programDao.getActive()).thenReturn(program)
+        // Cycle: Push(0), Rest(1), Pull(2) — anchor on Mon=Push → Tue=Rest, Wed=Pull.
+        whenever(programDayDao.getByProgram("prog-1")).thenReturn(
+            listOf(
+                ProgramDayEntity("d1", "prog-1", "r-push", "Push", 0, "Push"),
+                ProgramDayEntity("d2", "prog-1", null, "Rest", 1, null),
+                ProgramDayEntity("d3", "prog-1", "r-pull", "Pull", 2, "Pull"),
+            )
+        )
+        // Anchor used by computeRestDayDates — most recent completed session is Wed/Pull.
+        whenever(sessionDao.getAll()).thenReturn(
+            listOf(
+                WorkoutSessionEntity("s1", "u1", "r-push", mon, "completed", null, null),
+                WorkoutSessionEntity("s2", "u1", "r-pull", wed, "completed", null, null),
+            )
+        )
+        whenever(routineExerciseDao.getByRoutineId(any())).thenReturn(emptyList())
+
+        viewModel = createViewModel()
+        advanceTimeBy(500)
+
+        assertEquals(2, viewModel.streak.value)
+    }
+
+    @Test
+    fun `rest days today and yesterday do not reset grace day anchor past last workout`() = runTest(testDispatcher) {
+        // Mon=Push(completed), Tue=Rest, Wed=Rest(today, no session).
+        // The streak chain Mon→Tue(rest)→Wed(rest, today) is intact → streak=1.
+        // Old logic: grace day = Tue, Tue has no session → streak=0.
+        val mon = LocalDate.now().minusDays(2).toString()
+        whenever(sessionRepository.listSessions()).thenReturn(
+            listOf(SessionSummary(id = "s1", date = mon, status = "completed", durationSeconds = 3600, totalSets = 5, completedSets = 5))
+        )
+        val program = WorkoutProgramEntity("prog-1", "Test", isActive = true)
+        whenever(programDao.getActive()).thenReturn(program)
+        // Cycle: Push(0), Rest(1), Rest(2) — Mon=Push, Tue=Rest, Wed=Rest(today).
+        whenever(programDayDao.getByProgram("prog-1")).thenReturn(
+            listOf(
+                ProgramDayEntity("d1", "prog-1", "r-push", "Push", 0, "Push"),
+                ProgramDayEntity("d2", "prog-1", null, "Rest", 1, null),
+                ProgramDayEntity("d3", "prog-1", null, "Rest", 2, null),
+            )
+        )
+        whenever(sessionDao.getAll()).thenReturn(
+            listOf(WorkoutSessionEntity("s1", "u1", "r-push", mon, "completed", null, null))
+        )
+        whenever(routineExerciseDao.getByRoutineId(any())).thenReturn(emptyList())
+
+        viewModel = createViewModel()
+        advanceTimeBy(500)
+
+        assertEquals(1, viewModel.streak.value)
+    }
+
+    @Test
     fun `greeting is non-blank`() {
         assertTrue(viewModel.greeting.value.isNotBlank())
     }

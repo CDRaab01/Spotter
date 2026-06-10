@@ -216,6 +216,9 @@ fun CalendarScreen(
                                 },
                             )
 
+                            projection != null && projection.routineId == null ->
+                                RestDayCard(projection)
+
                             projection != null -> UpcomingDetailCard(
                                 workout = projection,
                                 onStart = {
@@ -269,12 +272,14 @@ private fun MonthGrid(
                 week.forEach { day ->
                     if (day != null) {
                         val date = month.atDay(day)
+                        val pw = projectedMap[date]
                         DayCell(
                             day = day,
                             isToday = date == today,
                             isSelected = date == selectedDate,
                             entry = entryMap[date],
-                            isProjected = projectedMap.containsKey(date),
+                            isProjected = pw != null,
+                            isRestDay = pw?.routineId == null,
                             onClick = { onDayClick(date) },
                             modifier = Modifier.weight(1f),
                         )
@@ -294,6 +299,7 @@ private fun DayCell(
     isSelected: Boolean,
     entry: CalendarEntry?,
     isProjected: Boolean,
+    isRestDay: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -313,7 +319,11 @@ private fun DayCell(
         entry != null -> MaterialTheme.colorScheme.outline
         else -> Color.Transparent
     }
-    val projectedRingColor = MaterialTheme.colorScheme.tertiary
+    // Rest days get a muted ring; workout projections get the accent tertiary ring.
+    val projectedRingColor = if (isRestDay)
+        MaterialTheme.colorScheme.outlineVariant
+    else
+        MaterialTheme.colorScheme.tertiary
     val showProjectedRing = entry == null && isProjected
 
     Column(
@@ -396,6 +406,31 @@ private fun SessionDetailCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RestDayCard(workout: UpcomingWorkout) {
+    SpotterCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = workout.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = workout.dayLabel,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Recovery day — no workout scheduled.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

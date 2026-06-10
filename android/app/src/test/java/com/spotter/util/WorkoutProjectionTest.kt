@@ -125,4 +125,55 @@ class WorkoutProjectionTest {
         val noRest = listOf(day("A"), day("B"), day("C"))
         assertEquals(3, WorkoutProjection.effectiveCadence(3, noRest))
     }
+
+    @Test
+    fun `restDayDatesInRange returns empty when program has no rest days`() {
+        val days = listOf(day("Push"), day("Pull"), day("Legs"))
+        val result = WorkoutProjection.restDayDatesInRange(
+            anchor = null,
+            days = days,
+            startDate = today,
+            endDate = today.plusDays(5),
+        )
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `restDayDatesInRange identifies rest days forward and backward from anchor`() {
+        // 3-day cycle: Push(0), Rest(1), Pull(2)
+        val days = listOf(day("Push"), restDay(), day("Pull"))
+        // Anchor = today at Push (index 0)
+        // today-1 → idx (0-1+3)%3=2=Pull (not rest)
+        // today-2 → idx (0-2+3)%3=1=Rest ✓
+        // today   → idx 0=Push (not rest)
+        // today+1 → idx 1=Rest ✓
+        // today+2 → idx 2=Pull (not rest)
+        // today+3 → idx 0=Push (not rest)
+        // today+4 → idx 1=Rest ✓
+        val anchor = SessionAnchor(today, "Push", "completed")
+        val result = WorkoutProjection.restDayDatesInRange(
+            anchor = anchor,
+            days = days,
+            startDate = today.minusDays(2),
+            endDate = today.plusDays(4),
+        )
+        assertEquals(setOf(today.minusDays(2), today.plusDays(1), today.plusDays(4)), result)
+    }
+
+    @Test
+    fun `restDayDatesInRange is consistent with project for future rest day slots`() {
+        // Verify restDayDatesInRange agrees with project() on which future dates are rest days.
+        val days = listOf(day("A"), restDay(), day("B"), restDay())
+        val anchor = SessionAnchor(today, "A", "completed")
+        val slots = WorkoutProjection.project(today, 1, anchor, days, count = 8)
+        val expectedRestDates = slots.filter { it.routineId == null }.map { it.date }.toSet()
+
+        val result = WorkoutProjection.restDayDatesInRange(
+            anchor = anchor,
+            days = days,
+            startDate = today.plusDays(1),
+            endDate = today.plusDays(8),
+        )
+        assertEquals(expectedRestDates, result)
+    }
 }
