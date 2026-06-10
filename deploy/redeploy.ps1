@@ -72,7 +72,7 @@ Write-Host "Deployed commit: $deployedSha"
 #    Stamp the build so GET /version reports what's actually running.
 $env:GIT_SHA = $deployedSha
 $env:BUILT_AT = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-Invoke-Checked docker @("compose", "--project-directory", $RepoDir, "up", "-d", "--build")
+Invoke-Checked docker @("compose", "--project-directory", $RepoDir, "up", "-d", "--build", "--remove-orphans")
 
 # 4. Health gate — fail the run if the API doesn't come back healthy.
 Write-Host "Waiting for $HealthUrl (timeout ${TimeoutSeconds}s)..."
@@ -91,6 +91,17 @@ if (-not $healthy) {
   throw "Health check failed: $HealthUrl did not report ok within ${TimeoutSeconds}s."
 }
 Write-Host "Health check passed."
+
+# 4b. Report tunnel readiness when the tunnel profile is active (informational --
+#     /health only proves the API is up locally, not that Cloudflare can reach it).
+$cfId = (& docker compose --project-directory $RepoDir ps -q cloudflared 2>$null)
+if ($cfId) {
+  $cfHealth = (& docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}' $cfId 2>$null)
+  Write-Host "Tunnel (cloudflared) health: $cfHealth"
+  if ($cfHealth -eq "unhealthy") {
+    Write-Warning "cloudflared reports unhealthy -- the public hostname may be returning 530s."
+  }
+}
 
 # 5. Reclaim disk from superseded image layers.
 Invoke-Checked docker @("image", "prune", "-f")

@@ -117,6 +117,20 @@ COMPOSE_PROFILES=tunnel
 Compose reads `COMPOSE_PROFILES` automatically, so `up` always includes `cloudflared`.
 It's gitignored, so `git reset --hard` never touches it.
 
+`cloudflared` has a healthcheck (`cloudflared tunnel ready` against its local metrics
+endpoint), so `docker compose ps` shows whether the tunnel actually has live edge
+connections — a missing/invalid `TUNNEL_TOKEN` shows up as `unhealthy` instead of a
+silent green deploy. The redeploy scripts print this status after the health gate.
+
+### Postgres credentials
+
+The compose file defaults to `spotter`/`spotter` for the local-only Postgres (the port
+is bound to `127.0.0.1`). To rotate, set `POSTGRES_USER` / `POSTGRES_PASSWORD` /
+`POSTGRES_DB` in the **root `.env`** — the `db` service and the server's
+`DATABASE_URL` read the same variables, so they can't drift apart. (Changing the user
+or database name after first boot requires recreating the `pgdata` volume; changing
+just the password also requires an `ALTER USER` inside the running container.)
+
 ### LM Studio from inside the Docker container
 
 Inside the `server` container, `localhost` is the container — not your host — so the
