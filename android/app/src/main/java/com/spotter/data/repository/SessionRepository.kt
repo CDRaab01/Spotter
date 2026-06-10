@@ -180,11 +180,18 @@ class SessionRepository @Inject constructor(
 
     suspend fun logSet(sessionId: String, req: SetLogCreate): SetLogOut {
         val localId = UUID.randomUUID().toString()
+        // Copy display enrichment (name, targets, superset group) from a sibling set of
+        // the same exercise so an offline-added set renders fully without a server round
+        // trip. The server re-derives these on read once the set syncs.
+        val sibling = setLogDao.getBySession(sessionId)
+            .firstOrNull { it.exerciseId == req.exerciseId }
         val localLog = SetLogEntity(
             id = localId, sessionId = sessionId,
             exerciseId = req.exerciseId, setNumber = req.setNumber,
             reps = req.reps, weight = req.weight, completed = req.completed, completedAt = null,
-            exerciseName = null, targetSets = null, targetReps = null, targetWeight = null,
+            exerciseName = sibling?.exerciseName, targetSets = sibling?.targetSets,
+            targetReps = sibling?.targetReps, targetWeight = sibling?.targetWeight,
+            supersetGroup = sibling?.supersetGroup,
             serverId = null, syncPending = true,
         )
         setLogDao.upsert(localLog)

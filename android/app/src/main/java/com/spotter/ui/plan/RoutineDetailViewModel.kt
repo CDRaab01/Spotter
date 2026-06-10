@@ -70,6 +70,11 @@ class RoutineDetailViewModel @Inject constructor(
     private val _navigateToWorkout = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    fun clearError() { _error.value = null }
+
     fun loadRoutine(routineId: String) {
         viewModelScope.launch {
             _routine.value = UiState.Loading
@@ -149,7 +154,8 @@ class RoutineDetailViewModel @Inject constructor(
                 loadRoutine(routineId)
                 cancelEdit()
             } catch (e: Exception) {
-                // Errors silently ignored; could expose error state if needed
+                // Stay in edit mode so the draft isn't lost; surface the failure.
+                _error.value = e.message ?: "Could not save changes"
             }
         }
     }

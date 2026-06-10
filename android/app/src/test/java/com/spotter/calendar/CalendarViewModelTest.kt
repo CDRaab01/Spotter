@@ -26,6 +26,7 @@ import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
@@ -91,6 +92,50 @@ class CalendarViewModelTest {
             assertTrue(viewModel.projected.value.isEmpty())
             assertTrue(!viewModel.hasActiveProgram.value)
         }
+
+    @Test
+    fun `initial load syncs programs, routines and pending sessions`() = runTest(testDispatcher) {
+        whenever(calendarRepository.getCalendar(any(), any())).thenReturn(emptyList())
+        whenever(programDao.getActive()).thenReturn(null)
+
+        val viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        // init runs loadMonth(sync = true) so Calendar self-populates on first open.
+        verify(programRepository).sync()
+        verify(routineRepository).sync()
+        verify(sessionRepository).syncPending()
+        assertIs<UiState.Success<*>>(viewModel.entries.value)
+    }
+
+    @Test
+    fun `month navigation does not re-sync`() = runTest(testDispatcher) {
+        whenever(calendarRepository.getCalendar(any(), any())).thenReturn(emptyList())
+        whenever(programDao.getActive()).thenReturn(null)
+
+        val viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        viewModel.nextMonth()
+        advanceTimeBy(200)
+
+        // Only the init sync — paging months stays local.
+        verify(programRepository, times(1)).sync()
+        assertIs<UiState.Success<*>>(viewModel.entries.value)
+    }
+
+    @Test
+    fun `sync failure still loads the calendar`() = runTest(testDispatcher) {
+        whenever(programRepository.sync()).thenThrow(RuntimeException("offline"))
+        whenever(routineRepository.sync()).thenThrow(RuntimeException("offline"))
+        whenever(calendarRepository.getCalendar(any(), any())).thenReturn(emptyList())
+        whenever(programDao.getActive()).thenReturn(null)
+
+        val viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        assertIs<UiState.Success<*>>(viewModel.entries.value)
+    }
 
     @Test
     fun `startProjectedSession creates a session and emits navigation`() = runTest(testDispatcher) {

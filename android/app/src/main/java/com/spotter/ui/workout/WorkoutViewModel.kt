@@ -110,7 +110,16 @@ class WorkoutViewModel @Inject constructor(
 
     private var restTimerJob: Job? = null
 
+    // Which session the elapsed timer belongs to. loadSession is re-invoked on
+    // rotation/resume for the same session (timer must keep running), but a reused
+    // VM loading a *different* session must start from 0.
+    private var timerSessionId: String? = null
+
     fun loadSession(sessionId: String) {
+        if (timerSessionId != sessionId) {
+            elapsed = 0
+            timerSessionId = sessionId
+        }
         viewModelScope.launch {
             _session.value = UiState.Loading
             _session.value = try {
