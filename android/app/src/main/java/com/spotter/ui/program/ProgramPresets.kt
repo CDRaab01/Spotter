@@ -173,6 +173,140 @@ object ProgramPresets {
                 ),
             ),
         ),
+        // ── Special-case programs ─────────────────────────────────────────────
+        // Curated around a specific constraint. Not medical advice: each description
+        // tells the user to get clearance from their doctor/physio first, and the
+        // exercise selection avoids the commonly contraindicated patterns for that
+        // case (they can still swap movements via the per-day Edit screen).
+        PresetProgram(
+            id = "knee_friendly",
+            displayName = "Knee-Friendly Strength",
+            description = "Train around a cranky knee: upper-body strength plus " +
+                "knee-sparing glute and hamstring work — no squats, lunges, or leg " +
+                "extensions. Stay in pain-free range, and get cleared by your doctor " +
+                "or physio first.",
+            days = listOf(
+                PresetDay(
+                    "Upper Push",
+                    listOf(
+                        PresetExercise("Dumbbell Bench Press", 3, 10, weight = 30.0),
+                        PresetExercise("Dumbbell Shoulder Press", 3, 10, weight = 25.0),
+                        PresetExercise("Dumbbell Incline Press", 3, 10, weight = 25.0),
+                        PresetExercise("Dumbbell Lateral Raise", 3, 15, weight = 10.0),
+                        PresetExercise("Tricep Pushdown", 3, 12, weight = 40.0),
+                    ),
+                ),
+                PresetDay(
+                    "Upper Pull",
+                    listOf(
+                        PresetExercise("Lat Pulldown", 3, 10, weight = 90.0),
+                        PresetExercise("Seated Cable Row", 3, 10, weight = 70.0),
+                        PresetExercise("Chest-Supported Row", 3, 10, weight = 25.0),
+                        PresetExercise("Face Pull", 3, 15, weight = 30.0),
+                        PresetExercise("Hammer Curl", 3, 12, weight = 20.0),
+                    ),
+                ),
+                PresetDay(
+                    "Hips & Hamstrings",
+                    listOf(
+                        PresetExercise("Glute Bridge", 3, 12, isBodyweight = true),
+                        PresetExercise("Hip Thrust", 3, 10, weight = 95.0),
+                        PresetExercise("Seated Leg Curl", 3, 12, weight = 60.0),
+                        PresetExercise("Dumbbell Romanian Deadlift", 3, 10, weight = 30.0),
+                        PresetExercise("Standing Calf Raise", 3, 15, isBodyweight = true),
+                    ),
+                ),
+            ),
+        ),
+        PresetProgram(
+            id = "prenatal_late_term",
+            displayName = "Prenatal — Third Trimester",
+            description = "Light full-body strength for late pregnancy: seated or " +
+                "standing work only, nothing lying flat on your back, no breath-holding " +
+                "or core flexion. Keep loads light and stop anything that feels wrong — " +
+                "with your OB's okay.",
+            days = listOf(
+                PresetDay(
+                    "Day A",
+                    listOf(
+                        PresetExercise("Bodyweight Squat", 3, 12, isBodyweight = true),
+                        PresetExercise("Seated Cable Row", 3, 12, weight = 40.0),
+                        PresetExercise("Dumbbell Shoulder Press", 3, 10, weight = 10.0),
+                        PresetExercise("Dumbbell Lateral Raise", 2, 15, weight = 5.0),
+                        PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
+                    ),
+                ),
+                PresetDay(
+                    "Day B",
+                    listOf(
+                        PresetExercise("Goblet Squat", 3, 10, weight = 15.0),
+                        PresetExercise("Lat Pulldown", 3, 12, weight = 40.0),
+                        PresetExercise("Dumbbell Incline Press", 3, 10, weight = 10.0),
+                        PresetExercise("Face Pull", 3, 15, weight = 20.0),
+                        PresetExercise("Cable Glute Kickback", 2, 12, weight = 10.0),
+                    ),
+                ),
+            ),
+        ),
+        PresetProgram(
+            id = "postpartum_rebuild",
+            displayName = "Postpartum Rebuild",
+            description = "A gentle return to training after giving birth — core- and " +
+                "pelvic-floor-friendly, no crunches and no heavy lifting. Start only " +
+                "after your doctor clears exercise (often around 6 weeks), and progress " +
+                "by how you feel.",
+            days = listOf(
+                PresetDay(
+                    "Foundations",
+                    listOf(
+                        PresetExercise("Glute Bridge", 3, 12, isBodyweight = true),
+                        PresetExercise("Bodyweight Squat", 3, 10, isBodyweight = true),
+                        PresetExercise("Step-Up", 2, 10, isBodyweight = true),
+                        PresetExercise("Plank", 3, 1, isBodyweight = true),
+                        PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
+                    ),
+                ),
+                PresetDay(
+                    "Light Strength",
+                    listOf(
+                        PresetExercise("Goblet Squat", 3, 10, weight = 15.0),
+                        PresetExercise("Seated Cable Row", 3, 12, weight = 30.0),
+                        PresetExercise("Dumbbell Shoulder Press", 3, 10, weight = 10.0),
+                        PresetExercise("Dumbbell Row", 2, 10, weight = 15.0),
+                        PresetExercise("Cable Glute Kickback", 2, 12, weight = 10.0),
+                    ),
+                ),
+            ),
+        ),
+        PresetProgram(
+            id = "back_friendly",
+            displayName = "Lower-Back Friendly",
+            description = "Strength work that keeps the spine happy: supported rows, " +
+                "machines, and glute work instead of heavy hinging off the floor. " +
+                "Pain-free range only — clear it with your doctor or physio first.",
+            days = listOf(
+                PresetDay(
+                    "Lower (spine-sparing)",
+                    listOf(
+                        PresetExercise("Leg Press", 3, 12, weight = 135.0),
+                        PresetExercise("Seated Leg Curl", 3, 12, weight = 60.0),
+                        PresetExercise("Leg Extension", 3, 12, weight = 50.0),
+                        PresetExercise("Glute Bridge", 3, 12, isBodyweight = true),
+                        PresetExercise("Standing Calf Raise", 3, 15, isBodyweight = true),
+                    ),
+                ),
+                PresetDay(
+                    "Upper (supported)",
+                    listOf(
+                        PresetExercise("Chest-Supported Row", 3, 10, weight = 25.0),
+                        PresetExercise("Dumbbell Bench Press", 3, 10, weight = 30.0),
+                        PresetExercise("Lat Pulldown", 3, 10, weight = 90.0),
+                        PresetExercise("Dumbbell Shoulder Press", 3, 10, weight = 25.0),
+                        PresetExercise("Face Pull", 3, 15, weight = 30.0),
+                    ),
+                ),
+            ),
+        ),
         PresetProgram(
             id = "bodyweight_basics",
             displayName = "Bodyweight Basics",

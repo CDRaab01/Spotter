@@ -38,7 +38,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, and an inline edit mode. Must work offline.
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
-5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it.
+5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, plus special-case presets: Knee-Friendly, Prenatal third-trimester, Postpartum Rebuild, Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
 6. **Exercise library** — searchable list of seeded exercises (`/exercises`), browsable from Home.
 7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
 
@@ -333,3 +333,17 @@ and render as bodyweight (e.g. Bench Press shown "5×5 BW" — a bar alone is 45
   weighted exercises (null only when `is_bodyweight`), estimated from training history when
   known, and never below the 45 lb bar for barbell movements. Prompt-module-only change; the
   extraction/clamp layer is untouched.
+
+### Follow-up feature (same day): special-case preset programs
+Four new client-side presets in `ui/program/ProgramPresets.kt` for training around a
+constraint, using only seeded exercises (guardrail test passes unchanged):
+- **Knee-Friendly Strength** (3 days) — upper push/pull + a knee-sparing hips/hamstrings day
+  (bridges, hip thrust, seated leg curl, RDL); no squats, lunges, or leg extensions.
+- **Prenatal — Third Trimester** (2 days) — seated/standing only, nothing supine, light loads,
+  no core flexion.
+- **Postpartum Rebuild** (2 days) — bodyweight foundations then light strength; no crunches,
+  no heavy lifting.
+- **Lower-Back Friendly** (2 days) — machines, supported rows, and glute work instead of
+  heavy hinging off the floor.
+Each description embeds a get-cleared-by-your-doctor/physio line; these are exercise-selection
+presets, not medical advice, in keeping with the app's non-medical scope.
