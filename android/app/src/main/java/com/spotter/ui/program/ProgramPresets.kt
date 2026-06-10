@@ -6,14 +6,18 @@ package com.spotter.ui.program
  * on apply they are resolved to exercise IDs and persisted via the existing
  * `POST /ai/programs/accept` flow.
  *
- * Presets prescribe structure (movements / sets / reps), not loads — the user sets
- * weight on the first session and the suggested-weight system takes over after.
+ * Weighted movements carry a conservative starting load (lb) so the first session
+ * has a real target instead of rendering as bodyweight — a barbell alone is 45 lb.
+ * They're learn-the-movement weights; the user adjusts in-session and the
+ * suggested-weight progression takes over after.
  */
 data class PresetExercise(
     val name: String,
     val sets: Int,
     val reps: Int,
     val isBodyweight: Boolean = false,
+    /** Starting weight in lb; null only for bodyweight movements. */
+    val weight: Double? = null,
 )
 
 data class PresetDay(
@@ -40,17 +44,17 @@ object ProgramPresets {
                 PresetDay(
                     "Day A",
                     listOf(
-                        PresetExercise("Barbell Back Squat", 5, 5),
-                        PresetExercise("Bench Press", 5, 5),
-                        PresetExercise("Barbell Row", 5, 5),
+                        PresetExercise("Barbell Back Squat", 5, 5, weight = 95.0),
+                        PresetExercise("Bench Press", 5, 5, weight = 95.0),
+                        PresetExercise("Barbell Row", 5, 5, weight = 95.0),
                     ),
                 ),
                 PresetDay(
                     "Day B",
                     listOf(
-                        PresetExercise("Barbell Back Squat", 5, 5),
-                        PresetExercise("Overhead Press", 5, 5),
-                        PresetExercise("Conventional Deadlift", 1, 5),
+                        PresetExercise("Barbell Back Squat", 5, 5, weight = 95.0),
+                        PresetExercise("Overhead Press", 5, 5, weight = 65.0),
+                        PresetExercise("Conventional Deadlift", 1, 5, weight = 135.0),
                     ),
                 ),
             ),
@@ -64,11 +68,11 @@ object ProgramPresets {
                 PresetDay(
                     "Push",
                     listOf(
-                        PresetExercise("Bench Press", 4, 8),
-                        PresetExercise("Overhead Press", 3, 8),
-                        PresetExercise("Incline Bench Press", 3, 10),
-                        PresetExercise("Dumbbell Lateral Raise", 3, 15),
-                        PresetExercise("Dumbbell Overhead Tricep Extension", 3, 12),
+                        PresetExercise("Bench Press", 4, 8, weight = 95.0),
+                        PresetExercise("Overhead Press", 3, 8, weight = 65.0),
+                        PresetExercise("Incline Bench Press", 3, 10, weight = 75.0),
+                        PresetExercise("Dumbbell Lateral Raise", 3, 15, weight = 10.0),
+                        PresetExercise("Dumbbell Overhead Tricep Extension", 3, 12, weight = 25.0),
                         PresetExercise("Dip", 3, 10, isBodyweight = true),
                     ),
                 ),
@@ -76,20 +80,20 @@ object ProgramPresets {
                     "Pull",
                     listOf(
                         PresetExercise("Pull-Up", 4, 8, isBodyweight = true),
-                        PresetExercise("Barbell Row", 4, 8),
-                        PresetExercise("Lat Pulldown", 3, 12),
-                        PresetExercise("Barbell Curl", 3, 10),
-                        PresetExercise("Dumbbell Curl", 3, 12),
+                        PresetExercise("Barbell Row", 4, 8, weight = 95.0),
+                        PresetExercise("Lat Pulldown", 3, 12, weight = 90.0),
+                        PresetExercise("Barbell Curl", 3, 10, weight = 45.0),
+                        PresetExercise("Dumbbell Curl", 3, 12, weight = 20.0),
                     ),
                 ),
                 PresetDay(
                     "Legs",
                     listOf(
-                        PresetExercise("Barbell Back Squat", 4, 8),
-                        PresetExercise("Romanian Deadlift", 3, 10),
-                        PresetExercise("Leg Press", 3, 12),
-                        PresetExercise("Leg Curl", 3, 12),
-                        PresetExercise("Leg Extension", 3, 15),
+                        PresetExercise("Barbell Back Squat", 4, 8, weight = 95.0),
+                        PresetExercise("Romanian Deadlift", 3, 10, weight = 95.0),
+                        PresetExercise("Leg Press", 3, 12, weight = 180.0),
+                        PresetExercise("Leg Curl", 3, 12, weight = 70.0),
+                        PresetExercise("Leg Extension", 3, 15, weight = 70.0),
                     ),
                 ),
             ),
@@ -103,22 +107,22 @@ object ProgramPresets {
                 PresetDay(
                     "Upper",
                     listOf(
-                        PresetExercise("Bench Press", 4, 6),
-                        PresetExercise("Barbell Row", 4, 8),
-                        PresetExercise("Overhead Press", 3, 8),
+                        PresetExercise("Bench Press", 4, 6, weight = 95.0),
+                        PresetExercise("Barbell Row", 4, 8, weight = 95.0),
+                        PresetExercise("Overhead Press", 3, 8, weight = 65.0),
                         PresetExercise("Pull-Up", 3, 8, isBodyweight = true),
-                        PresetExercise("Barbell Curl", 3, 10),
-                        PresetExercise("Close-Grip Bench Press", 3, 10),
+                        PresetExercise("Barbell Curl", 3, 10, weight = 45.0),
+                        PresetExercise("Close-Grip Bench Press", 3, 10, weight = 75.0),
                     ),
                 ),
                 PresetDay(
                     "Lower",
                     listOf(
-                        PresetExercise("Barbell Back Squat", 4, 6),
-                        PresetExercise("Romanian Deadlift", 3, 8),
-                        PresetExercise("Leg Press", 3, 12),
-                        PresetExercise("Leg Curl", 3, 12),
-                        PresetExercise("Leg Extension", 3, 15),
+                        PresetExercise("Barbell Back Squat", 4, 6, weight = 95.0),
+                        PresetExercise("Romanian Deadlift", 3, 8, weight = 95.0),
+                        PresetExercise("Leg Press", 3, 12, weight = 180.0),
+                        PresetExercise("Leg Curl", 3, 12, weight = 70.0),
+                        PresetExercise("Leg Extension", 3, 15, weight = 70.0),
                     ),
                 ),
             ),
@@ -132,11 +136,11 @@ object ProgramPresets {
                 PresetDay(
                     "Full Body",
                     listOf(
-                        PresetExercise("Barbell Back Squat", 3, 8),
-                        PresetExercise("Bench Press", 3, 8),
-                        PresetExercise("Barbell Row", 3, 8),
-                        PresetExercise("Overhead Press", 3, 10),
-                        PresetExercise("Romanian Deadlift", 3, 10),
+                        PresetExercise("Barbell Back Squat", 3, 8, weight = 95.0),
+                        PresetExercise("Bench Press", 3, 8, weight = 95.0),
+                        PresetExercise("Barbell Row", 3, 8, weight = 95.0),
+                        PresetExercise("Overhead Press", 3, 10, weight = 65.0),
+                        PresetExercise("Romanian Deadlift", 3, 10, weight = 95.0),
                     ),
                 ),
             ),
@@ -150,21 +154,21 @@ object ProgramPresets {
                 PresetDay(
                     "Day A",
                     listOf(
-                        PresetExercise("Dumbbell Bench Press", 4, 10),
-                        PresetExercise("Dumbbell Row", 4, 10),
-                        PresetExercise("Goblet Squat", 4, 12),
-                        PresetExercise("Dumbbell Shoulder Press", 3, 12),
-                        PresetExercise("Dumbbell Curl", 3, 12),
+                        PresetExercise("Dumbbell Bench Press", 4, 10, weight = 30.0),
+                        PresetExercise("Dumbbell Row", 4, 10, weight = 35.0),
+                        PresetExercise("Goblet Squat", 4, 12, weight = 35.0),
+                        PresetExercise("Dumbbell Shoulder Press", 3, 12, weight = 25.0),
+                        PresetExercise("Dumbbell Curl", 3, 12, weight = 20.0),
                     ),
                 ),
                 PresetDay(
                     "Day B",
                     listOf(
-                        PresetExercise("Dumbbell Romanian Deadlift", 4, 10),
-                        PresetExercise("Dumbbell Reverse Lunge", 3, 12),
-                        PresetExercise("Dumbbell Shoulder Press", 3, 10),
-                        PresetExercise("Dumbbell Lateral Raise", 3, 15),
-                        PresetExercise("Dumbbell Overhead Tricep Extension", 3, 12),
+                        PresetExercise("Dumbbell Romanian Deadlift", 4, 10, weight = 30.0),
+                        PresetExercise("Dumbbell Reverse Lunge", 3, 12, weight = 20.0),
+                        PresetExercise("Dumbbell Shoulder Press", 3, 10, weight = 25.0),
+                        PresetExercise("Dumbbell Lateral Raise", 3, 15, weight = 10.0),
+                        PresetExercise("Dumbbell Overhead Tricep Extension", 3, 12, weight = 25.0),
                     ),
                 ),
             ),

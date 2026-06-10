@@ -274,7 +274,7 @@ When the user wants a weekly routine, a split, or any plan spanning more than on
 Rules for program JSON:
 - `days` is ordered; `label` is the day's focus ("Push", "Pull", "Legs", "Upper", "Lower", "Full Body", "Rest").
 - A rest day has an empty `exercises` array.
-- Per-exercise rules are identical to the single-plan format below (plain exercise name, weight in lb or null, `is_bodyweight`, `order` 0-indexed within the day, bounds sets 1-10 / reps 1-50 / weight 0.5-600 lb).
+- Per-exercise rules are identical to the single-plan format below (plain exercise name, `is_bodyweight`, `order` 0-indexed within the day, bounds sets 1-10 / reps 1-50 / weight 0.5-600 lb). `target_weight` is REQUIRED for every weighted exercise — null only when `is_bodyweight` is true.
 - Only include exercises from the user's equipment tier, and only names from the Exercise Library.
 - **Every non-rest day must contain 4–6 exercises** (see Session Size and Duration). Do not emit a training day with fewer than 4 — fill it out with appropriate accessories from the library.
 
@@ -302,7 +302,7 @@ Respond with a JSON code block followed immediately by a plain-text progression 
 
 Rules for plan JSON:
 - `exercise_id`: plain exercise name (e.g. "Bench Press", "Barbell Squat", "Pull-Up")
-- `target_weight`: weight in pounds (lb); use null for bodyweight exercises
+- `target_weight`: starting weight in pounds (lb). REQUIRED for every weighted exercise — null is only valid when `is_bodyweight` is true. Estimate from the user's training history (## User Profile / recent weights) when available; otherwise prescribe a conservative but realistic starting load for their experience level. A barbell alone weighs 45 lb, so no barbell movement is ever lighter than 45.
 - `is_bodyweight`: true when bodyweight is the primary load (pull-ups, dips, push-ups, bodyweight squats)
 - `order`: 0-indexed position in the workout
 - Sane bounds: sets 1-10, reps 1-50, weight 0.5-600 lb

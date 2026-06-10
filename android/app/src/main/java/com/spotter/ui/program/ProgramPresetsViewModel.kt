@@ -56,7 +56,7 @@ class ProgramPresetsViewModel @Inject constructor(
                                 exerciseId = match.id,
                                 targetSets = ex.sets,
                                 targetReps = ex.reps,
-                                targetWeight = null,
+                                targetWeight = ex.weight,
                                 isBodyweight = ex.isBodyweight,
                                 order = 0,
                             )

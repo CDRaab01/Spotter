@@ -220,8 +220,10 @@ change is text-only, covered by the existing AI guardrail tests):
   Bodyweight), defined by exercise **name**. Applying one fetches `GET /exercises`, resolves
   names → ids (dropping any unresolved), and reuses `POST /ai/programs/accept` to create the
   plans + program and activate it (replacing any prior active program) — **no server change**.
-  Presets prescribe structure (movements/sets/reps), not weights. A catalog guardrail test
-  asserts every preset name matches a seeded exercise.
+  Presets prescribe structure (movements/sets/reps) plus a conservative starting weight for
+  every weighted movement (since 2026-06-10 — weighted lifts previously had no target and
+  rendered as "BW"). A catalog guardrail test asserts every preset name matches a seeded
+  exercise and that weighted/bodyweight exercises carry/omit a starting weight respectively.
 - **Personalized greeting:** the Home greeting now appends the signed-in user's first name
   (e.g. "Good afternoon, Sonic"). `HomeViewModel` fetches the name via `getMe`, takes the first
   whitespace-delimited token, and falls back to the plain time-of-day greeting when offline.
@@ -320,3 +322,14 @@ Fixed and verified: server 144 pytest green + `ruff check app` clean; Android
   broader offline-writes design.
 - **[LOW][Infra] Redeploy failure log capture** (dump `docker compose logs` on health-gate
   failure) and a configurable health timeout — nice-to-haves for operability.
+
+### Follow-up fix (same day): weighted lifts no longer start as "BW"
+Weighted exercises created via presets or AI programs could land with `target_weight = null`
+and render as bodyweight (e.g. Bench Press shown "5×5 BW" — a bar alone is 45 lb).
+- **Presets:** `PresetExercise` gained a `weight` field; all six presets now prescribe
+  conservative plate-friendly starting loads (e.g. squat/bench/row 95, OHP 65, deadlift 135,
+  dumbbells per-hand). New guardrail test asserts weighted ⇒ weight set, bodyweight ⇒ null.
+- **[AI prompt change]** `prompts.py` plan/program rules now make `target_weight` REQUIRED for
+  weighted exercises (null only when `is_bodyweight`), estimated from training history when
+  known, and never below the 45 lb bar for barbell movements. Prompt-module-only change; the
+  extraction/clamp layer is untouched.
