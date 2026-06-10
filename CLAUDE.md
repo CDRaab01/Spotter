@@ -255,3 +255,68 @@ the operational model and `deploy/README.md` for the operator guide.
 - **Deferred:** installing the runner as a Windows service (currently runs interactively via
   `run.cmd`); the deploy recreates the `server` container each run (env stamp changes), a brief
   blip that's acceptable for personal use.
+
+## Audit Resolution Log (2026-06-10)
+A second full-codebase audit (server / Android / infra+tests, candidate findings verified
+against the code before fixing — several were dismissed as false positives, see below).
+Fixed and verified: server 144 pytest green + `ruff check app` clean; Android
+`:app:testDebugUnitTest` + `:app:compileDebugKotlin` green; `docker compose config` validates.
+
+### Server — fixed
+- **[MED] Malformed LM Studio response → 500.** `ai/client.chat` parsed `resp.json()` and the
+  `choices[0].message.content` path outside its try/except, so a non-OpenAI-shaped 200 raised an
+  unhandled exception. Now mapped to **502** ("malformed response"); parametrized regression
+  tests in `test_ai_guardrails.py` cover non-JSON / missing choices / missing content / non-string.
+- **[MED] Dead legacy plan code removed.** `routers/plans.py`, `services/plan_service.py`,
+  `models/workout_plan.py`, `models/planned_exercise.py`, `schemas/plan.py` were unreachable
+  since the plan→routine rename (router unmounted, models unimported) — and `workout_plan.py`
+  still pointed at the dropped `workout_plans` table with `back_populates` targets that no longer
+  exist, so any future import would have broken SQLAlchemy mapper configuration app-wide. Deleted.
+
+### Android — fixed
+- **[MED-HIGH] Token refresh hardened** (`TokenRefreshAuthenticator`): refreshes are now
+  serialized behind a lock and re-check the stored token first (N concurrent 401s → one refresh);
+  a transient `IOException` mid-refresh now fails the request **without** signing out (previously
+  any network blip during refresh cleared tokens and bounced the user to login); only a 401/403
+  from `/auth/refresh` signs out — a 5xx no longer wipes the session.
+- **[MED] `RoutineDetailViewModel.saveEdits` no longer swallows errors:** failure surfaces via an
+  `error` StateFlow → snackbar in `RoutineDetailScreen`, and the user stays in edit mode with the
+  draft intact. Regression test added.
+- **[LOW] Offline-added sets render fully:** `SessionRepository.logSet` now copies display
+  enrichment (exercise name, targets, superset group) from a sibling set of the same exercise,
+  so a "+" set added offline isn't a nameless/ungrouped row until next sync.
+- **[LOW] Workout timer reuse:** `WorkoutViewModel` resets `elapsed` when loading a *different*
+  session (tracked via `timerSessionId`) — rotation/resume of the same workout keeps the timer.
+- **[Tests] Calendar self-sync covered:** `CalendarViewModelTest` now asserts the init load syncs
+  programs/routines/pending sessions, month paging doesn't re-sync, and sync failure still loads.
+
+### Infra — fixed
+- **[MED] cloudflared healthcheck added** (`--metrics 0.0.0.0:2000` + `cloudflared tunnel ready`):
+  a tunnel with no live edge connections (bad/missing `TUNNEL_TOKEN`) now shows `unhealthy`
+  instead of a silent green deploy; the redeploy scripts print the tunnel health after the
+  `/health` gate (informational, not gating).
+- **[LOW-MED] Postgres credentials parameterized** in `docker-compose.yml`
+  (`${POSTGRES_USER:-spotter}` etc.); the `db` service and the server `DATABASE_URL` share the
+  same variables so they can't drift. Documented in `deploy/README.md`.
+- **[LOW] `--remove-orphans`** added to `docker compose up` in both redeploy scripts.
+
+### Dismissed as false positives (verified — not bugs)
+- "`logSet` only marks `syncPending` when offline" — it's set unconditionally on insert; the
+  offline path is picked up by `getUnsyncedNewLogs` in sync step 2.
+- "`ProgramRepository.updateProgram` deactivates locally before the API call" — API call is first.
+- "`CalendarViewModel` shows stale projections on error" — `_projected` is cleared synchronously
+  at the top of `loadMonth`.
+- "entrypoint ignores migration failure" — `set -euo pipefail` aborts on alembic failure.
+- "manual `workflow_dispatch` deploys bypass CI" — deliberate, documented rollback lever.
+- "missing `user_id` on post-mutation re-fetch" — re-fetch is by UUID PK after the ownership
+  check in the same request; not exploitable.
+- "`SetLogCreate` should carry `superset_group`" — the server derives it from the routine at
+  read time; it isn't stored per set. (Local display gap fixed via sibling enrichment above.)
+
+### Newly deferred (in addition to the existing backlog)
+- **[LOW][Android] Offline-finished workouts show no muscle-group breakdown** — the summary's
+  `muscle_groups` is server-computed and exercises' muscle groups aren't cached locally; a local
+  computation needs `muscle_group` added to the routine payload + a Room column. Do alongside the
+  broader offline-writes design.
+- **[LOW][Infra] Redeploy failure log capture** (dump `docker compose logs` on health-gate
+  failure) and a configurable health timeout — nice-to-haves for operability.
