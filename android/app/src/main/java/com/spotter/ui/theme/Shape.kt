@@ -5,13 +5,14 @@ import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
 /**
- * Rounder, softer shape scale than the Material defaults — pills and generous corners read as
- * more modern/athletic. Applied globally via [SpotterTheme].
+ * PULSE shape scale — tighter than Material defaults. Panels read as instrument bezels: 12dp for
+ * cards and controls, 16dp for large surfaces, 8dp for compact fields. Depth comes from hairline
+ * strokes and tone, not big radii or shadows.
  */
 val SpotterShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(16.dp),
 )

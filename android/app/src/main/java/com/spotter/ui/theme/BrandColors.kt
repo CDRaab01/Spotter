@@ -5,48 +5,52 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
- * Brand extras that don't map onto a Material color role: the signature gradients and the
- * semantic accent colors (success / warning / streak-flame / celebration "volt") that the
- * athletic identity leans on. Provided through [LocalBrand] by [SpotterTheme] so any composable
- * can pull `SpotterTheme.brand`.
+ * MIGRATION SHIM — the old gradient brand layer, re-based onto the PULSE palette so unmigrated
+ * screens render in the new identity while they wait for their Phase-4 pass. The "gradients" are
+ * now flat channel fills (PULSE has no decorative gradients). Deleted once no screen reads
+ * [LocalBrand] / `SpotterTheme.brand`.
  */
+@Deprecated("Use SpotterTheme.pulse channels instead.")
 data class BrandColors(
-    val heroGradient: Brush,        // blue -> indigo, for headers/hero surfaces
-    val energyGradient: Brush,      // orange -> amber, primary CTAs / celebration
-    val flameGradient: Brush,       // amber -> orange -> red, the streak flame
-    val voltGradient: Brush,        // volt -> green, confetti / PR pops
+    val heroGradient: Brush,
+    val energyGradient: Brush,
+    val flameGradient: Brush,
+    val voltGradient: Brush,
     val success: Color,
     val onSuccess: Color,
     val warning: Color,
     val onWarning: Color,
-    val streak: Color,              // flame tint for the streak stat
-    val celebration: Color,         // volt pop
+    val streak: Color,
+    val celebration: Color,
 )
 
+@Suppress("DEPRECATION")
 fun lightBrandColors(): BrandColors = BrandColors(
-    heroGradient = Brush.linearGradient(listOf(SpotterBlue, SpotterIndigo)),
-    energyGradient = Brush.linearGradient(listOf(SpotterOrange, SpotterAmber)),
-    flameGradient = Brush.verticalGradient(listOf(SpotterAmber, SpotterOrange, SpotterRed)),
-    voltGradient = Brush.linearGradient(listOf(SpotterVolt, SpotterGreen)),
-    success = SpotterGreen,
+    heroGradient = Brush.linearGradient(listOf(PulseCyanDeep, PulseCyanDeep)),
+    energyGradient = Brush.linearGradient(listOf(PulseCyanDeep, PulseCyanDeep)),
+    flameGradient = Brush.verticalGradient(listOf(PulseAmberDeep, PulseAmberDeep)),
+    voltGradient = Brush.linearGradient(listOf(PulseGreenDeep, PulseGreenDeep)),
+    success = PulseGreenDeep,
     onSuccess = Color.White,
-    warning = SpotterAmber,
-    onWarning = Color(0xFF3A2600),
-    streak = SpotterOrange,
-    celebration = Color(0xFF6FA800), // darkened volt that reads on light surfaces
+    warning = PulseAmberDeep,
+    onWarning = Color.White,
+    streak = PulseAmberDeep,
+    celebration = PulseGreenDeep,
 )
 
+@Suppress("DEPRECATION")
 fun darkBrandColors(): BrandColors = BrandColors(
-    heroGradient = Brush.linearGradient(listOf(Color(0xFF3D63FF), Color(0xFF7A45F0))),
-    energyGradient = Brush.linearGradient(listOf(SpotterOrange, SpotterAmber)),
-    flameGradient = Brush.verticalGradient(listOf(SpotterAmber, SpotterOrange, SpotterRed)),
-    voltGradient = Brush.linearGradient(listOf(SpotterVolt, SpotterGreen)),
-    success = DarkSecondary,
-    onSuccess = DarkOnSecondary,
-    warning = SpotterAmber,
-    onWarning = Color(0xFF3A2600),
-    streak = Color(0xFFFF8A5C),
-    celebration = SpotterVolt,
+    heroGradient = Brush.linearGradient(listOf(PulsePanelHigh, PulsePanelHigh)),
+    energyGradient = Brush.linearGradient(listOf(Color(0xFF0E7490), Color(0xFF0E7490))),
+    flameGradient = Brush.verticalGradient(listOf(PulseAmber, PulseAmber)),
+    voltGradient = Brush.linearGradient(listOf(PulseGreen, PulseGreen)),
+    success = PulseGreen,
+    onSuccess = Color(0xFF00301F),
+    warning = PulseAmber,
+    onWarning = Color(0xFF2B1B00),
+    streak = PulseAmber,
+    celebration = PulseGreen,
 )
 
+@Suppress("DEPRECATION")
 val LocalBrand = staticCompositionLocalOf { lightBrandColors() }

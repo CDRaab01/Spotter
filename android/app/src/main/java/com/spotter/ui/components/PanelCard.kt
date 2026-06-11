@@ -1,7 +1,6 @@
 package com.spotter.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -11,50 +10,37 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.spotter.ui.theme.SpotterTheme
 
 /**
- * MIGRATION SHIM over [PanelCard] — keeps unmigrated call sites compiling with the old signature
- * while rendering in the PULSE panel style (hairline stroke, no elevation). [gradient] (now a
- * flat channel fill from the brand shim) and [elevation] are tolerated but the panel look wins.
- * New code should use [PanelCard].
+ * The PULSE surface: a flat panel with a 1px hairline stroke instead of a shadow. Depth comes
+ * from tone ([raised] uses the lighter panel) and stroke, never elevation.
+ *
+ * [channel] ties the panel to a data domain — it tints the stroke and is meant for panels whose
+ * content is "live" in that channel (an active timer, a PR callout). Leave null for neutral
+ * structure. When [onClick] is provided the whole panel is tappable with a press-scale.
  */
-@Deprecated("Use PanelCard.")
 @Composable
-fun SpotterCard(
+fun PanelCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    gradient: Brush? = null,
-    containerColor: Color = Color.Unspecified,
-    border: BorderStroke? = null,
-    elevation: Dp = 0.dp,
-    contentPadding: Dp = 16.dp,
+    channel: Color? = null,
+    raised: Boolean = false,
+    containerColor: Color? = null,
+    contentPadding: Dp = SpotterTheme.spacing.lg,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val pulse = SpotterTheme.pulse
     val shape = MaterialTheme.shapes.medium
-    val color = when {
-        gradient != null -> Color.Transparent
-        containerColor != Color.Unspecified -> containerColor
-        else -> pulse.panel
-    }
-    val stroke = border ?: BorderStroke(1.dp, pulse.hairline)
+    val color = containerColor ?: if (raised) pulse.panelHigh else pulse.panel
+    val border = BorderStroke(1.dp, channel?.copy(alpha = 0.35f) ?: pulse.hairline)
     val inner: @Composable () -> Unit = {
-        Column(
-            modifier = if (gradient != null) {
-                Modifier
-                    .background(gradient, shape)
-                    .padding(contentPadding)
-            } else {
-                Modifier.padding(contentPadding)
-            },
-            content = content,
-        )
+        Column(modifier = Modifier.padding(contentPadding), content = content)
     }
+
     if (onClick != null) {
         val interaction = remember { MutableInteractionSource() }
         Surface(
@@ -62,7 +48,7 @@ fun SpotterCard(
             modifier = modifier.pressScale(interaction),
             shape = shape,
             color = color,
-            border = stroke,
+            border = border,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             interactionSource = interaction,
@@ -73,7 +59,7 @@ fun SpotterCard(
             modifier = modifier,
             shape = shape,
             color = color,
-            border = stroke,
+            border = border,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             content = inner,

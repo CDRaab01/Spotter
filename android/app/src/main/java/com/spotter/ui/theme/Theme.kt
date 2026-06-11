@@ -68,9 +68,11 @@ fun SpotterTheme(
     content: @Composable () -> Unit,
 ) {
     val colorScheme = if (darkTheme) DarkColors else LightColors
-    val brand = if (darkTheme) darkBrandColors() else lightBrandColors()
+    val pulse = if (darkTheme) darkPulseColors() else lightPulseColors()
     CompositionLocalProvider(
-        LocalBrand provides brand,
+        LocalPulse provides pulse,
+        LocalDataTypography provides pulseDataTypography(),
+        LocalBrand provides if (darkTheme) darkBrandColors() else lightBrandColors(),
         LocalSpacing provides Spacing(),
     ) {
         MaterialTheme(
@@ -84,8 +86,14 @@ fun SpotterTheme(
 
 /** Convenience accessors mirroring `MaterialTheme.*`. */
 object SpotterTheme {
+    val pulse: PulseColors
+        @Composable @ReadOnlyComposable get() = LocalPulse.current
+
+    @Deprecated("Migration shim — use SpotterTheme.pulse channels instead.")
     val brand: BrandColors
         @Composable @ReadOnlyComposable get() = LocalBrand.current
+    val dataType: PulseDataTypography
+        @Composable @ReadOnlyComposable get() = LocalDataTypography.current
     val spacing: Spacing
         @Composable @ReadOnlyComposable get() = LocalSpacing.current
 }

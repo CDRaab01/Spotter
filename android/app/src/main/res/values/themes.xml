@@ -2,6 +2,6 @@
 <resources>
     <style name="Theme.Spotter" parent="android:Theme.Material.Light.NoActionBar">
         <!-- Matches LightBackground so the launch frame isn't a white flash. -->
-        <item name="android:windowBackground">#FFF4F6FB</item>
+        <item name="android:windowBackground">#FFF4F6F8</item>
     </style>
 </resources>

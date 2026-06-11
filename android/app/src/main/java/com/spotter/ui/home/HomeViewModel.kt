@@ -80,6 +80,10 @@ class HomeViewModel @Inject constructor(
     private val _weeklyActiveMinutes = MutableStateFlow(0)
     val weeklyActiveMinutes: StateFlow<Int> = _weeklyActiveMinutes.asStateFlow()
 
+    /** Active minutes per day Monday→Sunday of the current week (zeros for days without work). */
+    private val _weeklyMinutesByDay = MutableStateFlow<List<Float>>(emptyList())
+    val weeklyMinutesByDay: StateFlow<List<Float>> = _weeklyMinutesByDay.asStateFlow()
+
     private val _activeProgramId = MutableStateFlow<String?>(null)
     val activeProgramId: StateFlow<String?> = _activeProgramId.asStateFlow()
 
@@ -155,12 +159,20 @@ class HomeViewModel @Inject constructor(
                 // Active minutes: sum of completed-session durations within the current
                 // week (Monday → today).
                 val weekStart = today.with(DayOfWeek.MONDAY)
-                _weeklyActiveMinutes.value = completed
-                    .filter { s ->
-                        runCatching { LocalDate.parse(s.date) }.getOrNull()
-                            ?.let { !it.isBefore(weekStart) && !it.isAfter(today) } ?: false
+                val thisWeek = completed.mapNotNull { s ->
+                    val date = runCatching { LocalDate.parse(s.date) }.getOrNull()
+                        ?: return@mapNotNull null
+                    if (!date.isBefore(weekStart) && !date.isAfter(today)) {
+                        date to (s.durationSeconds ?: 0)
+                    } else {
+                        null
                     }
-                    .sumOf { (it.durationSeconds ?: 0) } / 60
+                }
+                _weeklyActiveMinutes.value = thisWeek.sumOf { it.second } / 60
+                _weeklyMinutesByDay.value = (0..6).map { offset ->
+                    val day = weekStart.plusDays(offset.toLong())
+                    thisWeek.filter { it.first == day }.sumOf { it.second } / 60f
+                }
             } catch (_: Exception) {}
         }
     }

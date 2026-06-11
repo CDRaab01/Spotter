@@ -163,7 +163,7 @@ fun ErrorState(
         )
         if (onRetry != null) {
             Box(Modifier.padding(top = 20.dp)) {
-                GradientButton(text = "Retry", onClick = onRetry)
+                PulseButton(text = "Retry", onClick = onRetry)
             }
         }
     }
