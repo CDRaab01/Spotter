@@ -3,16 +3,16 @@ package com.spotter.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /*
- * PULSE palette — a data-forward instrument panel.
+ * PULSE palette — a data-forward instrument panel in the original Spotter brand hues.
  *
  * Identity: OLED-dark ink with hairline-stroked panels, and a *channel* color system where each
- * data domain owns a hue — effort (cyan), strength (violet), streak (amber), recovery (green).
- * Color always carries meaning, never decoration. Full Material 3 roles are specified for both
- * themes so anything reading `MaterialTheme.colorScheme` upgrades automatically; the semantic
- * channel layer lives in Pulse.kt.
+ * data domain owns a hue — effort (electric blue), strength (indigo/violet), streak (orange),
+ * recovery (green). Color always carries meaning; the two brand gradients (blue→indigo hero,
+ * orange→amber energy) are reserved for the greeting and primary CTAs. Full Material 3 roles are
+ * specified for both themes so anything reading `MaterialTheme.colorScheme` upgrades
+ * automatically; the semantic channel layer lives in Pulse.kt.
  *
- * The raw channel seeds are tuned for dark surfaces; light theme MUST use the `*Deep` variants
- * (the seeds fail contrast on white — e.g. raw cyan is ~1.7:1).
+ * The raw channel seeds are tuned for dark surfaces; light theme MUST use the `*Deep` variants.
  */
 
 // ---- Reference palette ----------------------------------------------------------------------
@@ -20,24 +20,27 @@ val PulseInk = Color(0xFF0B0D10)         // dark background
 val PulsePanel = Color(0xFF13161B)       // dark surface
 val PulsePanelHigh = Color(0xFF1A1E25)   // raised dark surface
 
-val PulseCyan = Color(0xFF22D3EE)        // effort — volume, work, timers
+val PulseBlue = Color(0xFF4D7CFF)        // effort — volume, work, timers
+val PulseIndigo = Color(0xFF7A45F0)      // hero-gradient partner
 val PulseViolet = Color(0xFF8B7CFF)      // strength — PRs, loads
-val PulseAmber = Color(0xFFFFB020)       // streak
+val PulseOrange = Color(0xFFFF8A5C)      // streak
+val PulseAmber = Color(0xFFF5A623)       // energy-gradient partner
 val PulseGreen = Color(0xFF34D399)       // recovery — rest, done, success
 val PulseRed = Color(0xFFFF5C5C)         // error (dark)
 
 // Contrast-adapted channel variants for light surfaces (>= 4.5:1 on white).
-val PulseCyanDeep = Color(0xFF0E7490)
-val PulseVioletDeep = Color(0xFF5B4BD6)
-val PulseAmberDeep = Color(0xFFA16207)
+val PulseBlueDeep = Color(0xFF2A5BFF)
+val PulseIndigoDeep = Color(0xFF5B2BE0)
+val PulseVioletDeep = Color(0xFF5B2BE0)
+val PulseOrangeDeep = Color(0xFFC2410C)
 val PulseGreenDeep = Color(0xFF047857)
 val PulseRedDeep = Color(0xFFDC2626)
 
 // ---- Light scheme ---------------------------------------------------------------------------
-val LightPrimary = PulseCyanDeep
+val LightPrimary = PulseBlueDeep
 val LightOnPrimary = Color(0xFFFFFFFF)
-val LightPrimaryContainer = Color(0xFFD6F1F7)
-val LightOnPrimaryContainer = Color(0xFF073B49)
+val LightPrimaryContainer = Color(0xFFDEE7FF)
+val LightOnPrimaryContainer = Color(0xFF0A2078)
 
 val LightSecondary = PulseGreenDeep
 val LightOnSecondary = Color(0xFFFFFFFF)
@@ -64,10 +67,10 @@ val LightOutline = Color(0xFFC9CDD4)
 val LightOutlineVariant = Color(0x1A000000)   // the 1px hairline, as an M3 role too
 
 // ---- Dark scheme ----------------------------------------------------------------------------
-val DarkPrimary = PulseCyan
-val DarkOnPrimary = Color(0xFF00252C)
-val DarkPrimaryContainer = Color(0xFF12333B)
-val DarkOnPrimaryContainer = Color(0xFFBDF0FA)
+val DarkPrimary = PulseBlue
+val DarkOnPrimary = Color(0xFFFFFFFF)
+val DarkPrimaryContainer = Color(0xFF1B2440)
+val DarkOnPrimaryContainer = Color(0xFFD6E0FF)
 
 val DarkSecondary = PulseGreen
 val DarkOnSecondary = Color(0xFF00301F)

@@ -1,11 +1,9 @@
 package com.spotter.ui.theme
 
 import androidx.compose.material3.Typography
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.spotter.R
@@ -16,49 +14,29 @@ import com.spotter.R
  *  - Inter for body/label — quiet and legible; labels run Medium+ with wide tracking and are
  *    used UPPERCASE as instrument-panel captions.
  *  - JetBrains Mono for data numerals (DataType.kt) — every weight, rep and timer aligns.
- * All ship as bundled variable fonts; weights are pulled via FontVariation (API 26+).
+ *
+ * All faces ship as STATIC instances (one file per weight), not variable fonts: several devices
+ * ignore FontVariation weight settings and render the lightest master, so static instances are
+ * the only way to guarantee real bold everywhere.
  */
 
-@OptIn(ExperimentalTextApi::class)
-private fun spaceGrotesk(weight: FontWeight) = Font(
-    R.font.space_grotesk_var,
-    weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
-)
-
-@OptIn(ExperimentalTextApi::class)
-private fun inter(weight: FontWeight) = Font(
-    R.font.inter_var,
-    weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
-)
-
-@OptIn(ExperimentalTextApi::class)
-private fun jetbrainsMono(weight: FontWeight) = Font(
-    R.font.jetbrains_mono_var,
-    weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
-)
-
 val SpaceGroteskFamily = FontFamily(
-    spaceGrotesk(FontWeight.Normal),
-    spaceGrotesk(FontWeight.Medium),
-    spaceGrotesk(FontWeight.SemiBold),
-    spaceGrotesk(FontWeight.Bold),
+    Font(R.font.space_grotesk_medium, weight = FontWeight.Medium),
+    Font(R.font.space_grotesk_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.space_grotesk_bold, weight = FontWeight.Bold),
 )
 
 val InterFamily = FontFamily(
-    inter(FontWeight.Normal),
-    inter(FontWeight.Medium),
-    inter(FontWeight.SemiBold),
-    inter(FontWeight.Bold),
+    Font(R.font.inter_regular, weight = FontWeight.Normal),
+    Font(R.font.inter_medium, weight = FontWeight.Medium),
+    Font(R.font.inter_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.inter_bold, weight = FontWeight.Bold),
 )
 
 val JetBrainsMonoFamily = FontFamily(
-    jetbrainsMono(FontWeight.Normal),
-    jetbrainsMono(FontWeight.Medium),
-    jetbrainsMono(FontWeight.SemiBold),
-    jetbrainsMono(FontWeight.Bold),
+    Font(R.font.jetbrains_mono_medium, weight = FontWeight.Medium),
+    Font(R.font.jetbrains_mono_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.jetbrains_mono_bold, weight = FontWeight.Bold),
 )
 
 val Typography = Typography(
@@ -87,7 +65,7 @@ val Typography = Typography(
         fontSize = 20.sp, lineHeight = 26.sp,
     ),
     titleLarge = TextStyle(
-        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
         fontSize = 20.sp, lineHeight = 26.sp,
     ),
     titleMedium = TextStyle(

@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -133,13 +134,19 @@ private fun HomeScene() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        PanelCard(Modifier.fillMaxWidth(), contentPadding = 20.dp) {
-            Text("Good evening, Casey", style = MaterialTheme.typography.headlineMedium)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .background(pulse.heroGradient)
+                .padding(20.dp),
+        ) {
+            Text("Good evening, Casey", style = MaterialTheme.typography.headlineMedium, color = Color.White)
             Spacer(Modifier.height(4.dp))
             Text(
                 "Next up: Push Day · Today",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color.White.copy(alpha = 0.85f),
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -247,6 +254,7 @@ private fun SummaryScene(prCount: Int = 0, perfect: Boolean = true) {
         Spacer(Modifier.height(24.dp))
         PulseButton(
             text = "Return to Home",
+            gradient = pulse.energyGradient,
             onClick = {},
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )

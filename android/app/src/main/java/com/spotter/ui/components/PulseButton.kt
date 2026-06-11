@@ -20,17 +20,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import com.spotter.ui.theme.SpotterTheme
 
 /**
- * The primary action: a solid channel-colored block with press-scale and ripple. Defaults to the
- * effort channel. Use one per screen; secondary actions take [tonal] (dim fill, channel text) or
- * plain M3 buttons.
+ * The primary action: the brand hero gradient (blue → indigo) with press-scale and ripple.
+ * Use one per screen; secondary actions take [tonal] (channel dim fill, channel text) or plain
+ * M3 buttons.
  *
- * Pass [channel]/[onChannel]/[dimChannel] together when an action belongs to another domain
- * (e.g. recovery green for "Finish workout").
+ * Pass [gradient] to switch the voice (e.g. `pulse.energyGradient` for a celebration CTA), or
+ * [channel]/[onChannel]/[dimChannel] + `tonal` when an action belongs to a data domain
+ * (e.g. recovery green for "Skip rest").
  */
 @Composable
 fun PulseButton(
@@ -40,6 +43,7 @@ fun PulseButton(
     enabled: Boolean = true,
     tonal: Boolean = false,
     compact: Boolean = false,
+    gradient: Brush? = null,
     channel: Color = SpotterTheme.pulse.effort,
     onChannel: Color = SpotterTheme.pulse.onEffort,
     dimChannel: Color = SpotterTheme.pulse.effortDim,
@@ -47,14 +51,18 @@ fun PulseButton(
 ) {
     val shape = MaterialTheme.shapes.small
     val interaction = remember { MutableInteractionSource() }
-    val container = if (tonal) dimChannel else channel
+    val brush = if (tonal) {
+        SolidColor(dimChannel)
+    } else {
+        gradient ?: SpotterTheme.pulse.heroGradient
+    }
     val content = if (tonal) channel else onChannel
     Box(
         modifier = modifier
             .alpha(if (enabled) 1f else 0.45f)
             .pressScale(interaction)
             .clip(shape)
-            .background(container)
+            .background(brush)
             .clickable(
                 interactionSource = interaction,
                 indication = rememberRipple(color = content),

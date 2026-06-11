@@ -47,6 +47,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -273,13 +275,20 @@ private fun isStreakMilestone(streak: Int): Boolean =
     streak in setOf(3, 7, 14, 30, 50, 75, 100, 150, 200, 250, 300, 365) ||
         (streak >= 100 && streak % 100 == 0)
 
-/** The greeting panel: a quiet headline plus a one-line status of what's next. */
+/** The greeting hero: the blue→indigo signature gradient with a one-line status of what's next. */
 @Composable
 private fun GreetingPanel(greeting: String, nextWorkout: UpcomingWorkout?) {
-    PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 20.dp) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(SpotterTheme.pulse.heroGradient)
+            .padding(20.dp),
+    ) {
         Text(
             text = greeting,
             style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
         )
         Spacer(Modifier.height(SpotterTheme.spacing.xs))
         val status = if (nextWorkout != null) {
@@ -291,7 +300,7 @@ private fun GreetingPanel(greeting: String, nextWorkout: UpcomingWorkout?) {
         Text(
             text = status,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Color.White.copy(alpha = 0.85f),
         )
     }
 }

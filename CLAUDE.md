@@ -354,16 +354,21 @@ A full visual redesign of the Android app to a data-forward, instrument-panel de
 
 ### Design system (`ui/theme/`)
 - **Channel colors** (`Pulse.kt` → `PulseColors`, via `SpotterTheme.pulse`): each data domain owns
-  a hue — **effort cyan** `#22D3EE` (volume/work/timers/primary actions), **strength violet**
-  `#8B7CFF` (PRs/loads), **streak amber** `#FFB020`, **recovery green** `#34D399` (rest/done).
-  Each channel has base/dim/on values; light theme uses contrast-safe `*Deep` variants (raw seeds
-  fail on white). Structural tokens: `panel`/`panelHigh` surfaces + 1px `hairline`/`hairlineStrong`
-  strokes — depth comes from stroke + tone, never shadows. Dark-first OLED (`#0B0D10` bg); the
-  Settings System/Light/Dark toggle is unchanged.
+  a hue in the original brand family — **effort electric blue** `#4D7CFF` (volume/work/timers/
+  primary actions), **strength violet** `#8B7CFF` (PRs/loads), **streak orange** `#FF8A5C`,
+  **recovery green** `#34D399` (rest/done). Each channel has base/dim/on values; light theme uses
+  contrast-safe `*Deep` variants. Two brand gradients live in the same layer: `heroGradient`
+  (blue→indigo — Home greeting, default `PulseButton`) and `energyGradient` (orange→amber —
+  celebration CTAs like the summary's Return to Home). Structural tokens: `panel`/`panelHigh`
+  surfaces + 1px `hairline`/`hairlineStrong` strokes — depth on cards comes from stroke + tone,
+  not shadows. Dark-first OLED (`#0B0D10` bg); the Settings System/Light/Dark toggle is unchanged.
 - **Type**: Space Grotesk (display/headline/title), Inter (body/label; labels run uppercase with
   wide tracking as instrument captions), **JetBrains Mono for every numeral** via a dedicated data
   scale (`DataType.kt` → `SpotterTheme.dataType`: numeral 14 → dataXL 60, slashed zeros). UI scale
-  is a minor third (12/14/17/20/24/29). Sora was removed.
+  is a minor third (12/14/17/20/24/29). Sora was removed. **Fonts ship as STATIC per-weight
+  instances** (generated with fonttools `varLib.instancer`) — variable fonts' `FontVariation`
+  weight axis is ignored on some devices and renders the lightest master (real-device bug found
+  on first install), so never reintroduce variable-font weights.
 - **Motion tokens** (`Motion.kt` → `PulseMotion`): Fast 120 / Standard 240 / Emphasized 400 /
   Data 600ms with shared easings + press spring. **Shapes** tightened to 8/12/16dp.
 - **Components** (`ui/components/`): `PanelCard` (hairline-stroked flat surface, optional channel

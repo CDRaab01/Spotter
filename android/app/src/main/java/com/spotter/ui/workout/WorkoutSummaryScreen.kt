@@ -245,6 +245,7 @@ fun WorkoutSummaryScreen(
             Spacer(Modifier.height(40.dp))
             PulseButton(
                 text = "Return to Home",
+                gradient = pulse.energyGradient,
                 onClick = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
