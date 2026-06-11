@@ -347,3 +347,62 @@ constraint, using only seeded exercises (guardrail test passes unchanged):
   heavy hinging off the floor.
 Each description embeds a get-cleared-by-your-doctor/physio line; these are exercise-selection
 presets, not medical advice, in keeping with the app's non-medical scope.
+
+## Sprint 5 — "PULSE" UI redesign (2026-06-11)
+A full visual redesign of the Android app to a data-forward, instrument-panel design system
+("PULSE"). All 20 screens restyled; server untouched.
+
+### Design system (`ui/theme/`)
+- **Channel colors** (`Pulse.kt` → `PulseColors`, via `SpotterTheme.pulse`): each data domain owns
+  a hue — **effort cyan** `#22D3EE` (volume/work/timers/primary actions), **strength violet**
+  `#8B7CFF` (PRs/loads), **streak amber** `#FFB020`, **recovery green** `#34D399` (rest/done).
+  Each channel has base/dim/on values; light theme uses contrast-safe `*Deep` variants (raw seeds
+  fail on white). Structural tokens: `panel`/`panelHigh` surfaces + 1px `hairline`/`hairlineStrong`
+  strokes — depth comes from stroke + tone, never shadows. Dark-first OLED (`#0B0D10` bg); the
+  Settings System/Light/Dark toggle is unchanged.
+- **Type**: Space Grotesk (display/headline/title), Inter (body/label; labels run uppercase with
+  wide tracking as instrument captions), **JetBrains Mono for every numeral** via a dedicated data
+  scale (`DataType.kt` → `SpotterTheme.dataType`: numeral 14 → dataXL 60, slashed zeros). UI scale
+  is a minor third (12/14/17/20/24/29). Sora was removed.
+- **Motion tokens** (`Motion.kt` → `PulseMotion`): Fast 120 / Standard 240 / Emphasized 400 /
+  Data 600ms with shared easings + press spring. **Shapes** tightened to 8/12/16dp.
+- **Components** (`ui/components/`): `PanelCard` (hairline-stroked flat surface, optional channel
+  tint), `PulseButton` (solid channel block; `tonal`/`compact` variants), `DataText`/`TickerNumber`
+  (mono readouts; rolling count-up), `ProgressRing`, `Sparkline`, `HeatBar`, `CelebrationPulse`,
+  restyled `StatTile` (channel + sparkline) and `SectionHeader` (channel tick + uppercase label).
+  `GradientButton`/`SpotterCard`/`AnimatedCounter`/`BrandColors` were deleted — no gradients,
+  no emoji, confetti recolored to channels and toned down (40 particles).
+
+### Navigation shell
+- **Bottom navigation** (`ui/navigation/PulseBottomBar.kt` + `TopLevelDestination.kt`):
+  Home · Calendar · Coach · Progress, wrapped around the existing NavHost in `AppNavGraph.kt`
+  (one Scaffold; `consumeWindowInsets` prevents double insets; tab nav uses
+  saveState/restoreState). Routes/`Screen.kt` unchanged.
+- **Workout resume strip** (`WorkoutResumeBar`): shown above the bottom bar anywhere in the app
+  while a session is in progress. Driven by `util/ActiveWorkoutStore.kt` — observes Room for an
+  `in_progress` session dated today, so it survives process death and self-clears.
+- **Re-homed actions**: Home top bar = Add routine + Settings only (overflow menu and both FABs
+  removed); bodyweight logging = tap the Home bodyweight stat tile; Programs link = "Upcoming"
+  section header; History = Progress top-bar icon + Settings; Exercise Library = Settings
+  ("Library & data" group). Calendar/Coach/Progress lost their back arrows as tabs (Coach keeps
+  one only when opened session-aware from a workout).
+- **Action grammar**: cards navigate, explicit buttons act, menus live on their own icons.
+
+### Screen highlights
+- **Workout**: rest timer is a full-width instrument panel — 150dp recovery-green `ProgressRing`
+  with 44sp mono countdown while resting, slim cyan count-up strip while working
+  (`WorkoutViewModel` gained additive `restDurationSeconds` for real ring progress); set rows use
+  centered mono `BasicTextField`s on raised panels; completed sets wash recovery green.
+- **Summary**: total volume is the 60sp mono cyan centerpiece; PR pill in violet; per-muscle
+  volume as `HeatBar`s; recovery ring-check with `CelebrationPulse`.
+- **Home**: flat greeting panel + one-line "next up" status; channel stat tiles (streak amber,
+  active-minutes cyan with a Mon–Sun sparkline via additive `HomeViewModel.weeklyMinutesByDay`).
+- **Progress**: per-tab channel (bodyweight cyan, strength/records violet); `LineChart` redrawn —
+  2dp line, hairline gridlines, glow dot on the latest point only.
+- **Calendar**: day numerals in mono; status = green dot (done), cyan dot (in progress), hairline
+  ring (planned).
+
+### Verification
+Android: `:app:compileDebugKotlin` + `:app:testDebugUnitTest` green; Roborazzi baselines
+re-recorded (`app/screenshots/`, dark + light per scene incl. a bottom-bar/resume-strip shell
+scene). No server or schema changes; no new dependencies (fonts are bundled assets, OFL).

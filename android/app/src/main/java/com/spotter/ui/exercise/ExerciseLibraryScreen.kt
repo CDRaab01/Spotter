@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,7 +32,7 @@ import com.spotter.data.model.ExerciseOut
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,7 +50,7 @@ fun ExerciseLibraryScreen(
                 title = { Text("Exercise Library") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -98,7 +98,7 @@ fun ExerciseLibraryScreen(
 
 @Composable
 private fun ExerciseRow(exercise: ExerciseOut) {
-    SpotterCard(modifier = Modifier.fillMaxWidth()) {
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
         Text(exercise.name, style = MaterialTheme.typography.titleMedium)
         val subtitle = listOfNotNull(exercise.muscleGroup, exercise.equipment)
             .joinToString(" · ")

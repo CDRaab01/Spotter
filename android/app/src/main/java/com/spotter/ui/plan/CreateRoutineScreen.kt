@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DropdownMenu
@@ -45,8 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.ui.components.GradientButton
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeightLabel
 
@@ -85,7 +85,7 @@ fun CreateRoutineScreen(
                 title = { Text("New Routine") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -179,7 +179,7 @@ fun CreateRoutineScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            GradientButton(
+            PulseButton(
                 text = "Save Routine",
                 onClick = { viewModel.saveRoutine() },
                 modifier = Modifier.fillMaxWidth(),
@@ -203,7 +203,7 @@ internal fun DraftExerciseRow(
         mutableStateOf(draft.targetWeight?.toString() ?: "")
     }
 
-    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 12.dp) {
+    PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 12.dp) {
         Column {
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -81,6 +81,11 @@ class WorkoutViewModel @Inject constructor(
     private val _restTimerSeconds = MutableStateFlow<Int?>(null)
     val restTimerSeconds: StateFlow<Int?> = _restTimerSeconds.asStateFlow()
 
+    // Length of the rest the current countdown started from, so the UI ring can show
+    // real progress (null while working).
+    private val _restDurationSeconds = MutableStateFlow<Int?>(null)
+    val restDurationSeconds: StateFlow<Int?> = _restDurationSeconds.asStateFlow()
+
     private val _exerciseNotes = MutableStateFlow<Map<String, String>>(emptyMap())
     val exerciseNotes: StateFlow<Map<String, String>> = _exerciseNotes.asStateFlow()
 
@@ -225,6 +230,7 @@ class WorkoutViewModel @Inject constructor(
         val duration = if (failure) base + 60 else base
         restTimerJob?.cancel()
         _restTimerSeconds.value = duration
+        _restDurationSeconds.value = duration
         ContextCompat.startForegroundService(context, RestTimerService.startIntent(context, duration))
         restTimerJob = viewModelScope.launch {
             var remaining = duration
@@ -234,12 +240,14 @@ class WorkoutViewModel @Inject constructor(
                 _restTimerSeconds.value = remaining
             }
             _restTimerSeconds.value = null
+            _restDurationSeconds.value = null
         }
     }
 
     fun dismissRestTimer() {
         restTimerJob?.cancel()
         _restTimerSeconds.value = null
+        _restDurationSeconds.value = null
         context.startService(RestTimerService.cancelIntent(context))
     }
 

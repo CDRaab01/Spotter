@@ -17,7 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -55,7 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.ui.components.PulsingDots
 import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.util.DarkModePreference
@@ -136,7 +138,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -245,7 +247,7 @@ fun SettingsScreen(
                                 Text(
                                     "Active",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = SpotterTheme.pulse.effort,
                                 )
                                 Spacer(Modifier.width(8.dp))
                             }
@@ -257,6 +259,19 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            SettingsSection("Library & data") {
+                NavRow(
+                    icon = { Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    label = "Exercise library",
+                    onClick = { navController.navigate(Screen.ExerciseLibrary.route) },
+                )
+                NavRow(
+                    icon = { Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    label = "Workout history",
+                    onClick = { navController.navigate(Screen.SessionHistory.route) },
+                )
             }
 
             SettingsSection("Server") {
@@ -362,18 +377,18 @@ private fun VersionRow(label: String, value: String) {
 /** Profile card: a gradient initial avatar next to the user's name + email. */
 @Composable
 private fun ProfileHeader(name: String, email: String) {
-    SpotterCard(modifier = Modifier.fillMaxWidth()) {
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .background(SpotterTheme.brand.heroGradient, CircleShape),
+                    .background(SpotterTheme.pulse.effortDim, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = name.trim().take(1).uppercase().ifBlank { "?" },
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
+                    color = SpotterTheme.pulse.effort,
                 )
             }
             Spacer(Modifier.width(14.dp))
@@ -389,13 +404,44 @@ private fun ProfileHeader(name: String, email: String) {
     }
 }
 
-/** A titled settings group rendered on a [SpotterCard] with an accent [SectionHeader]. */
+/** A titled settings group rendered on a [PanelCard] with a channel [SectionHeader]. */
 @Composable
 private fun SettingsSection(title: String, content: @Composable () -> Unit) {
-    SpotterCard(modifier = Modifier.fillMaxWidth()) {
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
         SectionHeader(title)
         Spacer(Modifier.height(8.dp))
         content()
+    }
+}
+
+/** A chevron navigation row used inside settings groups. */
+@Composable
+private fun NavRow(
+    label: String,
+    onClick: () -> Unit,
+    icon: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            icon()
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

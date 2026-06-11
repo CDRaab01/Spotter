@@ -10,10 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
+import com.spotter.ui.theme.SpotterTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,7 +66,7 @@ fun ProgramPresetsScreen(
                 title = { Text("Preset programs") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -97,8 +100,8 @@ private fun PresetCard(
     enabled: Boolean,
     onApply: () -> Unit,
 ) {
-    SpotterCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
             Text(preset.displayName, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
             Text(
@@ -120,17 +123,21 @@ private fun PresetCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(onClick = onApply, enabled = enabled) {
-                    if (isApplying) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Text("Add program")
-                    }
+                if (isApplying) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = SpotterTheme.pulse.effort,
+                    )
+                    Spacer(Modifier.width(12.dp))
                 }
+                PulseButton(
+                    text = "Use program",
+                    onClick = onApply,
+                    enabled = enabled,
+                    tonal = true,
+                    compact = true,
+                )
             }
         }
     }

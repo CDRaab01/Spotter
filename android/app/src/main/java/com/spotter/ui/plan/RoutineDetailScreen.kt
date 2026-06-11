@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -43,10 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.RoutineExerciseOut
+import com.spotter.ui.components.DataText
 import com.spotter.ui.components.ErrorState
-import com.spotter.ui.components.GradientButton
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight
@@ -112,7 +114,7 @@ fun RoutineDetailScreen(
                     title = { Text(title) },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },
                     actions = {
@@ -229,7 +231,7 @@ fun RoutineDetailScreen(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    GradientButton(
+                    PulseButton(
                         text = "Start Workout",
                         onClick = { viewModel.startWorkout(routineId) },
                         modifier = Modifier
@@ -248,7 +250,7 @@ fun RoutineDetailScreen(
 @Composable
 private fun ExerciseViewRow(exercise: RoutineExerciseOut) {
     val weightUnit = LocalWeightUnit.current
-    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
+    PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Row(
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -266,16 +268,16 @@ private fun ExerciseViewRow(exercise: RoutineExerciseOut) {
                     val weight = exercise.targetWeight?.let { "×${weightUnit.formatWeight(it)}" } ?: ""
                     "${exercise.targetSets}×${exercise.targetReps}$weight"
                 }
-                Text(
-                    detail,
-                    style = MaterialTheme.typography.bodySmall,
+                DataText(
+                    text = detail,
+                    style = SpotterTheme.dataType.numeral,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 exercise.supersetGroup?.let { group ->
                     Text(
                         "Superset ${('A' + group - 1).uppercaseChar()}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = SpotterTheme.pulse.strength,
                     )
                 }
             }

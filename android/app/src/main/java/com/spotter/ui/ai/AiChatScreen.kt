@@ -27,14 +27,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,7 +60,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.SuggestedRoutine
 import com.spotter.ui.components.EmptyState
-import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,16 +117,20 @@ fun AiChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Spotter Coach") },
+                title = { Text("Coach") },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (!navController.popBackStack()) {
-                            navController.navigate(com.spotter.ui.navigation.Screen.Home.route) {
-                                popUpTo(0) { inclusive = true }
+                    // Only chats opened from an active workout get a back affordance;
+                    // as a bottom-nav tab the screen needs none.
+                    if (viewModel.sessionAware) {
+                        IconButton(onClick = {
+                            if (!navController.popBackStack()) {
+                                navController.navigate(com.spotter.ui.navigation.Screen.Home.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
                             }
+                        }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -228,7 +232,12 @@ fun AiChatScreen(
                     },
                     enabled = inputText.isNotBlank() && !isLoading,
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send")
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = if (inputText.isNotBlank() && !isLoading) SpotterTheme.pulse.effort
+                               else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -242,35 +251,32 @@ private fun SuggestedRoutineCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
+    PanelCard(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-        ),
+        channel = SpotterTheme.pulse.effort,
+        contentPadding = 12.dp,
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = routine.name,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+        Text(
+            text = routine.name,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = "${routine.exercises.size} exercise${if (routine.exercises.size != 1) "s" else ""}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PulseButton(
+                text = "Save Routine",
+                onClick = onSave,
+                compact = true,
+                modifier = Modifier.weight(1f),
             )
-            Text(
-                text = "${routine.exercises.size} exercise${if (routine.exercises.size != 1) "s" else ""}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-            )
-            Row(
-                modifier = Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GradientButton(
-                    text = "Save Routine",
-                    onClick = onSave,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text("Dismiss")
-                }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                Text("Dismiss")
             }
         }
     }
@@ -283,50 +289,47 @@ private fun SuggestedProgramCard(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
+    PanelCard(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-        ),
+        channel = SpotterTheme.pulse.effort,
+        contentPadding = 12.dp,
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Text(
+            text = program.name,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = "${program.days.size}-day program",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        program.days.forEach { day ->
+            val detail = if (day.exercises.isEmpty()) "Rest"
+                else "${day.exercises.size} lift${if (day.exercises.size != 1) "s" else ""}"
             Text(
-                text = program.name,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = "${program.days.size}-day program",
+                text = "• ${day.label} · $detail",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            program.days.forEach { day ->
-                val detail = if (day.exercises.isEmpty()) "Rest"
-                    else "${day.exercises.size} lift${if (day.exercises.size != 1) "s" else ""}"
-                Text(
-                    text = "• ${day.label} · $detail",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
-                )
-            }
-            Text(
-                text = "Saving makes this your active program.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = 4.dp),
+        }
+        Text(
+            text = "Saving makes this your active program.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PulseButton(
+                text = "Save Program",
+                onClick = onSave,
+                compact = true,
+                modifier = Modifier.weight(1f),
             )
-            Row(
-                modifier = Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GradientButton(
-                    text = "Save Program",
-                    onClick = onSave,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text("Dismiss")
-                }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                Text("Dismiss")
             }
         }
     }
@@ -369,7 +372,7 @@ private fun TypingIndicator() {
         Box(
             modifier = Modifier
                 .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    color = SpotterTheme.pulse.panel,
                     shape = RoundedCornerShape(
                         topStart = 16.dp, topEnd = 16.dp,
                         bottomEnd = 16.dp, bottomStart = 4.dp,
@@ -386,7 +389,7 @@ private fun TypingIndicator() {
                         modifier = Modifier
                             .size(8.dp)
                             .background(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                                color = SpotterTheme.pulse.effort.copy(alpha = alpha),
                                 shape = CircleShape,
                             ),
                     )

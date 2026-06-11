@@ -12,7 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.PulseButton
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,7 +64,7 @@ fun OnboardingScreen(
                 navigationIcon = {
                     if (step > 1) {
                         IconButton(onClick = { viewModel.prevStep() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     }
                 },
@@ -80,7 +81,9 @@ fun OnboardingScreen(
         ) {
             LinearProgressIndicator(
                 progress = { step.toFloat() / total },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                color = SpotterTheme.pulse.effort,
+                trackColor = SpotterTheme.pulse.hairline,
             )
 
             Spacer(Modifier.height(8.dp))
@@ -149,7 +152,7 @@ fun OnboardingScreen(
                 else -> false
             }
 
-            GradientButton(
+            PulseButton(
                 text = if (step == total) "Let's go" else "Continue",
                 onClick = { viewModel.nextStep() },
                 enabled = canContinue,
@@ -282,17 +285,19 @@ private fun OptionCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val pulse = SpotterTheme.pulse
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = if (selected) pulse.effortDim else pulse.panel,
         ),
-        border = if (selected) {
-            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        } else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) pulse.effort.copy(alpha = 0.45f) else pulse.hairline,
+        ),
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -302,14 +307,14 @@ private fun OptionCard(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                color = if (selected) MaterialTheme.colorScheme.onSurface
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (selected) {
                 Icon(
                     Icons.Default.CheckCircle,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = pulse.effort,
                 )
             }
         }

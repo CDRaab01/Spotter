@@ -1,6 +1,7 @@
 package com.spotter.ui.ai
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -12,36 +13,38 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.spotter.data.model.ChatMessage
+import com.spotter.ui.theme.SpotterTheme
 
 @Composable
 fun ChatBubble(message: ChatMessage) {
     val isUser = message.role == "user"
+    val pulse = SpotterTheme.pulse
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = SpotterTheme.spacing.md, vertical = SpotterTheme.spacing.xs),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
+        val shape = RoundedCornerShape(
+            topStart = 16.dp, topEnd = 16.dp,
+            bottomStart = if (isUser) 16.dp else 4.dp,
+            bottomEnd = if (isUser) 4.dp else 16.dp,
+        )
         Box(
             modifier = Modifier
-                .widthIn(max = 280.dp)
+                .widthIn(max = 300.dp)
                 .background(
-                    color = if (isUser) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(
-                        topStart = 16.dp, topEnd = 16.dp,
-                        bottomStart = if (isUser) 16.dp else 4.dp,
-                        bottomEnd = if (isUser) 4.dp else 16.dp,
-                    ),
+                    color = if (isUser) pulse.effortDim else pulse.panel,
+                    shape = shape,
                 )
-                .padding(12.dp),
+                .border(1.dp, if (isUser) pulse.effort.copy(alpha = 0.25f) else pulse.hairline, shape)
+                .padding(SpotterTheme.spacing.md),
         ) {
             Text(
                 text = message.content,
-                color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

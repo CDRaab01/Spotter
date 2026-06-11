@@ -1,8 +1,5 @@
 package com.spotter.ui.home
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,34 +13,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,10 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -67,16 +56,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
-import com.spotter.ui.components.AnimatedCounter
 import com.spotter.ui.components.ConfettiHost
-import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
-import com.spotter.ui.components.GradientButton
 import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
 import com.spotter.ui.components.PulsingDots
 import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.SpotterCard
 import com.spotter.ui.components.StatTile
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
@@ -99,6 +86,7 @@ fun HomeScreen(
     val generatingPlan by viewModel.generatingPlan.collectAsState()
     val streak by viewModel.streak.collectAsState()
     val weeklyActiveMinutes by viewModel.weeklyActiveMinutes.collectAsState()
+    val weeklyMinutesByDay by viewModel.weeklyMinutesByDay.collectAsState()
     val upcoming by viewModel.upcoming.collectAsState()
     val activeProgramId by viewModel.activeProgramId.collectAsState()
     val greeting by viewModel.greeting.collectAsState()
@@ -108,6 +96,7 @@ fun HomeScreen(
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val spacing = SpotterTheme.spacing
 
     LaunchedEffect(actionError) {
         actionError?.let {
@@ -154,141 +143,116 @@ fun HomeScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text("Spotter") },
-                actions = {
-                    IconButton(onClick = { navController.navigate(Screen.Calendar.route) }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Calendar")
-                    }
-                    IconButton(onClick = { navController.navigate(Screen.Progress.route) }) {
-                        Icon(Icons.Default.ShowChart, contentDescription = "Progress")
-                    }
-                    IconButton(onClick = { navController.navigate(Screen.CreateRoutine.route) }) {
-                        Icon(Icons.Default.Add, contentDescription = "New routine")
-                    }
-                    var overflowExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { overflowExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                TopAppBar(
+                    title = { Text("Spotter", style = MaterialTheme.typography.titleLarge) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
+                    actions = {
+                        IconButton(onClick = { navController.navigate(Screen.CreateRoutine.route) }) {
+                            Icon(Icons.Default.Add, contentDescription = "New routine")
                         }
-                        DropdownMenu(
-                            expanded = overflowExpanded,
-                            onDismissRequest = { overflowExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("History") },
-                                onClick = {
-                                    overflowExpanded = false
-                                    navController.navigate(Screen.SessionHistory.route)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Programs") },
-                                onClick = {
-                                    overflowExpanded = false
-                                    navController.navigate(Screen.Programs.route)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Exercise Library") },
-                                onClick = {
-                                    overflowExpanded = false
-                                    navController.navigate(Screen.ExerciseLibrary.route)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Settings") },
-                                onClick = {
-                                    overflowExpanded = false
-                                    navController.navigate(Screen.Settings.route)
-                                },
+                        IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
+                            Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            when (val state = routines) {
+                is UiState.Loading -> LoadingState(Modifier.padding(padding))
+
+                is UiState.Error -> ErrorState(
+                    message = state.message,
+                    modifier = Modifier.padding(padding),
+                )
+
+                is UiState.Success -> {
+                    val upcomingList = (upcoming as? UiState.Success)?.data.orEmpty()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentPadding = PaddingValues(spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(spacing.md),
+                    ) {
+                        item {
+                            GreetingPanel(
+                                greeting = greeting,
+                                nextWorkout = upcomingList.firstOrNull(),
                             )
                         }
-                    }
-                },
-            )
-        },
-        floatingActionButton = {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SmallFloatingActionButton(onClick = { showBodyweightDialog = true }) {
-                    Icon(Icons.Default.MonitorWeight, contentDescription = "Log bodyweight")
-                }
-                FloatingActionButton(onClick = { navController.navigate(Screen.AiChat.createRoute()) }) {
-                    Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "AI Coach")
-                }
-            }
-        },
-    ) { padding ->
-        when (val state = routines) {
-            is UiState.Loading -> LoadingState(Modifier.padding(padding))
-
-            is UiState.Error -> ErrorState(
-                message = state.message,
-                modifier = Modifier.padding(padding),
-            )
-
-            is UiState.Success -> {
-                val upcomingList = (upcoming as? UiState.Success)?.data.orEmpty()
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item { GreetingHeader(greeting, onClick = { navController.navigate(Screen.AiChat.createRoute()) }) }
-                    item { StatsBand(streak = streak, weeklyActiveMinutes = weeklyActiveMinutes, bodyweight = bodyweight) }
-
-                    if (upcomingList.isNotEmpty()) {
-                        item { SectionHeader("Upcoming workouts") }
-                        items(upcomingList, key = { "${it.date}-${it.routineId}-${it.dayLabel}" }) { workout ->
-                            UpcomingWorkoutCard(
-                                workout = workout,
-                                isStarting = isStarting,
-                                onStart = { workout.routineId?.let { viewModel.startSession(it) } },
-                                onTapCard = activeProgramId?.let { pid ->
-                                    { navController.navigate(Screen.ProgramDetail.createRoute(pid)) }
-                                },
+                        item {
+                            StatsBand(
+                                streak = streak,
+                                streakMilestone = isStreakMilestone(streak),
+                                weeklyActiveMinutes = weeklyActiveMinutes,
+                                weeklyMinutesByDay = weeklyMinutesByDay,
+                                bodyweight = bodyweight,
+                                onLogBodyweight = { showBodyweightDialog = true },
                             )
                         }
-                    }
 
-                    when {
-                        state.data.isEmpty() && !generatingPlan -> item {
-                            EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
-                        }
-
-                        generatingPlan && state.data.isEmpty() -> item {
-                            GeneratingPlaceholder()
-                        }
-
-                        else -> {
-                            item { SectionHeader("Your routines") }
-                            items(state.data, key = { it.id }) { routine ->
-                                RoutineCard(
-                                    routine = routine,
-                                    exercises = routineExercises[routine.id].orEmpty(),
-                                    isStarting = isStarting,
-                                    onStart = { viewModel.startSession(routine.id) },
-                                    onDelete = { viewModel.deleteRoutine(routine.id) },
-                                    onRename = { newName -> viewModel.renameRoutine(routine.id, newName) },
-                                    onTapCard = { navController.navigate(Screen.RoutineDetail.createRoute(routine.id)) },
+                        if (upcomingList.isNotEmpty()) {
+                            item {
+                                SectionHeader(
+                                    title = "Upcoming",
+                                    trailing = {
+                                        TextButton(onClick = { navController.navigate(Screen.Programs.route) }) {
+                                            Text(
+                                                "Programs",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = SpotterTheme.pulse.effort,
+                                            )
+                                        }
+                                    },
                                 )
+                            }
+                            items(upcomingList, key = { "${it.date}-${it.routineId}-${it.dayLabel}" }) { workout ->
+                                UpcomingWorkoutCard(
+                                    workout = workout,
+                                    isStarting = isStarting,
+                                    onStart = { workout.routineId?.let { viewModel.startSession(it) } },
+                                    onTapCard = activeProgramId?.let { pid ->
+                                        { navController.navigate(Screen.ProgramDetail.createRoute(pid)) }
+                                    },
+                                )
+                            }
+                        }
+
+                        when {
+                            state.data.isEmpty() && !generatingPlan -> item {
+                                EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
+                            }
+
+                            generatingPlan && state.data.isEmpty() -> item {
+                                GeneratingPlaceholder()
+                            }
+
+                            else -> {
+                                item { SectionHeader("Your routines", channel = SpotterTheme.pulse.strength) }
+                                items(state.data, key = { it.id }) { routine ->
+                                    RoutineCard(
+                                        routine = routine,
+                                        exercises = routineExercises[routine.id].orEmpty(),
+                                        isStarting = isStarting,
+                                        onStart = { viewModel.startSession(routine.id) },
+                                        onDelete = { viewModel.deleteRoutine(routine.id) },
+                                        onRename = { newName -> viewModel.renameRoutine(routine.id, newName) },
+                                        onTapCard = { navController.navigate(Screen.RoutineDetail.createRoute(routine.id)) },
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            else -> Unit
+                else -> Unit
+            }
         }
-    }
         ConfettiHost(play = celebrateStreak)
     }
 }
@@ -309,87 +273,63 @@ private fun isStreakMilestone(streak: Int): Boolean =
     streak in setOf(3, 7, 14, 30, 50, 75, 100, 150, 200, 250, 300, 365) ||
         (streak >= 100 && streak % 100 == 0)
 
+/** The greeting panel: a quiet headline plus a one-line status of what's next. */
 @Composable
-private fun GreetingHeader(greeting: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.extraLarge)
-            .background(SpotterTheme.brand.heroGradient)
-            .clickable(onClick = onClick)
-            .padding(20.dp),
-    ) {
-        Column {
-            Text(
-                text = "LET'S TRAIN",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.85f),
-            )
-            Text(
-                text = greeting,
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-            )
+private fun GreetingPanel(greeting: String, nextWorkout: UpcomingWorkout?) {
+    PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 20.dp) {
+        Text(
+            text = greeting,
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Spacer(Modifier.height(SpotterTheme.spacing.xs))
+        val status = if (nextWorkout != null) {
+            val name = nextWorkout.routineName ?: nextWorkout.dayLabel
+            "Next up: $name · ${formatUpcomingDate(nextWorkout.date)}"
+        } else {
+            "No workout scheduled — your coach can fix that."
         }
+        Text(
+            text = status,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
 @Composable
-private fun StatsBand(streak: Int, weeklyActiveMinutes: Int, bodyweight: Double?) {
+private fun StatsBand(
+    streak: Int,
+    streakMilestone: Boolean,
+    weeklyActiveMinutes: Int,
+    weeklyMinutesByDay: List<Float>,
+    bodyweight: Double?,
+    onLogBodyweight: () -> Unit,
+) {
     val weightUnit = LocalWeightUnit.current
+    val pulse = SpotterTheme.pulse
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.sm),
     ) {
-        StreakTile(
-            streak = streak,
-            milestone = isStreakMilestone(streak),
+        StatTile(
             modifier = Modifier.weight(1f),
+            animatedValue = streak,
+            label = "day streak",
+            accent = if (streak > 0 || streakMilestone) pulse.streak else null,
         )
         StatTile(
             modifier = Modifier.weight(1f),
             animatedValue = weeklyActiveMinutes,
             label = "active min",
+            accent = pulse.effort,
+            sparkline = weeklyMinutesByDay.takeIf { week -> week.any { it > 0f } },
         )
-        if (bodyweight != null) {
-            StatTile(
-                modifier = Modifier.weight(1f),
-                value = weightUnit.formatWeight(bodyweight),
-                label = "bodyweight",
-            )
-        }
-    }
-}
-
-/** Streak stat with a flame that animates in proportion to the streak length. */
-@Composable
-private fun StreakTile(streak: Int, milestone: Boolean, modifier: Modifier = Modifier) {
-    SpotterCard(
-        modifier = modifier,
-        contentPadding = 14.dp,
-        border = if (milestone) BorderStroke(2.dp, SpotterTheme.brand.streak) else null,
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AnimatedCounter(
-                    target = streak,
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-                if (streak > 0) {
-                    Text(" 🔥", style = MaterialTheme.typography.titleLarge)
-                }
-            }
-            Text(
-                text = "day streak",
-                style = MaterialTheme.typography.labelMedium,
-                color = if (streak >= 7) SpotterTheme.brand.streak
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = if (streak >= 7) FontWeight.Bold else FontWeight.Normal,
-            )
-        }
+        StatTile(
+            modifier = Modifier.weight(1f),
+            value = bodyweight?.let { weightUnit.formatWeight(it) } ?: "—",
+            label = "bodyweight",
+            onClick = onLogBodyweight,
+        )
     }
 }
 
@@ -400,37 +340,37 @@ private fun UpcomingWorkoutCard(
     onStart: () -> Unit,
     onTapCard: (() -> Unit)? = null,
 ) {
-    val cardModifier = if (onTapCard != null) {
-        Modifier.fillMaxWidth().clickable(onClick = onTapCard)
-    } else {
-        Modifier.fillMaxWidth()
-    }
-    Card(modifier = cardModifier) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = formatUpcomingDate(workout.date),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = workout.routineName ?: workout.dayLabel,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-                if (workout.routineId != null) {
-                    Button(onClick = onStart, enabled = !isStarting) {
-                        Text(if (isStarting) "Starting…" else "Start")
-                    }
-                }
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onTapCard,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = formatUpcomingDate(workout.date).uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SpotterTheme.pulse.effort,
+                )
+                Text(
+                    text = workout.routineName ?: workout.dayLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                )
             }
-            if (workout.lifts.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                workout.lifts.forEach { lift ->
-                    ExercisePreviewRow(lift)
-                    Spacer(Modifier.height(2.dp))
-                }
+            if (workout.routineId != null) {
+                PulseButton(
+                    text = if (isStarting) "Starting…" else "Start",
+                    onClick = onStart,
+                    enabled = !isStarting,
+                    tonal = true,
+                    compact = true,
+                )
+            }
+        }
+        if (workout.lifts.isNotEmpty()) {
+            Spacer(Modifier.height(SpotterTheme.spacing.sm))
+            workout.lifts.forEach { lift ->
+                ExercisePreviewRow(lift)
+                Spacer(Modifier.height(2.dp))
             }
         }
     }
@@ -441,33 +381,32 @@ private fun EmptyPlansPrompt(onChat: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 32.dp),
+            .padding(top = SpotterTheme.spacing.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
                 .size(88.dp)
-                .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+                .background(SpotterTheme.pulse.effortDim, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.Chat,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = SpotterTheme.pulse.effort,
                 modifier = Modifier.size(40.dp),
             )
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(SpotterTheme.spacing.lg))
         Text("No workout routines yet", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(SpotterTheme.spacing.xs))
         Text(
             "Your AI Coach can build your first one in seconds.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(20.dp))
-        GradientButton(text = "Chat with AI Coach", onClick = onChat)
+        Spacer(Modifier.height(SpotterTheme.spacing.xl))
+        PulseButton(text = "Chat with AI Coach", onClick = onChat)
     }
 }
 
@@ -476,11 +415,11 @@ private fun GeneratingPlaceholder() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 32.dp),
+            .padding(top = SpotterTheme.spacing.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         PulsingDots()
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(SpotterTheme.spacing.lg))
         Text("Building your first routine…", style = MaterialTheme.typography.bodyMedium)
     }
 }
@@ -526,51 +465,65 @@ private fun RoutineCard(
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.clickable { onTapCard() }) {
-            Row(
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(routine.name, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        routine.source,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onTapCard,
+        contentPadding = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                start = SpotterTheme.spacing.lg,
+                top = SpotterTheme.spacing.md,
+                bottom = SpotterTheme.spacing.md,
+                end = SpotterTheme.spacing.xs,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(routine.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    routine.source,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            PulseButton(
+                text = if (isStarting) "Starting…" else "Start",
+                onClick = onStart,
+                enabled = !isStarting,
+                tonal = true,
+                compact = true,
+            )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Routine options")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = { menuExpanded = false; showRenameDialog = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menuExpanded = false; showDeleteConfirm = true },
                     )
                 }
-                Button(
-                    onClick = onStart,
-                    enabled = !isStarting,
-                ) {
-                    Text(if (isStarting) "Starting…" else "Start")
-                }
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Routine options")
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Rename") },
-                            onClick = { menuExpanded = false; showRenameDialog = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                            onClick = { menuExpanded = false; showDeleteConfirm = true },
-                        )
-                    }
-                }
             }
-            if (exercises.isNotEmpty()) {
-                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-                    exercises.forEach { lift ->
-                        ExercisePreviewRow(lift)
-                        Spacer(Modifier.height(2.dp))
-                    }
+        }
+        if (exercises.isNotEmpty()) {
+            Column(
+                modifier = Modifier.padding(
+                    start = SpotterTheme.spacing.lg,
+                    end = SpotterTheme.spacing.lg,
+                    bottom = SpotterTheme.spacing.md,
+                ),
+            ) {
+                exercises.forEach { lift ->
+                    ExercisePreviewRow(lift)
+                    Spacer(Modifier.height(2.dp))
                 }
             }
         }

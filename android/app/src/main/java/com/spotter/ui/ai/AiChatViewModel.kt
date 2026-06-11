@@ -44,6 +44,9 @@ class AiChatViewModel @Inject constructor(
     /** Local session id, set when chat is opened from within an active workout. */
     private val localSessionId: String? = savedStateHandle["sessionId"]
 
+    /** True when the chat was opened from an active workout (the screen shows a back affordance). */
+    val sessionAware: Boolean get() = localSessionId != null
+
     val messages: StateFlow<List<ChatMessage>> = chatMessageDao.getAllMessages()
         .map { entities -> entities.map { ChatMessage(it.role, it.content) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
