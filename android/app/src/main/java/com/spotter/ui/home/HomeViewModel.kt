@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -126,13 +127,14 @@ class HomeViewModel @Inject constructor(
 
     private fun observePrograms() {
         viewModelScope.launch {
-            programDao.getAll().collect { programs ->
-                // Active program first, then alphabetical (the DAO already sorts by name).
-                _programs.value = programs.sortedByDescending { it.isActive }
-                _programDayCounts.value = programs.associate { program ->
-                    program.id to runCatching { programDayDao.getByProgram(program.id).size }
-                        .getOrDefault(0)
-                }
+            // Combine both tables: during a sync the programs land before their days, so counts
+            // must re-derive whenever EITHER table changes or they'd freeze at "no days yet".
+            combine(programDao.getAll(), programDayDao.observeAll()) { programs, days ->
+                programs.sortedByDescending { it.isActive } to
+                    days.groupingBy { it.programId }.eachCount()
+            }.collect { (programs, counts) ->
+                _programs.value = programs
+                _programDayCounts.value = counts
             }
         }
     }
