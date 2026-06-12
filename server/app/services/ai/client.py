@@ -9,14 +9,25 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.limits import REPS_BOUNDS, SETS_BOUNDS, clamp_int, clamp_weight
+from app.limits import (
+    MAX_ADJUSTMENT_ACTIONS,
+    REPS_BOUNDS,
+    SETS_BOUNDS,
+    clamp_int,
+    clamp_weight,
+)
 from app.models.exercise import Exercise
+from app.models.set_log import SetLog
+from app.models.workout_session import WorkoutSession
 from app.schemas.ai import (
+    AiAdjustmentDraft,
     AiPlanDraft,
     AiPlanExercise,
     AiProgramDraft,
     ChatRequest,
     ChatResponse,
+    SuggestedAdjustment,
+    SuggestedAdjustmentAction,
     SuggestedRoutine,
     SuggestedProgram,
     SuggestedProgramDay,
@@ -94,16 +105,31 @@ async def chat(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="LM Studio returned a malformed response",
         )
-    # Prefer a multi-day program when the model emitted one; otherwise fall back to a
-    # single-session plan. Never return both.
-    suggested_program = await _extract_program(raw_reply, db)
-    suggested_routine = None if suggested_program else await _extract_plan(raw_reply, db)
-    # The structured routine/program JSON is surfaced via the Save card — strip it from the
-    # chat text so the bubble shows only the prose. If the model returned nothing but JSON,
-    # fall back to a short prompt pointing at the Save card.
+    # Exactly one suggestion type per reply: adjustment (only meaningful with a live
+    # session in context) wins over program, which wins over a single plan.
+    suggested_adjustment = (
+        await _extract_adjustment(raw_reply, db, user_id, req.current_session_id)
+        if (user_id and req.current_session_id)
+        else None
+    )
+    suggested_program = (
+        None if suggested_adjustment else await _extract_program(raw_reply, db)
+    )
+    suggested_routine = (
+        None
+        if (suggested_adjustment or suggested_program)
+        else await _extract_plan(raw_reply, db)
+    )
+    # The structured JSON is surfaced via its card — strip it from the chat text so the
+    # bubble shows only the prose. If the model returned nothing but JSON, fall back to
+    # a short prompt pointing at the card.
     clean_reply = validate_response(_strip_structured_blocks(raw_reply))
     if not clean_reply:
-        if suggested_program:
+        if suggested_adjustment:
+            clean_reply = (
+                "I've suggested a change to this workout — review it below and tap Apply."
+            )
+        elif suggested_program:
             clean_reply = (
                 "I've put together a multi-day program for you — review the days below "
                 "and tap Save Program to add it."
@@ -114,6 +140,7 @@ async def chat(
         reply=clean_reply,
         suggested_routine=suggested_routine,
         suggested_program=suggested_program,
+        suggested_adjustment=suggested_adjustment,
     )
 
 
@@ -254,6 +281,131 @@ async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram
     if not any(d.exercises for d in days):
         return None
     return SuggestedProgram(name=draft.name, days=days)
+
+
+async def _extract_adjustment(
+    raw_reply: str,
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+) -> SuggestedAdjustment | None:
+    """Extract a live-workout adjustment from the reply, or None if it isn't one.
+
+    The LLM is untrusted: names are resolved against the catalog, swap/adjust/remove
+    actions must target an exercise actually in the session, values are clamped, and
+    the action count is capped. The result is a *suggestion* only — it is persisted
+    exclusively by POST /ai/sessions/{id}/adjust on explicit user accept.
+    """
+    json_str = _extract_json_block(raw_reply)
+    if json_str is None:
+        return None
+    try:
+        data = json.loads(json_str)
+        draft = AiAdjustmentDraft.model_validate(data)
+    except Exception:
+        return None
+
+    # Exercises actually in the live session (ownership-filtered).
+    result = await db.execute(
+        select(SetLog.exercise_id)
+        .join(WorkoutSession, SetLog.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.id == session_id,
+            WorkoutSession.user_id == user_id,
+        )
+        .distinct()
+    )
+    session_exercise_ids = {str(row[0]) for row in result}
+    if not session_exercise_ids:
+        return None
+
+    actions: list[SuggestedAdjustmentAction] = []
+    for raw in draft.actions[:MAX_ADJUSTMENT_ACTIONS]:
+        resolved = await _resolve_exercise_with_name(raw.exercise, db)
+        if resolved is None:
+            logger.info("Adjustment: could not resolve %r — skipping", raw.exercise)
+            continue
+        exercise_id, exercise_name = resolved
+
+        # swap / adjust_weight / remove must target an exercise in the session.
+        if raw.type != "add" and exercise_id not in session_exercise_ids:
+            logger.info(
+                "Adjustment: %r (%s) is not in the live session — skipping",
+                raw.exercise,
+                raw.type,
+            )
+            continue
+
+        new_exercise_id: str | None = None
+        new_exercise_name: str | None = None
+        if raw.type == "swap":
+            new_resolved = (
+                await _resolve_exercise_with_name(raw.new_exercise, db)
+                if raw.new_exercise
+                else None
+            )
+            if new_resolved is None or new_resolved[0] == exercise_id:
+                logger.info(
+                    "Adjustment: swap target %r unresolvable or same — skipping",
+                    raw.new_exercise,
+                )
+                continue
+            new_exercise_id, new_exercise_name = new_resolved
+        if raw.type == "adjust_weight" and raw.weight is None:
+            continue
+        if raw.type == "add" and (raw.sets is None or raw.reps is None):
+            raw.sets = raw.sets or 3
+            raw.reps = raw.reps or 8
+
+        action = SuggestedAdjustmentAction(
+            type=raw.type,
+            exercise_id=exercise_id,
+            exercise_name=exercise_name,
+            new_exercise_id=new_exercise_id,
+            new_exercise_name=new_exercise_name,
+            sets=clamp_int(raw.sets, SETS_BOUNDS) if raw.sets is not None else None,
+            reps=clamp_int(raw.reps, REPS_BOUNDS) if raw.reps is not None else None,
+            weight=clamp_weight(raw.weight),
+            summary=raw.summary.strip() or _default_summary(raw.type, exercise_name, new_exercise_name, raw.weight),
+        )
+        actions.append(action)
+
+    if not actions:
+        return None
+    return SuggestedAdjustment(actions=actions)
+
+
+def _default_summary(
+    action_type: str,
+    exercise_name: str,
+    new_exercise_name: str | None,
+    weight: float | None,
+) -> str:
+    """Server-side fallback so the card never shows a blank line."""
+    weight_txt = f" at {weight:g} lb" if weight is not None else ""
+    if action_type == "swap":
+        return f"Swap {exercise_name} for {new_exercise_name}{weight_txt}"
+    if action_type == "adjust_weight":
+        return f"Change {exercise_name} to{weight_txt or ' a lighter weight'}"
+    if action_type == "remove":
+        return f"Remove {exercise_name}"
+    return f"Add {exercise_name}{weight_txt}"
+
+
+async def _resolve_exercise_with_name(
+    name: str, db: AsyncSession
+) -> tuple[str, str] | None:
+    """Like _resolve_exercise but also returns the canonical catalog name."""
+    stmt = select(Exercise.id, Exercise.name).where(Exercise.name.ilike(name))
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        stmt = (
+            select(Exercise.id, Exercise.name)
+            .where(Exercise.name.ilike(f"%{name}%"))
+            .limit(1)
+        )
+        row = (await db.execute(stmt)).first()
+    return (str(row[0]), row[1]) if row else None
 
 
 async def _resolve_exercise(name: str, db: AsyncSession) -> str | None:
