@@ -77,3 +77,13 @@ fun lightPulseColors() = PulseColors(
 )
 
 val LocalPulse = staticCompositionLocalOf { darkPulseColors() }
+
+/**
+ * The channel assigned to a program day by its position — day 1 orange, day 2 blue, day 3
+ * violet, day 4 green, then repeating. Keeps each day of a program visually distinct on the
+ * calendar and anywhere else days are color-coded.
+ */
+fun PulseColors.dayChannel(dayIndex: Int): Color {
+    val cycle = listOf(streak, effort, strength, recovery)
+    return cycle[((dayIndex % cycle.size) + cycle.size) % cycle.size]
+}

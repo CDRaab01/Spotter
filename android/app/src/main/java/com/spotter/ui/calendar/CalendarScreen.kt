@@ -54,6 +54,7 @@ import com.spotter.ui.components.PanelCard
 import com.spotter.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
+import com.spotter.ui.theme.dayChannel
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
 import java.time.LocalDate
@@ -274,6 +275,7 @@ private fun MonthGrid(
                             entry = entryMap[date],
                             isProjected = pw != null,
                             isRestDay = pw?.routineId == null,
+                            projectedDayIndex = pw?.dayIndex,
                             onClick = { onDayClick(date) },
                             modifier = Modifier.weight(1f),
                         )
@@ -294,6 +296,7 @@ private fun DayCell(
     entry: CalendarEntry?,
     isProjected: Boolean,
     isRestDay: Boolean,
+    projectedDayIndex: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -308,19 +311,16 @@ private fun DayCell(
         isToday -> pulse.effort
         else -> MaterialTheme.colorScheme.onSurface
     }
-    // A real session always wins over a projection on the same date.
+    // A real session always wins over a projection on the same date. Planned workouts get a
+    // solid dot in their program day's channel (day 1 orange, day 2 blue, …) so the rotation
+    // reads at a glance; rest days keep a quiet ring.
     val dotColor = when {
         entry?.status == "completed" -> pulse.recovery
         entry != null -> pulse.effort
+        isProjected && !isRestDay -> pulse.dayChannel(projectedDayIndex ?: 0)
         else -> Color.Transparent
     }
-    // Rest days get a muted ring; planned workouts get a hairline outline ring.
-    val projectedRingColor = if (isRestDay) {
-        MaterialTheme.colorScheme.outlineVariant
-    } else {
-        pulse.hairlineStrong
-    }
-    val showProjectedRing = entry == null && isProjected
+    val showRestRing = entry == null && isProjected && isRestDay
 
     Column(
         modifier = modifier
@@ -344,10 +344,10 @@ private fun DayCell(
         Spacer(Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .size(5.dp)
+                .size(6.dp)
                 .then(
-                    if (showProjectedRing) {
-                        Modifier.border(1.dp, projectedRingColor, CircleShape)
+                    if (showRestRing) {
+                        Modifier.border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), CircleShape)
                     } else {
                         Modifier.background(color = dotColor, shape = CircleShape)
                     },

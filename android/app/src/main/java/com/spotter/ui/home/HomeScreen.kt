@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -19,11 +20,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,8 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
-import com.spotter.data.local.entity.RoutineExerciseEntity
-import com.spotter.data.local.entity.WorkoutRoutineEntity
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.ui.components.ConfettiHost
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
@@ -93,7 +91,8 @@ fun HomeScreen(
     val activeProgramId by viewModel.activeProgramId.collectAsState()
     val greeting by viewModel.greeting.collectAsState()
     val bodyweight by viewModel.bodyweight.collectAsState()
-    val routineExercises by viewModel.routineExercises.collectAsState()
+    val programs by viewModel.programs.collectAsState()
+    val programDayCounts by viewModel.programDayCounts.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
@@ -199,20 +198,7 @@ fun HomeScreen(
                         }
 
                         if (upcomingList.isNotEmpty()) {
-                            item {
-                                SectionHeader(
-                                    title = "Upcoming",
-                                    trailing = {
-                                        TextButton(onClick = { navController.navigate(Screen.Programs.route) }) {
-                                            Text(
-                                                "Programs",
-                                                style = MaterialTheme.typography.labelLarge,
-                                                color = SpotterTheme.pulse.effort,
-                                            )
-                                        }
-                                    },
-                                )
-                            }
+                            item { SectionHeader("Upcoming") }
                             items(upcomingList, key = { "${it.date}-${it.routineId}-${it.dayLabel}" }) { workout ->
                                 UpcomingWorkoutCard(
                                     workout = workout,
@@ -226,25 +212,35 @@ fun HomeScreen(
                         }
 
                         when {
-                            state.data.isEmpty() && !generatingPlan -> item {
+                            programs.isEmpty() && state.data.isEmpty() && !generatingPlan -> item {
                                 EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
                             }
 
-                            generatingPlan && state.data.isEmpty() -> item {
+                            generatingPlan && programs.isEmpty() -> item {
                                 GeneratingPlaceholder()
                             }
 
-                            else -> {
-                                item { SectionHeader("Your routines", channel = SpotterTheme.pulse.strength) }
-                                items(state.data, key = { it.id }) { routine ->
-                                    RoutineCard(
-                                        routine = routine,
-                                        exercises = routineExercises[routine.id].orEmpty(),
-                                        isStarting = isStarting,
-                                        onStart = { viewModel.startSession(routine.id) },
-                                        onDelete = { viewModel.deleteRoutine(routine.id) },
-                                        onRename = { newName -> viewModel.renameRoutine(routine.id, newName) },
-                                        onTapCard = { navController.navigate(Screen.RoutineDetail.createRoute(routine.id)) },
+                            programs.isNotEmpty() -> {
+                                item {
+                                    SectionHeader(
+                                        title = "Your programs",
+                                        channel = SpotterTheme.pulse.strength,
+                                        trailing = {
+                                            TextButton(onClick = { navController.navigate(Screen.Programs.route) }) {
+                                                Text(
+                                                    "Manage",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = SpotterTheme.pulse.effort,
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                                items(programs, key = { it.id }) { program ->
+                                    ProgramCard(
+                                        program = program,
+                                        dayCount = programDayCounts[program.id] ?: 0,
+                                        onTap = { navController.navigate(Screen.ProgramDetail.createRoute(program.id)) },
                                     )
                                 }
                             }
@@ -433,140 +429,50 @@ private fun GeneratingPlaceholder() {
     }
 }
 
+/** A program at a glance: name + day count; the whole card opens the program's breakdown. */
 @Composable
-private fun RoutineCard(
-    routine: WorkoutRoutineEntity,
-    exercises: List<RoutineExerciseEntity>,
-    isStarting: Boolean,
-    onStart: () -> Unit,
-    onDelete: () -> Unit,
-    onRename: (String) -> Unit,
-    onTapCard: () -> Unit = {},
+private fun ProgramCard(
+    program: WorkoutProgramEntity,
+    dayCount: Int,
+    onTap: () -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    if (showRenameDialog) {
-        RenameDialog(
-            currentName = routine.name,
-            onDismiss = { showRenameDialog = false },
-            onConfirm = { newName ->
-                onRename(newName)
-                showRenameDialog = false
-            },
-        )
-    }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete routine?") },
-            text = { Text("\"${routine.name}\" will be permanently deleted.") },
-            confirmButton = {
-                TextButton(onClick = { showDeleteConfirm = false; onDelete() }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
-            },
-        )
-    }
-
     PanelCard(
         modifier = Modifier.fillMaxWidth(),
-        onClick = onTapCard,
-        contentPadding = 0.dp,
+        onClick = onTap,
+        channel = if (program.isActive) SpotterTheme.pulse.effort else null,
     ) {
-        Row(
-            modifier = Modifier.padding(
-                start = SpotterTheme.spacing.lg,
-                top = SpotterTheme.spacing.md,
-                bottom = SpotterTheme.spacing.md,
-                end = SpotterTheme.spacing.xs,
-            ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(routine.name, style = MaterialTheme.typography.titleMedium)
+                Text(program.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    routine.source,
+                    text = if (dayCount > 0) {
+                        "$dayCount day${if (dayCount != 1) "s" else ""}"
+                    } else {
+                        "No days yet"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            PulseButton(
-                text = if (isStarting) "Starting…" else "Start",
-                onClick = onStart,
-                enabled = !isStarting,
-                tonal = true,
-                compact = true,
+            if (program.isActive) {
+                Text(
+                    text = "ACTIVE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SpotterTheme.pulse.effort,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(SpotterTheme.pulse.effortDim)
+                        .padding(horizontal = SpotterTheme.spacing.sm, vertical = 3.dp),
+                )
+                Spacer(Modifier.width(SpotterTheme.spacing.sm))
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Routine options")
-                }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Rename") },
-                        onClick = { menuExpanded = false; showRenameDialog = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                        onClick = { menuExpanded = false; showDeleteConfirm = true },
-                    )
-                }
-            }
-        }
-        if (exercises.isNotEmpty()) {
-            Column(
-                modifier = Modifier.padding(
-                    start = SpotterTheme.spacing.lg,
-                    end = SpotterTheme.spacing.lg,
-                    bottom = SpotterTheme.spacing.md,
-                ),
-            ) {
-                exercises.forEach { lift ->
-                    ExercisePreviewRow(lift)
-                    Spacer(Modifier.height(2.dp))
-                }
-            }
         }
     }
-}
-
-@Composable
-private fun RenameDialog(
-    currentName: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    var nameText by remember { mutableStateOf(currentName) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Rename routine") },
-        text = {
-            OutlinedTextField(
-                value = nameText,
-                onValueChange = { nameText = it },
-                label = { Text("Routine name") },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(nameText) },
-                enabled = nameText.isNotBlank(),
-            ) { Text("Rename") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
 }
 
 @Composable

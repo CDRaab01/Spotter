@@ -24,6 +24,8 @@ data class ProjectedSlot(
     val routineId: String?,
     val label: String,
     val routineName: String?,
+    /** 0-based position of this day within the program — drives per-day calendar colors. */
+    val dayIndex: Int,
 )
 
 /**
@@ -36,6 +38,8 @@ data class UpcomingWorkout(
     val routineId: String?,
     val routineName: String?,
     val lifts: List<RoutineExerciseEntity>,
+    /** 0-based position of this day within the program — drives per-day calendar colors. */
+    val dayIndex: Int = 0,
 )
 
 /**
@@ -98,12 +102,14 @@ object WorkoutProjection {
 
         return (0 until count).map { k ->
             // ((startIndex + 1 + k) % n + n) % n stays valid when startIndex == -1.
-            val day = days[((startIndex + 1 + k) % n + n) % n]
+            val dayIndex = ((startIndex + 1 + k) % n + n) % n
+            val day = days[dayIndex]
             ProjectedSlot(
                 date = firstDate.plusDays(step * k),
                 routineId = day.routineId,
                 label = day.label,
                 routineName = day.routineName,
+                dayIndex = dayIndex,
             )
         }
     }

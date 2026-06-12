@@ -7,6 +7,7 @@ import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
@@ -87,6 +88,14 @@ class HomeViewModel @Inject constructor(
     private val _activeProgramId = MutableStateFlow<String?>(null)
     val activeProgramId: StateFlow<String?> = _activeProgramId.asStateFlow()
 
+    /** All cached programs (active first surfaces naturally on Home's "Your programs" section). */
+    private val _programs = MutableStateFlow<List<WorkoutProgramEntity>>(emptyList())
+    val programs: StateFlow<List<WorkoutProgramEntity>> = _programs.asStateFlow()
+
+    /** programId → number of days, for the program card subtitle. */
+    private val _programDayCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val programDayCounts: StateFlow<Map<String, Int>> = _programDayCounts.asStateFlow()
+
     private val _nextProgramDay = MutableStateFlow<ProgramDayOut?>(null)
     val nextProgramDay: StateFlow<ProgramDayOut?> = _nextProgramDay.asStateFlow()
 
@@ -107,11 +116,25 @@ class HomeViewModel @Inject constructor(
 
     init {
         observeRoutines()
+        observePrograms()
         observeBodyweight()
         sync()
         loadStats()
         loadUpcoming()
         loadGreeting()
+    }
+
+    private fun observePrograms() {
+        viewModelScope.launch {
+            programDao.getAll().collect { programs ->
+                // Active program first, then alphabetical (the DAO already sorts by name).
+                _programs.value = programs.sortedByDescending { it.isActive }
+                _programDayCounts.value = programs.associate { program ->
+                    program.id to runCatching { programDayDao.getByProgram(program.id).size }
+                        .getOrDefault(0)
+                }
+            }
+        }
     }
 
     /**
@@ -245,7 +268,7 @@ class HomeViewModel @Inject constructor(
                     val lifts = slot.routineId
                         ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
                         ?: emptyList()
-                    UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts)
+                    UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts, slot.dayIndex)
                 }
                 _upcoming.value = UiState.Success(result)
             } catch (_: Exception) {

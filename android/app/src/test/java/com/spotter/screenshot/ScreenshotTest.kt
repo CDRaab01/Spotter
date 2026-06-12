@@ -173,10 +173,23 @@ private fun HomeScene() {
             Spacer(Modifier.height(12.dp))
             PulseButton(text = "Start", onClick = {}, tonal = true, compact = true)
         }
-        SectionHeader("Your routines", channel = pulse.strength)
-        PanelCard(Modifier.fillMaxWidth()) {
-            Text("Upper / Lower Split", style = MaterialTheme.typography.titleMedium)
-            Text("ai", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionHeader("Your programs", channel = pulse.strength)
+        PanelCard(Modifier.fillMaxWidth(), channel = pulse.effort) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Push / Pull / Legs", style = MaterialTheme.typography.titleMedium)
+                    Text("6 days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    "ACTIVE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = pulse.effort,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(pulse.effortDim)
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
+            }
         }
     }
 }

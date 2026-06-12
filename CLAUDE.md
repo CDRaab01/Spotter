@@ -404,8 +404,13 @@ A full visual redesign of the Android app to a data-forward, instrument-panel de
   active-minutes cyan with a Mon–Sun sparkline via additive `HomeViewModel.weeklyMinutesByDay`).
 - **Progress**: per-tab channel (bodyweight cyan, strength/records violet); `LineChart` redrawn —
   2dp line, hairline gridlines, glow dot on the latest point only.
-- **Calendar**: day numerals in mono; status = green dot (done), cyan dot (in progress), hairline
-  ring (planned).
+- **Calendar**: day numerals in mono; status = green dot (done), blue dot (in progress); planned
+  workouts get a solid dot in their program day's channel via `PulseColors.dayChannel(index)` —
+  day 1 orange, day 2 blue, day 3 violet, day 4 green, repeating (`UpcomingWorkout.dayIndex`
+  threaded from `WorkoutProjection`); rest days keep a quiet ring.
+- **Home**: the "Your routines" list was replaced by **"Your programs"** (program cards with day
+  count + ACTIVE badge → `ProgramDetail`; "Manage" → Programs screen). Routines remain editable
+  through program days and the top-bar "+".
 
 ### Verification
 Android: `:app:compileDebugKotlin` + `:app:testDebugUnitTest` green; Roborazzi baselines

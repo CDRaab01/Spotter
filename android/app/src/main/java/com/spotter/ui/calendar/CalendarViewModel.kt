@@ -140,7 +140,7 @@ class CalendarViewModel @Inject constructor(
                 val lifts = slot.routineId
                     ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
                     ?: emptyList()
-                UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts)
+                UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts, slot.dayIndex)
             }
     }
 
