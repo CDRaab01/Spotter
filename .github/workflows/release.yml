@@ -25,7 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'http://10.0.2.2:8000/' }}" >> local.properties
+          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'https://spotter.dragonflymedia.org/' }}" >> local.properties
       - run: ./gradlew :app:testDebugUnitTest --no-daemon
 
   android-build:
@@ -48,7 +48,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'http://10.0.2.2:8000/' }}" >> local.properties
+          echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'https://spotter.dragonflymedia.org/' }}" >> local.properties
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
       - name: Decode keystore
