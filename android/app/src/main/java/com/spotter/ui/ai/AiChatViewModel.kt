@@ -10,11 +10,13 @@ import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.RoutineCreate
+import com.spotter.data.model.SuggestedAdjustment
 import com.spotter.data.model.SuggestedRoutine
 import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
+import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,6 +37,7 @@ class AiChatViewModel @Inject constructor(
     private val aiRepository: AiRepository,
     private val routineRepository: RoutineRepository,
     private val programRepository: ProgramRepository,
+    private val sessionRepository: SessionRepository,
     private val chatMessageDao: ChatMessageDao,
     private val sessionDao: WorkoutSessionDao,
     private val appPreferences: AppPreferences,
@@ -60,11 +63,19 @@ class AiChatViewModel @Inject constructor(
     private val _pendingProgram = MutableStateFlow<SuggestedProgram?>(null)
     val pendingProgram: StateFlow<SuggestedProgram?> = _pendingProgram.asStateFlow()
 
+    /** A live-workout adjustment the AI proposed, awaiting the user's Apply tap. */
+    private val _pendingAdjustment = MutableStateFlow<SuggestedAdjustment?>(null)
+    val pendingAdjustment: StateFlow<SuggestedAdjustment?> = _pendingAdjustment.asStateFlow()
+
     private val _routineSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val routineSaved: SharedFlow<String> = _routineSaved
 
     private val _programSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val programSaved: SharedFlow<String> = _programSaved
+
+    /** Emits the number of actions applied, so the screen can confirm via snackbar. */
+    private val _adjustmentApplied = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val adjustmentApplied: SharedFlow<Int> = _adjustmentApplied
 
     fun send(userText: String) {
         if (userText.isBlank() || _sendState.value is UiState.Loading) return
@@ -88,12 +99,14 @@ class AiChatViewModel @Inject constructor(
                     )
                 )
                 chatMessageDao.insert(ChatMessageEntity(role = "assistant", content = response.reply))
-                // Prefer a program when present; never surface both.
+                // Exactly one suggestion type per reply (server guarantees this):
+                // a live-workout adjustment wins, then a program, then a single routine.
+                val adjustment = response.suggestedAdjustment
                 val program = response.suggestedProgram
-                if (program != null) {
-                    _pendingProgram.value = program
-                } else {
-                    response.suggestedRoutine?.let { _pendingRoutine.value = it }
+                when {
+                    adjustment != null -> _pendingAdjustment.value = adjustment
+                    program != null -> _pendingProgram.value = program
+                    else -> response.suggestedRoutine?.let { _pendingRoutine.value = it }
                 }
                 _sendState.value = UiState.Success(Unit)
             } catch (e: Exception) {
@@ -146,6 +159,32 @@ class AiChatViewModel @Inject constructor(
 
     fun dismissProgram() {
         _pendingProgram.value = null
+    }
+
+    /**
+     * Apply the pending adjustment to the live workout (and, when [applyToRoutine],
+     * the underlying routine so future workouts pick it up). On failure the card is
+     * kept so the user can retry.
+     */
+    fun applyAdjustment(applyToRoutine: Boolean) {
+        val adjustment = _pendingAdjustment.value ?: return
+        val sessionId = localSessionId ?: return
+        viewModelScope.launch {
+            try {
+                sessionRepository.applyAdjustment(sessionId, adjustment.actions, applyToRoutine)
+                // Refresh the routine cache so the program breakdown / future projections
+                // reflect the edit immediately (mirrors saveProgram).
+                if (applyToRoutine) runCatching { routineRepository.sync() }
+                _pendingAdjustment.value = null
+                _adjustmentApplied.emit(adjustment.actions.size)
+            } catch (e: Exception) {
+                _sendState.value = UiState.Error(e.message ?: "Couldn't apply the change. Try again.")
+            }
+        }
+    }
+
+    fun dismissAdjustment() {
+        _pendingAdjustment.value = null
     }
 
     fun clearHistory() {

@@ -40,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -75,6 +76,7 @@ fun AiChatScreen(
     val sendState by viewModel.sendState.collectAsState()
     val pendingRoutine by viewModel.pendingRoutine.collectAsState()
     val pendingProgram by viewModel.pendingProgram.collectAsState()
+    val pendingAdjustment by viewModel.pendingAdjustment.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var overflowExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -109,6 +111,15 @@ fun AiChatScreen(
         viewModel.programSaved.collect { programName ->
             snackbarHostState.showSnackbar(
                 message = "Program \"$programName\" saved & activated!",
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.adjustmentApplied.collect { count ->
+            snackbarHostState.showSnackbar(
+                message = "Workout updated — $count change${if (count != 1) "s" else ""} applied.",
                 duration = SnackbarDuration.Short,
             )
         }
@@ -206,6 +217,17 @@ fun AiChatScreen(
                         program = program,
                         onSave = { viewModel.saveProgram() },
                         onDismiss = { viewModel.dismissProgram() },
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = pendingAdjustment != null) {
+                pendingAdjustment?.let { adjustment ->
+                    SuggestedAdjustmentCard(
+                        adjustment = adjustment,
+                        onApply = { applyToRoutine -> viewModel.applyAdjustment(applyToRoutine) },
+                        onDismiss = { viewModel.dismissAdjustment() },
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
@@ -325,6 +347,69 @@ private fun SuggestedProgramCard(
             PulseButton(
                 text = "Save Program",
                 onClick = onSave,
+                compact = true,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                Text("Dismiss")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestedAdjustmentCard(
+    adjustment: com.spotter.data.model.SuggestedAdjustment,
+    onApply: (applyToRoutine: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var applyToRoutine by remember { mutableStateOf(true) }
+    PanelCard(
+        modifier = modifier.fillMaxWidth(),
+        channel = SpotterTheme.pulse.effort,
+        contentPadding = 12.dp,
+    ) {
+        Text(
+            text = "Workout adjustment",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        adjustment.actions.forEach { action ->
+            Text(
+                text = "• ${action.summary}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Also update future workouts",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = if (applyToRoutine) "Changes your program too" else "This session only",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = applyToRoutine,
+                onCheckedChange = { applyToRoutine = it },
+            )
+        }
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PulseButton(
+                text = "Apply",
+                onClick = { onApply(applyToRoutine) },
                 compact = true,
                 modifier = Modifier.weight(1f),
             )

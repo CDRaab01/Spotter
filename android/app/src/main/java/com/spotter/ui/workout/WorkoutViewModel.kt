@@ -126,7 +126,9 @@ class WorkoutViewModel @Inject constructor(
             timerSessionId = sessionId
         }
         viewModelScope.launch {
-            _session.value = UiState.Loading
+            // Only show the spinner when there's nothing on screen yet — an ON_RESUME
+            // reload (e.g. returning from the coach chat) must not flash over live data.
+            if (_session.value !is UiState.Success) _session.value = UiState.Loading
             _session.value = try {
                 val data = sessionRepository.getSession(sessionId)
                 _exerciseNotes.value = data.exerciseNotes ?: emptyMap()

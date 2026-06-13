@@ -29,7 +29,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -121,6 +123,8 @@ class ScreenshotTest {
     @Test fun settings_dark() = capture("settings_dark", dark = true) { SettingsScene() }
     @Test fun summary_pr_dark() = capture("summary_pr_dark", dark = true) { SummaryScene(prCount = 2, perfect = false) }
     @Test fun shell_dark() = capture("shell_dark", dark = true) { ShellScene() }
+    @Test fun coach_adjustment_dark() = capture("coach_adjustment_dark", dark = true) { CoachAdjustmentScene() }
+    @Test fun coach_adjustment_light() = capture("coach_adjustment_light", dark = false) { CoachAdjustmentScene() }
     @Test fun app_icon() = capture("app_icon", dark = false) { IconPreviewScene() }
 }
 
@@ -475,6 +479,51 @@ private fun OptionCardPreview(label: String, selected: Boolean) {
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (selected) Icon(Icons.Default.Check, null, tint = pulse.effort)
+        }
+    }
+}
+
+/** The coach's live-workout adjustment card (Apply + future-workouts toggle). */
+@Composable
+private fun CoachAdjustmentScene() {
+    val pulse = SpotterTheme.pulse
+    var applyToRoutine by remember { mutableStateOf(true) }
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // An assistant bubble + the proposal card, as they appear in chat.
+        PanelCard(Modifier.fillMaxWidth()) {
+            Text(
+                "No problem — let's swap to dumbbells so you can keep the same movement with less shoulder strain.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        PanelCard(Modifier.fillMaxWidth(), channel = pulse.effort, contentPadding = 12.dp) {
+            Text("Workout adjustment", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "• Swap Bench Press for DB Bench Press at 40 lb",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Also update future workouts", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Changes your program too",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = applyToRoutine, onCheckedChange = { applyToRoutine = it })
+            }
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PulseButton("Apply", onClick = {}, compact = true, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = {}, modifier = Modifier.weight(1f)) { Text("Dismiss") }
+            }
         }
     }
 }
