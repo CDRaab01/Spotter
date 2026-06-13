@@ -1,6 +1,7 @@
 package com.spotter.data.remote
 
 import com.spotter.data.model.AcceptProgramRequest
+import com.spotter.data.model.ApplyAdjustmentRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
@@ -122,6 +123,12 @@ interface ApiService {
 
     @POST("ai/programs/accept")
     suspend fun acceptProgram(@Body req: AcceptProgramRequest): ProgramOut
+
+    @POST("ai/sessions/{id}/adjust")
+    suspend fun applyAdjustment(
+        @Path("id") id: String,
+        @Body req: ApplyAdjustmentRequest,
+    ): SessionOut
 
     // Calendar
     @GET("calendar")

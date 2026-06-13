@@ -4,14 +4,11 @@ import android.content.Context
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,15 +26,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,19 +51,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SetLogOut
+import com.spotter.ui.components.DataText
+import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.ProgressRing
+import com.spotter.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.PulseMotion
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightLabel
 import com.spotter.ui.theme.toDisplay
@@ -87,6 +89,7 @@ fun WorkoutScreen(
     val elapsed by viewModel.elapsedSeconds.collectAsState()
     val finishState by viewModel.finishState.collectAsState()
     val restTimerSeconds by viewModel.restTimerSeconds.collectAsState()
+    val restDurationSeconds by viewModel.restDurationSeconds.collectAsState()
     val workSeconds by viewModel.workSeconds.collectAsState()
     val exerciseNotes by viewModel.exerciseNotes.collectAsState()
     val priorBests by viewModel.priorBests.collectAsState()
@@ -113,7 +116,17 @@ fun WorkoutScreen(
         }
     }
 
-    LaunchedEffect(sessionId) { viewModel.loadSession(sessionId) }
+    // Reload on every ON_RESUME (covers first entry and returning from the coach chat,
+    // where a popBackStack wouldn't re-key a LaunchedEffect(sessionId)) so AI-applied
+    // adjustments are reflected. loadSession guards against a spinner flash on re-resume.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, sessionId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.loadSession(sessionId)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     LaunchedEffect(Unit) {
         viewModel.navigateBack.collect { navController.popBackStack() }
     }
@@ -142,7 +155,7 @@ fun WorkoutScreen(
                 TextButton(
                     onClick = { showFinishDialog = false; viewModel.finishSession(sessionId) },
                     enabled = !isFinishing,
-                ) { Text("Finish") }
+                ) { Text("Finish", color = SpotterTheme.pulse.recovery) }
             },
             dismissButton = {
                 TextButton(onClick = { showFinishDialog = false }) { Text("Cancel") }
@@ -156,16 +169,16 @@ fun WorkoutScreen(
                 title = {
                     Column {
                         Text("Workout", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            timerText,
-                            style = MaterialTheme.typography.bodySmall,
+                        DataText(
+                            text = timerText,
+                            style = SpotterTheme.dataType.numeral,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -181,7 +194,12 @@ fun WorkoutScreen(
                         onClick = { showFinishDialog = true },
                         enabled = completedCount > 0 && !isFinishing,
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = "Finish workout")
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Finish workout",
+                            tint = if (completedCount > 0) SpotterTheme.pulse.recovery
+                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
             )
@@ -189,41 +207,53 @@ fun WorkoutScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (totalCount > 0) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = SpotterTheme.spacing.lg,
+                        vertical = SpotterTheme.spacing.xs,
+                    ),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = if (allDone) "All sets complete!" else "$completedCount / $totalCount sets",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (allDone) MaterialTheme.colorScheme.primary
+                            text = if (allDone) "ALL SETS COMPLETE" else "SETS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (allDone) SpotterTheme.pulse.recovery
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        DataText(
+                            text = "$completedCount/$totalCount",
+                            style = SpotterTheme.dataType.numeral,
+                            color = if (allDone) SpotterTheme.pulse.recovery
+                                    else MaterialTheme.colorScheme.onSurface,
+                        )
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(SpotterTheme.spacing.xs))
                     LinearProgressIndicator(
                         progress = { progress },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        color = if (allDone) SpotterTheme.pulse.recovery else SpotterTheme.pulse.effort,
+                        trackColor = SpotterTheme.pulse.hairline,
                     )
                 }
             }
 
-            // Always-on work / rest timer. Counts up ("Working") between sets and flips
-            // to a "Rest" countdown right after a set is completed.
+            // Always-on work / rest instrument. A prominent recovery ring while resting; a slim
+            // effort count-up strip while working.
             AnimatedVisibility(visible = totalCount > 0) {
-                RestTimerCard(
+                RestInstrumentPanel(
                     restTimerSeconds = restTimerSeconds,
+                    restDurationSeconds = restDurationSeconds,
                     workSeconds = workSeconds,
                     onSkip = { viewModel.dismissRestTimer() },
                 )
             }
 
             when (val state = session) {
-                is UiState.Loading -> Box(
-                    Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) { CircularProgressIndicator() }
+                is UiState.Loading -> LoadingState()
 
                 is UiState.Error -> Box(
                     Modifier.fillMaxSize(),
@@ -245,8 +275,8 @@ fun WorkoutScreen(
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(SpotterTheme.spacing.lg),
+                            verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.md),
                         ) {
                             items(grouped.entries.toList(), key = { it.key }) { (exerciseId, sets) ->
                                 ExerciseCard(
@@ -274,92 +304,94 @@ fun WorkoutScreen(
 }
 
 /**
- * The work/rest timer. While resting it shows a countdown inside a circular ring that drains as
- * the rest elapses, with a gentle breathing pulse; while working it's a calm counting-up clock.
+ * The work/rest instrument. Resting: a prominent recovery-green ring draining with the
+ * countdown, mono readout in the middle, and a skip control. Working: a slim strip with the
+ * count-up in effort cyan.
  */
 @Composable
-private fun RestTimerCard(
+private fun RestInstrumentPanel(
     restTimerSeconds: Int?,
+    restDurationSeconds: Int?,
     workSeconds: Int,
     onSkip: () -> Unit,
 ) {
+    val pulse = SpotterTheme.pulse
     val resting = restTimerSeconds != null
-
-    // Remember the rest length the countdown started from so the ring can show progress without
-    // the ViewModel exposing it. Resets whenever a new (longer) rest begins.
-    var restStart by remember { mutableStateOf(1) }
-    LaunchedEffect(restTimerSeconds) {
-        val s = restTimerSeconds
-        if (s != null && s > restStart) restStart = s
-        if (s == null) restStart = 1
-    }
-    val ringProgress = if (resting && restStart > 0) {
-        (restTimerSeconds ?: 0).toFloat() / restStart
-    } else 0f
-
-    // Breathing pulse while resting.
-    val pulse = rememberInfiniteTransition(label = "restPulse")
-    val pulseScale by pulse.animateFloat(
-        initialValue = 1f,
-        targetValue = if (resting) 1.06f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pulseScale",
-    )
-
-    val container by animateColorAsState(
-        targetValue = if (resting) MaterialTheme.colorScheme.primaryContainer
-                      else MaterialTheme.colorScheme.surfaceVariant,
-        label = "timerContainer",
-    )
-
-    Card(
+    PanelCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = container),
-        shape = MaterialTheme.shapes.large,
+            .padding(horizontal = SpotterTheme.spacing.lg, vertical = SpotterTheme.spacing.xs),
+        channel = if (resting) pulse.recovery else null,
+        contentPadding = 0.dp,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val seconds = if (resting) (restTimerSeconds ?: 0) else workSeconds
-            Box(
-                modifier = Modifier.size(64.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (resting) {
-                    CircularProgressIndicator(
-                        progress = { ringProgress },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .scale(pulseScale),
-                        strokeWidth = 5.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+        AnimatedContent(
+            targetState = resting,
+            transitionSpec = {
+                fadeIn(PulseMotion.standard()) togetherWith fadeOut(PulseMotion.fast())
+            },
+            label = "restInstrument",
+        ) { isResting ->
+            if (isResting) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(SpotterTheme.spacing.lg),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    val remaining = restTimerSeconds ?: 0
+                    val duration = (restDurationSeconds ?: remaining).coerceAtLeast(1)
+                    ProgressRing(
+                        progress = remaining.toFloat() / duration,
+                        channel = pulse.recovery,
+                        strokeWidth = 8.dp,
+                        modifier = Modifier.size(150.dp),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            DataText(
+                                text = "%d:%02d".format(remaining / 60, remaining % 60),
+                                style = SpotterTheme.dataType.dataLarge,
+                                color = pulse.recovery,
+                            )
+                            Text(
+                                text = "REST",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(SpotterTheme.spacing.sm))
+                    PulseButton(
+                        text = "Skip rest",
+                        onClick = onSkip,
+                        tonal = true,
+                        compact = true,
+                        channel = pulse.recovery,
+                        onChannel = pulse.onRecovery,
+                        dimChannel = pulse.recoveryDim,
                     )
                 }
-                Text(
-                    text = "%d:%02d".format(seconds / 60, seconds % 60),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = if (resting) "Rest — next set coming up." else "Working",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (resting) {
-                IconButton(onClick = onSkip) {
-                    Icon(Icons.Default.Close, contentDescription = "Skip rest")
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = SpotterTheme.spacing.lg,
+                            vertical = SpotterTheme.spacing.md,
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    DataText(
+                        text = "%d:%02d".format(workSeconds / 60, workSeconds % 60),
+                        style = SpotterTheme.dataType.dataSmall,
+                        color = pulse.effort,
+                    )
+                    Spacer(Modifier.width(SpotterTheme.spacing.md))
+                    Text(
+                        text = "WORKING",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -377,6 +409,7 @@ private fun ExerciseCard(
     onNoteSave: (String) -> Unit,
 ) {
     val weightUnit = LocalWeightUnit.current
+    val pulse = SpotterTheme.pulse
     val first = sets.first()
     val name = first.exerciseName ?: first.exerciseId
     val targetHeader = buildTargetHeader(first, weightUnit)
@@ -403,141 +436,139 @@ private fun ExerciseCard(
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            if (supersetGroup != null) {
-                Text(
-                    text = "Superset ${('A' + supersetGroup - 1).uppercaseChar()}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(name, style = MaterialTheme.typography.titleMedium)
-                    if (targetHeader.isNotEmpty()) {
-                        Text(
-                            targetHeader,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (priorBest != null) {
-                        if (priorBest.lastSets.isNotEmpty()) {
-                            val lastSetsText = priorBest.lastSets.joinToString(" · ") { sl ->
-                                val wt = sl.weight
-                                if (wt != null) "${sl.reps}×${weightUnit.formatWeight(wt)}"
-                                else "${sl.reps} reps"
-                            }
-                            Text(
-                                "Last: $lastSetsText",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                            )
-                        } else {
-                            val weightStr = priorBest.weight?.let { " @ ${weightUnit.formatWeight(it)}" } ?: ""
-                            Text(
-                                "Best: ${priorBest.reps} reps$weightStr",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                            )
-                        }
-                        priorBest.suggestedWeight?.let { suggested ->
-                            Text(
-                                "Suggested: ${weightUnit.formatWeight(suggested)}" +
-                                    (priorBest.suggestedReason?.let { " — $it" } ?: ""),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-                IconButton(onClick = { showNote = !showNote }) {
-                    Icon(
-                        Icons.Default.EditNote,
-                        contentDescription = "Toggle note",
-                        tint = if (noteText.isNotEmpty()) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.onSurfaceVariant,
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
+        if (supersetGroup != null) {
+            Text(
+                text = "SUPERSET ${('A' + supersetGroup - 1).uppercaseChar()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = pulse.strength,
+                modifier = Modifier.padding(bottom = SpotterTheme.spacing.xs),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                if (targetHeader.isNotEmpty()) {
+                    DataText(
+                        text = targetHeader,
+                        style = SpotterTheme.dataType.numeral,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Text(
-                    "$done / ${sets.size}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (done == sets.size) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            AnimatedVisibility(visible = showNote) {
-                OutlinedTextField(
-                    value = noteText,
-                    onValueChange = { noteText = it },
-                    label = { Text("Note") },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        onNoteSave(noteText)
-                        focusManager.clearFocus()
-                    }),
-                    maxLines = 3,
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            // Column header: aligns with each set's [N] [reps] [weight] [✓] row.
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Set",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(36.dp),
-                )
-                Text(
-                    "Reps",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(76.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    weightUnit.formatWeightLabel().replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(96.dp),
-                )
-            }
-            sets.forEach { setLog ->
-                SetLogRow(
-                    setLog = setLog,
-                    onCommit = { reps, weight -> onCommitValues(setLog, reps, weight) },
-                    onToggleComplete = { reps, weight -> onToggleComplete(setLog, reps, weight) },
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                if (workingWeight != null && workingWeight > 0) {
-                    TextButton(onClick = { showPlateCalc = true }) {
-                        Text("Plates")
+                if (priorBest != null) {
+                    if (priorBest.lastSets.isNotEmpty()) {
+                        val lastSetsText = priorBest.lastSets.joinToString(" · ") { sl ->
+                            val wt = sl.weight
+                            if (wt != null) "${sl.reps}×${weightUnit.formatWeight(wt)}"
+                            else "${sl.reps} reps"
+                        }
+                        Text(
+                            "Last: $lastSetsText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = pulse.strength,
+                        )
+                    } else {
+                        val weightStr = priorBest.weight?.let { " @ ${weightUnit.formatWeight(it)}" } ?: ""
+                        Text(
+                            "Best: ${priorBest.reps} reps$weightStr",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = pulse.strength,
+                        )
                     }
-                    TextButton(onClick = { showWarmUp = true }) {
-                        Text("Warm-up")
+                    priorBest.suggestedWeight?.let { suggested ->
+                        Text(
+                            "Suggested: ${weightUnit.formatWeight(suggested)}" +
+                                (priorBest.suggestedReason?.let { " — $it" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = pulse.effort,
+                        )
                     }
                 }
-                TextButton(onClick = { onAddSet(sets.last()) }) {
-                    Text("+ Add Set")
+            }
+            IconButton(onClick = { showNote = !showNote }) {
+                Icon(
+                    Icons.Default.EditNote,
+                    contentDescription = "Toggle note",
+                    tint = if (noteText.isNotEmpty()) pulse.effort
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DataText(
+                text = "$done/${sets.size}",
+                style = SpotterTheme.dataType.numeral,
+                color = if (done == sets.size) pulse.recovery
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        AnimatedVisibility(visible = showNote) {
+            OutlinedTextField(
+                value = noteText,
+                onValueChange = { noteText = it },
+                label = { Text("Note") },
+                modifier = Modifier.fillMaxWidth().padding(top = SpotterTheme.spacing.sm),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    onNoteSave(noteText)
+                    focusManager.clearFocus()
+                }),
+                maxLines = 3,
+            )
+        }
+
+        Spacer(Modifier.height(SpotterTheme.spacing.md))
+        // Column header: aligns with each set's [N] [reps] [weight] [✓] row.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "SET",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(36.dp),
+            )
+            Text(
+                "REPS",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(76.dp),
+            )
+            Spacer(Modifier.width(SpotterTheme.spacing.sm))
+            Text(
+                weightUnit.formatWeightLabel().uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(96.dp),
+            )
+        }
+        sets.forEach { setLog ->
+            SetLogRow(
+                setLog = setLog,
+                onCommit = { reps, weight -> onCommitValues(setLog, reps, weight) },
+                onToggleComplete = { reps, weight -> onToggleComplete(setLog, reps, weight) },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            if (workingWeight != null && workingWeight > 0) {
+                TextButton(onClick = { showPlateCalc = true }) {
+                    Text("Plates")
                 }
+                TextButton(onClick = { showWarmUp = true }) {
+                    Text("Warm-up")
+                }
+            }
+            TextButton(onClick = { onAddSet(sets.last()) }) {
+                Text("+ Add Set", color = pulse.effort)
             }
         }
     }

@@ -4,6 +4,6 @@
          (Compose applies the in-app theme; this just covers the pre-Compose frame). -->
     <style name="Theme.Spotter" parent="android:Theme.Material.NoActionBar">
         <!-- Matches DarkBackground. -->
-        <item name="android:windowBackground">#FF0C0E14</item>
+        <item name="android:windowBackground">#FF0B0D10</item>
     </style>
 </resources>

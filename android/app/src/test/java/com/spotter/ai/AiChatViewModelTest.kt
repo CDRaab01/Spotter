@@ -6,13 +6,18 @@ import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.RoutineExerciseIn
 import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.ProgramOut
+import com.spotter.data.model.SessionOut
+import com.spotter.data.model.SuggestedAdjustment
+import com.spotter.data.model.SuggestedAdjustmentAction
 import com.spotter.data.model.SuggestedRoutine
 import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.model.SuggestedProgramDay
 import androidx.lifecycle.SavedStateHandle
+import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
+import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.ai.AiChatViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
@@ -57,6 +62,8 @@ class AiChatViewModelTest {
     private lateinit var aiRepository: AiRepository
     private lateinit var routineRepository: RoutineRepository
     private lateinit var programRepository: ProgramRepository
+    private lateinit var sessionRepository: SessionRepository
+    private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var appPreferences: AppPreferences
     private lateinit var fakeChatDao: FakeChatMessageDao
     private lateinit var viewModel: AiChatViewModel
@@ -67,14 +74,19 @@ class AiChatViewModelTest {
         aiRepository = mock()
         routineRepository = mock()
         programRepository = mock()
+        sessionRepository = mock()
+        sessionDao = mock()
         appPreferences = mock()
         fakeChatDao = FakeChatMessageDao()
         whenever(appPreferences.userProfile).thenReturn(flowOf(UserProfile()))
-        viewModel = AiChatViewModel(
-            aiRepository, routineRepository, programRepository, fakeChatDao, mock(), appPreferences,
-            SavedStateHandle(),
-        )
+        viewModel = buildViewModel(SavedStateHandle())
     }
+
+    /** Build a VM; pass a SavedStateHandle with "sessionId" to simulate in-workout chat. */
+    private fun buildViewModel(savedStateHandle: SavedStateHandle) = AiChatViewModel(
+        aiRepository, routineRepository, programRepository, sessionRepository,
+        fakeChatDao, sessionDao, appPreferences, savedStateHandle,
+    )
 
     @After
     fun tearDown() {
@@ -266,6 +278,117 @@ class AiChatViewModelTest {
         viewModel.dismissProgram()
 
         assertNull(viewModel.pendingProgram.value)
+    }
+
+    // ── Live workout adjustments ────────────────────────────────────────────
+
+    private val swapAction = SuggestedAdjustmentAction(
+        type = "swap",
+        exerciseId = "ex-bench",
+        exerciseName = "Bench Press",
+        newExerciseId = "ex-db",
+        newExerciseName = "DB Bench Press",
+        weight = 40.0,
+        summary = "Swap Bench Press for DB Bench Press",
+    )
+
+    private fun stubSession() = SessionOut(
+        id = "local-1", userId = "u-1", date = "2026-06-12", status = "in_progress",
+    )
+
+    @Test
+    fun `send stores suggestedAdjustment and not routine or program`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(
+                reply = "Let's swap that.",
+                suggestedAdjustment = SuggestedAdjustment(actions = listOf(swapAction)),
+            )
+        )
+
+        vm.send("I can't do bench press")
+        advanceTimeBy(200)
+
+        assertNotNull(vm.pendingAdjustment.value)
+        assertEquals(1, vm.pendingAdjustment.value?.actions?.size)
+        assertNull(vm.pendingRoutine.value)
+        assertNull(vm.pendingProgram.value)
+    }
+
+    @Test
+    fun `applyAdjustment with future on calls repo, syncs routines, emits count`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        whenever(sessionRepository.applyAdjustment(any(), any(), any())).thenReturn(stubSession())
+
+        vm.send("swap it")
+        advanceTimeBy(200)
+
+        val applied = mutableListOf<Int>()
+        val job = launch { vm.adjustmentApplied.collect { applied.add(it) } }
+
+        vm.applyAdjustment(applyToRoutine = true)
+        advanceTimeBy(200)
+
+        org.mockito.kotlin.verify(sessionRepository).applyAdjustment("local-1", listOf(swapAction), true)
+        org.mockito.kotlin.verify(routineRepository).sync()
+        assertNull(vm.pendingAdjustment.value)
+        assertEquals(listOf(1), applied)
+        job.cancel()
+    }
+
+    @Test
+    fun `applyAdjustment with future off does not sync routines`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        whenever(sessionRepository.applyAdjustment(any(), any(), any())).thenReturn(stubSession())
+
+        vm.send("swap")
+        advanceTimeBy(200)
+        vm.applyAdjustment(applyToRoutine = false)
+        advanceTimeBy(200)
+
+        org.mockito.kotlin.verify(sessionRepository).applyAdjustment("local-1", listOf(swapAction), false)
+        org.mockito.kotlin.verify(routineRepository, org.mockito.kotlin.never()).sync()
+        assertNull(vm.pendingAdjustment.value)
+    }
+
+    @Test
+    fun `applyAdjustment keeps card on failure`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        whenever(sessionRepository.applyAdjustment(any(), any(), any()))
+            .thenThrow(RuntimeException("network"))
+
+        vm.send("swap")
+        advanceTimeBy(200)
+        vm.applyAdjustment(applyToRoutine = true)
+        advanceTimeBy(200)
+
+        assertIs<UiState.Error>(vm.sendState.value)
+        assertNotNull(vm.pendingAdjustment.value)  // retained for retry
+    }
+
+    @Test
+    fun `dismissAdjustment clears without calling repo`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        vm.send("swap")
+        advanceTimeBy(200)
+        assertNotNull(vm.pendingAdjustment.value)
+
+        vm.dismissAdjustment()
+
+        assertNull(vm.pendingAdjustment.value)
+        org.mockito.kotlin.verifyNoInteractions(sessionRepository)
     }
 
     @Test

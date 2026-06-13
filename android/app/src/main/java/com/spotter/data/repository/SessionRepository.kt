@@ -5,8 +5,10 @@ import com.spotter.data.local.dao.SetLogDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.SetLogEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
+import com.spotter.data.model.ApplyAdjustmentRequest
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SessionCreate
+import com.spotter.data.model.SuggestedAdjustmentAction
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionSummary
 import com.spotter.data.model.SessionUpdate
@@ -142,6 +144,43 @@ class SessionRepository @Inject constructor(
     private suspend fun fallbackToLocal(session: WorkoutSessionEntity, id: String): SessionOut {
         val sets = setLogDao.getBySession(id)
         return session.toSessionOut(sets)
+    }
+
+    /**
+     * Apply a user-accepted AI workout adjustment. Online-required by design — the
+     * suggestion could only exist if chat (and therefore the server) was reachable.
+     *
+     * The server may have DELETED sets (swap/remove), which the incremental
+     * [getSession] merge never does, so the local cache is rebuilt wholesale from the
+     * response: unsynced local-only rows are preserved, everything else is replaced.
+     */
+    suspend fun applyAdjustment(
+        localSessionId: String,
+        actions: List<SuggestedAdjustmentAction>,
+        applyToRoutine: Boolean,
+    ): SessionOut {
+        val cached = sessionDao.getById(localSessionId)
+            ?: throw Exception("Session not found: $localSessionId")
+        val serverSessionId = cached.serverId
+            ?: throw Exception("Workout hasn't synced yet — try again in a moment.")
+
+        val result = api.applyAdjustment(
+            serverSessionId,
+            ApplyAdjustmentRequest(actions = actions, applyToRoutine = applyToRoutine),
+        )
+
+        val unsyncedLocal = setLogDao.getBySession(localSessionId)
+            .filter { it.serverId == null && it.syncPending }
+        setLogDao.deleteBySession(localSessionId)
+        unsyncedLocal.forEach { setLogDao.upsert(it) }
+        result.setLogs.forEach { sl -> setLogDao.upsert(sl.toEntity(localSessionId)) }
+        sessionDao.upsert(
+            result.copy(id = localSessionId).toEntity().copy(
+                serverId = serverSessionId,
+                syncPending = cached.syncPending,
+            )
+        )
+        return result.copy(id = localSessionId)
     }
 
     // ── Session updates ───────────────────────────────────────────────────────

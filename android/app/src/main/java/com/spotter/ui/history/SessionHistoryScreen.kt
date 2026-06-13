@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
@@ -44,7 +44,9 @@ import com.spotter.data.model.SessionSummary
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.DataText
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 import java.time.LocalDate
@@ -65,7 +67,7 @@ fun SessionHistoryScreen(
                 title = { Text("Workout History") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -139,7 +141,7 @@ private fun SessionCard(
         )
     }
 
-    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
+    PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Column(
             modifier = Modifier
                 .clickable { expanded = !expanded }
@@ -165,14 +167,14 @@ private fun SessionCard(
                 Spacer(Modifier.width(8.dp))
                 Column(horizontalAlignment = Alignment.End) {
                     session.durationSeconds?.let { secs ->
-                        Text(
-                            formatDuration(secs),
-                            style = MaterialTheme.typography.bodySmall,
+                        DataText(
+                            text = formatDuration(secs),
+                            style = SpotterTheme.dataType.numeral,
                         )
                     }
-                    Text(
-                        "${session.completedSets}/${session.totalSets} sets",
-                        style = MaterialTheme.typography.bodySmall,
+                    DataText(
+                        text = "${session.completedSets}/${session.totalSets} sets",
+                        style = SpotterTheme.dataType.numeral,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -189,9 +191,9 @@ private fun SessionCard(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(ex.exerciseName, style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                "${ex.completedSets}/${ex.totalSets}",
-                                style = MaterialTheme.typography.bodySmall,
+                            DataText(
+                                text = "${ex.completedSets}/${ex.totalSets}",
+                                style = SpotterTheme.dataType.numeral,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -218,9 +220,10 @@ private fun SessionCard(
 
 @Composable
 private fun StatusBadge(status: String) {
+    val pulse = SpotterTheme.pulse
     val (label, color) = when (status) {
-        "completed" -> "Done" to MaterialTheme.colorScheme.primary
-        "in_progress" -> "Active" to MaterialTheme.colorScheme.tertiary
+        "completed" -> "Done" to pulse.recovery
+        "in_progress" -> "Active" to pulse.effort
         else -> status to MaterialTheme.colorScheme.onSurfaceVariant
     }
     Surface(

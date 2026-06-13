@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,10 +48,13 @@ import androidx.navigation.NavController
 import com.spotter.data.model.CalendarEntry
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
-import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.DataText
 import com.spotter.ui.components.PulsingDots
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.SpotterTheme
+import com.spotter.ui.theme.dayChannel
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
 import java.time.LocalDate
@@ -90,14 +92,7 @@ fun CalendarScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Calendar") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
+            TopAppBar(title = { Text("Calendar") })
         },
     ) { padding ->
         Column(
@@ -143,7 +138,7 @@ fun CalendarScreen(
             Spacer(Modifier.height(4.dp))
 
             if (!hasActiveProgram) {
-                SpotterCard(
+                PanelCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -161,7 +156,7 @@ fun CalendarScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GradientButton(
+                            PulseButton(
                                 text = "Ask the coach",
                                 onClick = { navController.navigate(Screen.AiChat.createRoute()) },
                             )
@@ -280,6 +275,7 @@ private fun MonthGrid(
                             entry = entryMap[date],
                             isProjected = pw != null,
                             isRestDay = pw?.routineId == null,
+                            projectedDayIndex = pw?.dayIndex,
                             onClick = { onDayClick(date) },
                             modifier = Modifier.weight(1f),
                         )
@@ -300,31 +296,31 @@ private fun DayCell(
     entry: CalendarEntry?,
     isProjected: Boolean,
     isRestDay: Boolean,
+    projectedDayIndex: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val pulse = SpotterTheme.pulse
     val circleColor = when {
-        isSelected -> MaterialTheme.colorScheme.primary
-        isToday -> MaterialTheme.colorScheme.primaryContainer
+        isSelected -> pulse.effort
+        isToday -> pulse.effortDim
         else -> Color.Transparent
     }
     val textColor = when {
-        isSelected -> MaterialTheme.colorScheme.onPrimary
-        isToday -> MaterialTheme.colorScheme.onPrimaryContainer
+        isSelected -> pulse.onEffort
+        isToday -> pulse.effort
         else -> MaterialTheme.colorScheme.onSurface
     }
-    // A real session always wins over a projection on the same date.
+    // A real session always wins over a projection on the same date. Planned workouts get a
+    // solid dot in their program day's channel (day 1 orange, day 2 blue, …) so the rotation
+    // reads at a glance; rest days keep a quiet ring.
     val dotColor = when {
-        entry?.status == "completed" -> MaterialTheme.colorScheme.secondary
-        entry != null -> MaterialTheme.colorScheme.outline
+        entry?.status == "completed" -> pulse.recovery
+        entry != null -> pulse.effort
+        isProjected && !isRestDay -> pulse.dayChannel(projectedDayIndex ?: 0)
         else -> Color.Transparent
     }
-    // Rest days get a muted ring; workout projections get the accent tertiary ring.
-    val projectedRingColor = if (isRestDay)
-        MaterialTheme.colorScheme.outlineVariant
-    else
-        MaterialTheme.colorScheme.tertiary
-    val showProjectedRing = entry == null && isProjected
+    val showRestRing = entry == null && isProjected && isRestDay
 
     Column(
         modifier = modifier
@@ -339,20 +335,19 @@ private fun DayCell(
                 .background(color = circleColor, shape = CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
+            DataText(
                 text = "$day",
-                style = MaterialTheme.typography.bodyMedium,
+                style = SpotterTheme.dataType.numeral.copy(textAlign = TextAlign.Center),
                 color = textColor,
-                textAlign = TextAlign.Center,
             )
         }
         Spacer(Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .size(5.dp)
+                .size(6.dp)
                 .then(
-                    if (showProjectedRing) {
-                        Modifier.border(1.dp, projectedRingColor, CircleShape)
+                    if (showRestRing) {
+                        Modifier.border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), CircleShape)
                     } else {
                         Modifier.background(color = dotColor, shape = CircleShape)
                     },
@@ -366,7 +361,7 @@ private fun SessionDetailCard(
     entry: CalendarEntry,
     onResume: () -> Unit,
 ) {
-    SpotterCard(
+    PanelCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -392,9 +387,9 @@ private fun SessionDetailCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     StatusChip(entry.status)
-                    Text(
+                    DataText(
                         text = "${entry.setCount} sets",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = SpotterTheme.dataType.numeral,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -411,7 +406,7 @@ private fun SessionDetailCard(
 
 @Composable
 private fun RestDayCard(workout: UpcomingWorkout) {
-    SpotterCard(
+    PanelCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -439,7 +434,7 @@ private fun UpcomingDetailCard(
     workout: UpcomingWorkout,
     onStart: () -> Unit,
 ) {
-    SpotterCard(
+    PanelCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -447,7 +442,7 @@ private fun UpcomingDetailCard(
         Text(
             text = workout.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = SpotterTheme.pulse.effort,
         )
         Text(
             text = workout.routineName ?: workout.dayLabel,
@@ -462,7 +457,7 @@ private fun UpcomingDetailCard(
         }
         if (workout.routineId != null) {
             Spacer(Modifier.height(12.dp))
-            GradientButton(
+            PulseButton(
                 text = "Start workout now",
                 onClick = onStart,
                 modifier = Modifier.fillMaxWidth(),
@@ -473,14 +468,15 @@ private fun UpcomingDetailCard(
 
 @Composable
 private fun StatusChip(status: String) {
+    val pulse = SpotterTheme.pulse
     val containerColor = when (status) {
-        "completed" -> MaterialTheme.colorScheme.primaryContainer
-        "in_progress" -> MaterialTheme.colorScheme.secondaryContainer
+        "completed" -> pulse.recoveryDim
+        "in_progress" -> pulse.effortDim
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = when (status) {
-        "completed" -> MaterialTheme.colorScheme.onPrimaryContainer
-        "in_progress" -> MaterialTheme.colorScheme.onSecondaryContainer
+        "completed" -> pulse.recovery
+        "in_progress" -> pulse.effort
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val label = when (status) {

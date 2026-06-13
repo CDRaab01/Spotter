@@ -97,8 +97,10 @@ async def build_current_session_context(
 ) -> str | None:
     """Trusted summary of the workout currently in progress, for in-workout chat.
 
-    Returns None if the session doesn't exist or isn't the user's. Advice-only:
-    the coach is told what's happening but cannot edit the log.
+    Returns None if the session doesn't exist or isn't the user's. The coach may
+    propose a session adjustment from this state, but it has no write path — a
+    proposal is only persisted when the user explicitly accepts it via
+    POST /ai/sessions/{id}/adjust.
     """
     result = await db.execute(
         select(WorkoutSession)
@@ -135,7 +137,18 @@ async def build_current_session_context(
             last_txt = f"; last completed {last.reps} reps bodyweight"
         else:
             last_txt = ""
-        lines.append(f"- {name}: {done}/{len(sets)} sets done{last_txt}")
+        # Ground adjust_weight proposals in the actual loaded weight of the sets
+        # still to come, not just the last completed set.
+        remaining = [s for s in sets if not s.completed]
+        if remaining:
+            w = remaining[0].weight
+            remaining_txt = (
+                f"; {len(remaining)} sets remaining at "
+                + (f"{w:g} lb" if w is not None else "bodyweight")
+            )
+        else:
+            remaining_txt = "; all sets done"
+        lines.append(f"- {name}: {done}/{len(sets)} sets done{last_txt}{remaining_txt}")
     return "\n".join(lines)
 
 

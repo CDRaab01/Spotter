@@ -1,91 +1,84 @@
 package com.spotter.ui.theme
 
 import androidx.compose.material3.Typography
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.spotter.R
 
 /*
- * Type system — Sora for display/headline/title (geometric, athletic) and Inter for body/label
- * (highly legible at small sizes). Both ship as bundled variable fonts; specific weights are
- * pulled via FontVariation (API 26+). Large headers get tighter tracking and heavier weight for
- * the bold feel.
+ * PULSE type system. Three voices on a minor-third (1.2) UI scale — 12 / 14 / 17 / 20 / 24 / 29:
+ *  - Space Grotesk for display/headline/title — geometric, technical, slightly engineered.
+ *  - Inter for body/label — quiet and legible; labels run Medium+ with wide tracking and are
+ *    used UPPERCASE as instrument-panel captions.
+ *  - JetBrains Mono for data numerals (DataType.kt) — every weight, rep and timer aligns.
+ *
+ * All faces ship as STATIC instances (one file per weight), not variable fonts: several devices
+ * ignore FontVariation weight settings and render the lightest master, so static instances are
+ * the only way to guarantee real bold everywhere.
  */
 
-@OptIn(ExperimentalTextApi::class)
-private fun sora(weight: FontWeight) = Font(
-    R.font.sora_var,
-    weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
-)
-
-@OptIn(ExperimentalTextApi::class)
-private fun inter(weight: FontWeight) = Font(
-    R.font.inter_var,
-    weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
-)
-
-val SoraFamily = FontFamily(
-    sora(FontWeight.Normal),
-    sora(FontWeight.Medium),
-    sora(FontWeight.SemiBold),
-    sora(FontWeight.Bold),
-    sora(FontWeight.ExtraBold),
+val SpaceGroteskFamily = FontFamily(
+    Font(R.font.space_grotesk_medium, weight = FontWeight.Medium),
+    Font(R.font.space_grotesk_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.space_grotesk_bold, weight = FontWeight.Bold),
 )
 
 val InterFamily = FontFamily(
-    inter(FontWeight.Normal),
-    inter(FontWeight.Medium),
-    inter(FontWeight.SemiBold),
-    inter(FontWeight.Bold),
+    Font(R.font.inter_regular, weight = FontWeight.Normal),
+    Font(R.font.inter_medium, weight = FontWeight.Medium),
+    Font(R.font.inter_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.inter_bold, weight = FontWeight.Bold),
+)
+
+val JetBrainsMonoFamily = FontFamily(
+    Font(R.font.jetbrains_mono_medium, weight = FontWeight.Medium),
+    Font(R.font.jetbrains_mono_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.jetbrains_mono_bold, weight = FontWeight.Bold),
 )
 
 val Typography = Typography(
     displayLarge = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.ExtraBold,
-        fontSize = 44.sp, lineHeight = 48.sp, letterSpacing = (-1).sp,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
+        fontSize = 42.sp, lineHeight = 46.sp, letterSpacing = (-0.5).sp,
     ),
     displayMedium = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.ExtraBold,
-        fontSize = 36.sp, lineHeight = 42.sp, letterSpacing = (-0.5).sp,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
+        fontSize = 35.sp, lineHeight = 40.sp, letterSpacing = (-0.5).sp,
     ),
     displaySmall = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.Bold,
-        fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
+        fontSize = 29.sp, lineHeight = 34.sp, letterSpacing = (-0.25).sp,
     ),
     headlineLarge = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.Bold,
-        fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
+        fontSize = 29.sp, lineHeight = 34.sp, letterSpacing = (-0.25).sp,
     ),
     headlineMedium = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.Bold,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
         fontSize = 24.sp, lineHeight = 30.sp, letterSpacing = (-0.25).sp,
     ),
     headlineSmall = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.SemiBold,
         fontSize = 20.sp, lineHeight = 26.sp,
     ),
     titleLarge = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.Bold,
         fontSize = 20.sp, lineHeight = 26.sp,
     ),
     titleMedium = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp, lineHeight = 22.sp,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp, lineHeight = 22.sp,
     ),
     titleSmall = TextStyle(
-        fontFamily = SoraFamily, fontWeight = FontWeight.SemiBold,
+        fontFamily = SpaceGroteskFamily, fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp, lineHeight = 20.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = InterFamily, fontWeight = FontWeight.Normal,
-        fontSize = 16.sp, lineHeight = 24.sp,
+        fontSize = 17.sp, lineHeight = 24.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = InterFamily, fontWeight = FontWeight.Normal,
@@ -97,14 +90,14 @@ val Typography = Typography(
     ),
     labelLarge = TextStyle(
         fontFamily = InterFamily, fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.1.sp,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.2.sp,
     ),
     labelMedium = TextStyle(
         fontFamily = InterFamily, fontWeight = FontWeight.Medium,
-        fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp,
+        fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.8.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = InterFamily, fontWeight = FontWeight.Medium,
-        fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.5.sp,
+        fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.sp,
     ),
 )

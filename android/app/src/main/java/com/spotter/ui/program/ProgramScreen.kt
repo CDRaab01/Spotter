@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ViewWeek
@@ -46,7 +46,8 @@ import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 
@@ -75,7 +76,7 @@ fun ProgramScreen(
                 title = { Text("Programs") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -86,7 +87,11 @@ fun ProgramScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showCreateDialog = true }) {
+            FloatingActionButton(
+                onClick = { showCreateDialog = true },
+                containerColor = SpotterTheme.pulse.effort,
+                contentColor = SpotterTheme.pulse.onEffort,
+            ) {
                 Icon(Icons.Default.Add, contentDescription = "Create program")
             }
         },
@@ -164,9 +169,10 @@ private fun ProgramCard(
         )
     }
 
-    SpotterCard(
+    PanelCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onOpen,
+        channel = if (program.isActive) SpotterTheme.pulse.effort else null,
         contentPadding = 0.dp,
     ) {
         Row(
@@ -180,13 +186,13 @@ private fun ProgramCard(
                 Text(
                     if (program.isActive) "Active · tap to edit days" else "Tap to edit days",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (program.isActive) MaterialTheme.colorScheme.primary
+                    color = if (program.isActive) SpotterTheme.pulse.effort
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (!program.isActive) {
                 IconButton(onClick = onActivate) {
-                    Icon(Icons.Default.Check, contentDescription = "Activate", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Check, contentDescription = "Activate", tint = SpotterTheme.pulse.effort)
                 }
             }
             IconButton(onClick = { showDeleteConfirm = true }) {

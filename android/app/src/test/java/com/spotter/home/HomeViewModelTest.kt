@@ -81,6 +81,8 @@ class HomeViewModelTest {
         routineExerciseDao = mock()
         apiService = mock()
         whenever(routineRepository.routines).thenReturn(emptyFlow())
+        whenever(programDao.getAll()).thenReturn(emptyFlow())
+        whenever(programDayDao.observeAll()).thenReturn(emptyFlow())
         whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(metricRepository.metrics).thenReturn(emptyFlow())

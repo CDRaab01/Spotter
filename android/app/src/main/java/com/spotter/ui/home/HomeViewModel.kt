@@ -7,6 +7,7 @@ import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -80,8 +82,20 @@ class HomeViewModel @Inject constructor(
     private val _weeklyActiveMinutes = MutableStateFlow(0)
     val weeklyActiveMinutes: StateFlow<Int> = _weeklyActiveMinutes.asStateFlow()
 
+    /** Active minutes per day Monday→Sunday of the current week (zeros for days without work). */
+    private val _weeklyMinutesByDay = MutableStateFlow<List<Float>>(emptyList())
+    val weeklyMinutesByDay: StateFlow<List<Float>> = _weeklyMinutesByDay.asStateFlow()
+
     private val _activeProgramId = MutableStateFlow<String?>(null)
     val activeProgramId: StateFlow<String?> = _activeProgramId.asStateFlow()
+
+    /** All cached programs (active first surfaces naturally on Home's "Your programs" section). */
+    private val _programs = MutableStateFlow<List<WorkoutProgramEntity>>(emptyList())
+    val programs: StateFlow<List<WorkoutProgramEntity>> = _programs.asStateFlow()
+
+    /** programId → number of days, for the program card subtitle. */
+    private val _programDayCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val programDayCounts: StateFlow<Map<String, Int>> = _programDayCounts.asStateFlow()
 
     private val _nextProgramDay = MutableStateFlow<ProgramDayOut?>(null)
     val nextProgramDay: StateFlow<ProgramDayOut?> = _nextProgramDay.asStateFlow()
@@ -103,11 +117,26 @@ class HomeViewModel @Inject constructor(
 
     init {
         observeRoutines()
+        observePrograms()
         observeBodyweight()
         sync()
         loadStats()
         loadUpcoming()
         loadGreeting()
+    }
+
+    private fun observePrograms() {
+        viewModelScope.launch {
+            // Combine both tables: during a sync the programs land before their days, so counts
+            // must re-derive whenever EITHER table changes or they'd freeze at "no days yet".
+            combine(programDao.getAll(), programDayDao.observeAll()) { programs, days ->
+                programs.sortedByDescending { it.isActive } to
+                    days.groupingBy { it.programId }.eachCount()
+            }.collect { (programs, counts) ->
+                _programs.value = programs
+                _programDayCounts.value = counts
+            }
+        }
     }
 
     /**
@@ -155,12 +184,20 @@ class HomeViewModel @Inject constructor(
                 // Active minutes: sum of completed-session durations within the current
                 // week (Monday → today).
                 val weekStart = today.with(DayOfWeek.MONDAY)
-                _weeklyActiveMinutes.value = completed
-                    .filter { s ->
-                        runCatching { LocalDate.parse(s.date) }.getOrNull()
-                            ?.let { !it.isBefore(weekStart) && !it.isAfter(today) } ?: false
+                val thisWeek = completed.mapNotNull { s ->
+                    val date = runCatching { LocalDate.parse(s.date) }.getOrNull()
+                        ?: return@mapNotNull null
+                    if (!date.isBefore(weekStart) && !date.isAfter(today)) {
+                        date to (s.durationSeconds ?: 0)
+                    } else {
+                        null
                     }
-                    .sumOf { (it.durationSeconds ?: 0) } / 60
+                }
+                _weeklyActiveMinutes.value = thisWeek.sumOf { it.second } / 60
+                _weeklyMinutesByDay.value = (0..6).map { offset ->
+                    val day = weekStart.plusDays(offset.toLong())
+                    thisWeek.filter { it.first == day }.sumOf { it.second } / 60f
+                }
             } catch (_: Exception) {}
         }
     }
@@ -233,7 +270,7 @@ class HomeViewModel @Inject constructor(
                     val lifts = slot.routineId
                         ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
                         ?: emptyList()
-                    UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts)
+                    UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts, slot.dayIndex)
                 }
                 _upcoming.value = UiState.Success(result)
             } catch (_: Exception) {

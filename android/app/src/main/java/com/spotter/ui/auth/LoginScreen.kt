@@ -27,7 +27,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.spotter.ui.components.BrandLogo
-import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.PulseButton
 import com.spotter.util.UiState
 
 @Composable
@@ -90,7 +90,7 @@ fun LoginScreen(
             singleLine = true,
         )
         Spacer(Modifier.height(24.dp))
-        GradientButton(
+        PulseButton(
             text = if (authState is UiState.Loading) "Signing in…" else "Sign In",
             onClick = { viewModel.login(email, password) },
             modifier = Modifier.fillMaxWidth(),

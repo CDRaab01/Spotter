@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.spotter.ui.components.BrandLogo
-import com.spotter.ui.components.GradientButton
+import com.spotter.ui.components.PulseButton
 import com.spotter.util.UiState
 
 @Composable
@@ -96,7 +96,7 @@ fun RegisterScreen(
             singleLine = true,
         )
         Spacer(Modifier.height(24.dp))
-        GradientButton(
+        PulseButton(
             text = if (authState is UiState.Loading) "Creating account…" else "Create Account",
             onClick = { viewModel.register(name, email, password, inviteCode.trim().ifBlank { null }) },
             modifier = Modifier.fillMaxWidth(),

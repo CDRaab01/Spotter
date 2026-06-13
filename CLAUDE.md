@@ -34,7 +34,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 - Config via environment variables (`pydantic-settings`), never hardcoded.
 
 ## Core Features
-1. **AI chat** — conversational workout-plan setup. Can generate either a single plan or a multi-day **program** (named days incl. rest days); the user opts in via a "Save Program" card (`POST /ai/programs/accept`), which creates the plans + program and activates it. When opened from an active workout (`ai_chat?sessionId=`), the chat is session-aware (server injects a trusted "workout in progress" block) and gives **advice only** — it does not edit the log. See AI Guardrails below.
+1. **AI chat** — conversational workout-plan setup. Can generate either a single plan or a multi-day **program** (named days incl. rest days); the user opts in via a "Save Program" card (`POST /ai/programs/accept`), which creates the plans + program and activates it. When opened from an active workout (`ai_chat?sessionId=`), the chat is session-aware (server injects a trusted "workout in progress" block) and gives **advice plus user-approved adjustment cards** — it may propose swapping/adjusting/removing/adding an exercise ("I can't do bench press" → swap to DB press), which the user applies via a card with a "future workouts too" toggle (`POST /ai/sessions/{id}/adjust`). The AI never edits the log itself — it only proposes; the user taps Apply. See AI Guardrails below.
 2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, and an inline edit mode. Must work offline.
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
@@ -59,7 +59,8 @@ The AI assists with workout planning only. The server enforces these — never r
 - **Scope:** fitness/exercise programming only. Refuse medical diagnosis, nutrition-as-medical-advice, injury treatment, supplements/PEDs dosing. Redirect users to a professional for these.
 - **Safety framing:** include a non-medical-advice disclaimer; advise consulting a doctor before new programs; encourage proper form, warmups, and rest.
 - **Structured output:** when generating a plan, require the model to return JSON matching the `WorkoutPlan`/`PlannedExercise` schema. Validate with Pydantic before persisting; reject and re-prompt on malformed output. A multi-day **program** is extracted the same way (`client._extract_program` → `AiProgramDraft`), reusing the shared `_resolve_exercises` resolve+clamp helper; `chat()` prefers a program when present, else falls back to a single plan. Both are extracted into `SuggestedPlan`/`SuggestedProgram` and only persisted on explicit user accept.
-- **Live-session context:** when `current_session_id` is supplied, `context_service.build_current_session_context` adds a trusted summary of the in-progress workout (exercises, sets done/target, last completed set) to the system prompt. Advice-only — the AI has no path to mutate set logs.
+- **Live-session context:** when `current_session_id` is supplied, `context_service.build_current_session_context` adds a trusted summary of the in-progress workout (exercises, sets done/target, last completed set, remaining-set loads) to the system prompt.
+- **Live adjustments:** with a live session in context the model MAY emit a `{"actions": [...]}` block (`swap | adjust_weight | remove | add`), extracted by `client._extract_adjustment` into `SuggestedAdjustment` — resolved against the catalog, restricted to exercises actually in the session (except `add`), clamped to `app/limits.py` bounds, capped at `MAX_ADJUSTMENT_ACTIONS` (6). Persisted ONLY via `POST /ai/sessions/{id}/adjust` on explicit user Apply (`services/ai/adjustment_apply.py`), in one transaction; **only incomplete sets are ever mutated — completed sets are immutable history**. With `apply_to_routine` it also rewrites the session's `RoutineExercise` rows so program days referencing that routine update for the future. The AI still has no autonomous write path; this adds a *suggestion type*, not a write capability.
 - **Input handling:** treat user chat as untrusted. Guard against prompt injection (e.g. "ignore previous instructions") — the system prompt and validation layer take precedence.
 - **Sanity bounds:** the canonical bounds live in `app/limits.py` (sets/reps/weight, plus `BODY_WEIGHT_BOUNDS_LB`/`BODYFAT_BOUNDS` for metrics) and are enforced two ways — Pydantic `Field(ge/le)` constraints on the write schemas (`PlannedExerciseIn`, `SetLogCreate/Update`, `BodyMetricCreate`) reject out-of-range client input (422), and the AI plan-extraction layer (`client._extract_plan`) *clamps* whatever the model returns into bounds rather than dropping the plan.
 - **Trusted context:** `app/services/ai/context_service.build_user_context` derives a short training-history summary from the DB (recent sessions, last weights, current plan, bodyweight trend) and injects it into the system prompt as trusted context. Any client-supplied profile string is appended as stated preferences only — it never overrides the DB-derived data.
@@ -72,6 +73,7 @@ The AI assists with workout planning only. The server enforces these — never r
 - `GET/POST /sessions`, `GET/PATCH/DELETE /sessions/{id}`, `POST/PATCH /sessions/{id}/sets[/{set_id}]`, `GET /sessions/{id}/prior-bests` (includes progression-aware `suggested_weight`)
 - `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated `suggested_plan` OR `suggested_program`). Accepts an optional `current_session_id` for in-workout, session-aware advice.
 - `POST /ai/programs/accept` — persists a user-accepted AI `SuggestedProgram` (creates one plan per non-rest day + a program, activates it)
+- `POST /ai/sessions/{id}/adjust` — applies a user-accepted AI `SuggestedAdjustment` to a live in-progress session (swap/adjust/remove/add on incomplete sets only); `apply_to_routine` also rewrites the session's routine. Returns the updated `SessionOut`.
 - `GET/POST /metrics/weight`
 - `GET /calendar?from=&to=`
 - `GET /exercises?search=`, `GET /users/me`
@@ -82,7 +84,7 @@ The AI assists with workout planning only. The server enforces these — never r
 
 ## Security
 - Auth on every endpoint (token-based); no anonymous access to user data. The only unauthenticated endpoints are `GET /health` and `GET /version`, which expose no user data.
-- **Rate limiting** (slowapi): `/auth/register` 5/min, `/auth/login` 10/min, `/auth/refresh` 10/min, forgot/reset 5/min, `/ai/chat` 20/min. Security headers added via middleware.
+- **Rate limiting** (slowapi): `/auth/register` 5/min, `/auth/login` 10/min, `/auth/refresh` 10/min, forgot/reset 5/min, `/ai/chat` 20/min, `/ai/programs/accept` 20/min, `/ai/sessions/{id}/adjust` 20/min. Security headers added via middleware.
 - LM Studio bound to localhost; only FastAPI reaches it.
 - Secrets in env vars / `.env` (gitignored), never committed.
 - HTTPS between Android and server: terminate TLS at a reverse proxy for real deployments. (The debug client currently allows cleartext for localhost dev — not for production.)
@@ -347,3 +349,107 @@ constraint, using only seeded exercises (guardrail test passes unchanged):
   heavy hinging off the floor.
 Each description embeds a get-cleared-by-your-doctor/physio line; these are exercise-selection
 presets, not medical advice, in keeping with the app's non-medical scope.
+
+## Sprint 5 — "PULSE" UI redesign (2026-06-11)
+A full visual redesign of the Android app to a data-forward, instrument-panel design system
+("PULSE"). All 20 screens restyled; server untouched.
+
+### Design system (`ui/theme/`)
+- **Channel colors** (`Pulse.kt` → `PulseColors`, via `SpotterTheme.pulse`): each data domain owns
+  a hue in the original brand family — **effort electric blue** `#4D7CFF` (volume/work/timers/
+  primary actions), **strength violet** `#8B7CFF` (PRs/loads), **streak orange** `#FF8A5C`,
+  **recovery green** `#34D399` (rest/done). Each channel has base/dim/on values; light theme uses
+  contrast-safe `*Deep` variants. Two brand gradients live in the same layer: `heroGradient`
+  (blue→indigo — Home greeting, default `PulseButton`) and `energyGradient` (orange→amber —
+  celebration CTAs like the summary's Return to Home). Structural tokens: `panel`/`panelHigh`
+  surfaces + 1px `hairline`/`hairlineStrong` strokes — depth on cards comes from stroke + tone,
+  not shadows. Dark-first OLED (`#0B0D10` bg); the Settings System/Light/Dark toggle is unchanged.
+- **Type**: Space Grotesk (display/headline/title), Inter (body/label; labels run uppercase with
+  wide tracking as instrument captions), **JetBrains Mono for every numeral** via a dedicated data
+  scale (`DataType.kt` → `SpotterTheme.dataType`: numeral 14 → dataXL 60, slashed zeros). UI scale
+  is a minor third (12/14/17/20/24/29). Sora was removed. **Fonts ship as STATIC per-weight
+  instances** (generated with fonttools `varLib.instancer`) — variable fonts' `FontVariation`
+  weight axis is ignored on some devices and renders the lightest master (real-device bug found
+  on first install), so never reintroduce variable-font weights.
+- **Motion tokens** (`Motion.kt` → `PulseMotion`): Fast 120 / Standard 240 / Emphasized 400 /
+  Data 600ms with shared easings + press spring. **Shapes** tightened to 8/12/16dp.
+- **Components** (`ui/components/`): `PanelCard` (hairline-stroked flat surface, optional channel
+  tint), `PulseButton` (solid channel block; `tonal`/`compact` variants), `DataText`/`TickerNumber`
+  (mono readouts; rolling count-up), `ProgressRing`, `Sparkline`, `HeatBar`, `CelebrationPulse`,
+  restyled `StatTile` (channel + sparkline) and `SectionHeader` (channel tick + uppercase label).
+  `GradientButton`/`SpotterCard`/`AnimatedCounter`/`BrandColors` were deleted — no gradients,
+  no emoji, confetti recolored to channels and toned down (40 particles).
+
+### Navigation shell
+- **Bottom navigation** (`ui/navigation/PulseBottomBar.kt` + `TopLevelDestination.kt`):
+  Home · Calendar · Coach · Progress, wrapped around the existing NavHost in `AppNavGraph.kt`
+  (one Scaffold; `consumeWindowInsets` prevents double insets; tab nav uses
+  saveState/restoreState). Routes/`Screen.kt` unchanged.
+- **Workout resume strip** (`WorkoutResumeBar`): shown above the bottom bar anywhere in the app
+  while a session is in progress. Driven by `util/ActiveWorkoutStore.kt` — observes Room for an
+  `in_progress` session dated today, so it survives process death and self-clears.
+- **Re-homed actions**: Home top bar = Add routine + Settings only (overflow menu and both FABs
+  removed); bodyweight logging = tap the Home bodyweight stat tile; Programs link = "Upcoming"
+  section header; History = Progress top-bar icon + Settings; Exercise Library = Settings
+  ("Library & data" group). Calendar/Coach/Progress lost their back arrows as tabs (Coach keeps
+  one only when opened session-aware from a workout).
+- **Action grammar**: cards navigate, explicit buttons act, menus live on their own icons.
+
+### Screen highlights
+- **Workout**: rest timer is a full-width instrument panel — 150dp recovery-green `ProgressRing`
+  with 44sp mono countdown while resting, slim cyan count-up strip while working
+  (`WorkoutViewModel` gained additive `restDurationSeconds` for real ring progress); set rows use
+  centered mono `BasicTextField`s on raised panels; completed sets wash recovery green.
+- **Summary**: total volume is the 60sp mono cyan centerpiece; PR pill in violet; per-muscle
+  volume as `HeatBar`s; recovery ring-check with `CelebrationPulse`.
+- **Home**: flat greeting panel + one-line "next up" status; channel stat tiles (streak amber,
+  active-minutes cyan with a Mon–Sun sparkline via additive `HomeViewModel.weeklyMinutesByDay`).
+- **Progress**: per-tab channel (bodyweight cyan, strength/records violet); `LineChart` redrawn —
+  2dp line, hairline gridlines, glow dot on the latest point only.
+- **Calendar**: day numerals in mono; status = green dot (done), blue dot (in progress); planned
+  workouts get a solid dot in their program day's channel via `PulseColors.dayChannel(index)` —
+  day 1 orange, day 2 blue, day 3 violet, day 4 green, repeating (`UpcomingWorkout.dayIndex`
+  threaded from `WorkoutProjection`); rest days keep a quiet ring.
+- **Home**: the "Your routines" list was replaced by **"Your programs"** (program cards with day
+  count + ACTIVE badge → `ProgramDetail`; "Manage" → Programs screen). Routines remain editable
+  through program days and the top-bar "+".
+
+### Verification
+Android: `:app:compileDebugKotlin` + `:app:testDebugUnitTest` green; Roborazzi baselines
+re-recorded (`app/screenshots/`, dark + light per scene incl. a bottom-bar/resume-strip shell
+scene). No server or schema changes; no new dependencies (fonts are bundled assets, OFL).
+
+## Sprint 6 — AI live-workout adjustments (2026-06-13)
+The session-aware coach can now change the live workout, not just advise. Mid-session the user
+says e.g. "I can't do bench press"; the AI proposes a structured adjustment that surfaces as an
+**Apply card** (with a "future workouts too" toggle, default ON). Same trust model as Save
+Program — the AI emits a *suggestion*; nothing persists until the user taps Apply. The AI gains
+no autonomous write path. (Server: 167 → 190 pytest green + ruff clean; Android:
+`:app:testDebugUnitTest` + `assembleDebug` green; baselines re-recorded incl. a coach-adjustment
+scene.)
+
+- **Actions (v1):** swap exercise, adjust weight, remove, add/re-add — "put bench back in" is just
+  an `add`. The card lists one `summary` line per action.
+- **Server (guardrail-isolated):** `prompts.py` gained a Live Workout Adjustments section (gated on
+  the live-session context block; only-incomplete-sets rule; acute-pain redirect; library names;
+  6-action cap). `client._extract_adjustment` only runs when `current_session_id` is present;
+  precedence is adjustment > program > plan (exactly one suggestion per reply). New
+  `services/ai/adjustment_apply.py` + `POST /ai/sessions/{id}/adjust` (20/min) validates
+  ownership/in-progress/exercise-existence and mutates **only incomplete sets** in a single
+  transaction; `apply_to_routine` rewrites the routine's `RoutineExercise` rows (program days pick
+  it up — no program writes). `MAX_ADJUSTMENT_ACTIONS` lives in `app/limits.py`.
+- **`session_service.get_session` enrichment:** exercises in the session but not the routine
+  (swaps, ad-hoc adds) now get name + muscle-group fallbacks instead of rendering nameless /
+  dropping out of the muscle-group summary.
+- **Android:** `AiModels` gained `SuggestedAdjustment(Action)` + `ApplyAdjustmentRequest` and
+  `ChatResponse.suggestedAdjustment`; `SessionRepository.applyAdjustment` does a **wholesale Room
+  reconciliation** (the incremental `getSession` merge never deletes server-deleted rows, which
+  swap/remove produce) — preserve unsynced-local rows, `deleteBySession`, re-insert from the
+  response. `AiChatViewModel` surfaces `pendingAdjustment` + `applyAdjustment(applyToRoutine)`
+  (syncs routines when true; keeps the card on failure). `AiChatScreen` adds `SuggestedAdjustmentCard`.
+- **Workout freshness:** `WorkoutScreen` now reloads on `ON_RESUME` (returning from chat doesn't
+  re-key a `LaunchedEffect(sessionId)`), and `WorkoutViewModel.loadSession` only shows the spinner
+  when nothing is on screen yet, so an applied adjustment appears without a flash.
+- **Deferred:** no undo stack — reverting is conversational ("put bench back in" = another `add`).
+  Editing a *completed* session is still disallowed (409). Offline apply is unsupported by design
+  (chat requires the server anyway).

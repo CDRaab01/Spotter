@@ -141,6 +141,19 @@ async def get_session(
         if routine:
             routine_name = routine.name
 
+    # Exercises in the session but not in the routine (ad-hoc additions, AI swaps)
+    # still need a name + muscle group, or they render nameless and vanish from the
+    # muscle-group summary. Targets stay None — there was never a plan for them.
+    missing_ids = {
+        sl.exercise_id for sl in s.set_logs if sl.exercise_id not in exercise_context
+    }
+    if missing_ids:
+        ex_result = await db.execute(
+            select(Exercise).where(Exercise.id.in_(missing_ids))
+        )
+        for ex in ex_result.scalars().all():
+            exercise_context[ex.id] = (ex.name, None, None, None, ex.muscle_group, None)
+
     set_logs_out = []
     for sl in sorted(
         s.set_logs,

@@ -1,13 +1,13 @@
 package com.spotter.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -22,50 +22,65 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import com.spotter.ui.theme.SpotterTheme
 
 /**
- * The hero call-to-action: a gradient pill with press-scale and ripple. Defaults to the brand
- * energy gradient (orange → amber). Use for the single primary action on a screen; secondary
- * actions should stay as plain M3 buttons.
+ * The primary action: the brand hero gradient (blue → indigo) with press-scale and ripple.
+ * Use one per screen; secondary actions take [tonal] (channel dim fill, channel text) or plain
+ * M3 buttons.
+ *
+ * Pass [gradient] to switch the voice (e.g. `pulse.energyGradient` for a celebration CTA), or
+ * [channel]/[onChannel]/[dimChannel] + `tonal` when an action belongs to a data domain
+ * (e.g. recovery green for "Skip rest").
  */
 @Composable
-fun GradientButton(
+fun PulseButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    gradient: Brush = SpotterTheme.brand.energyGradient,
-    contentColor: Color = Color.White,
+    tonal: Boolean = false,
+    compact: Boolean = false,
+    gradient: Brush? = null,
+    channel: Color = SpotterTheme.pulse.effort,
+    onChannel: Color = SpotterTheme.pulse.onEffort,
+    dimChannel: Color = SpotterTheme.pulse.effortDim,
     leadingIcon: (@Composable () -> Unit)? = null,
 ) {
-    val shape = MaterialTheme.shapes.large
+    val shape = MaterialTheme.shapes.small
     val interaction = remember { MutableInteractionSource() }
+    val brush = if (tonal) {
+        SolidColor(dimChannel)
+    } else {
+        gradient ?: SpotterTheme.pulse.heroGradient
+    }
+    val content = if (tonal) channel else onChannel
     Box(
         modifier = modifier
-            .alpha(if (enabled) 1f else 0.5f)
+            .alpha(if (enabled) 1f else 0.45f)
             .pressScale(interaction)
             .clip(shape)
-            .background(gradient)
+            .background(brush)
             .clickable(
                 interactionSource = interaction,
-                indication = rememberRipple(color = Color.White),
+                indication = rememberRipple(color = content),
                 enabled = enabled,
                 onClick = onClick,
             )
-            .heightIn(min = 52.dp)
-            .padding(horizontal = 24.dp),
+            .heightIn(min = if (compact) 40.dp else 52.dp)
+            .padding(horizontal = if (compact) SpotterTheme.spacing.lg else SpotterTheme.spacing.xl),
         contentAlignment = Alignment.Center,
     ) {
-        CompositionLocalProvider(LocalContentColor provides contentColor) {
+        CompositionLocalProvider(LocalContentColor provides content) {
             ProvideTextStyle(MaterialTheme.typography.labelLarge) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     leadingIcon?.invoke()
-                    Text(text, color = contentColor)
+                    Text(text, color = content)
                 }
             }
         }

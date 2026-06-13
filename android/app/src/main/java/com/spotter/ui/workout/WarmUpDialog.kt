@@ -11,9 +11,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.spotter.ui.components.DataText
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.util.warmupSets
 
@@ -45,15 +46,14 @@ fun WarmUpDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(
-                            "${set.percent}%",
-                            style = MaterialTheme.typography.bodyMedium,
+                        DataText(
+                            text = "${set.percent}%",
+                            style = SpotterTheme.dataType.numeral,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Text(
-                            "${set.reps} × ${weightUnit.formatWeight(set.weightLbs)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
+                        DataText(
+                            text = "${set.reps} × ${weightUnit.formatWeight(set.weightLbs)}",
+                            style = SpotterTheme.dataType.numeral,
                         )
                     }
                 }

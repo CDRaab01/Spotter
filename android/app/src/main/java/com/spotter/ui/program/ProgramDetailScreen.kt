@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -51,8 +51,8 @@ import androidx.navigation.NavController
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.ui.components.ExercisePreviewRow
-import com.spotter.ui.components.GradientButton
-import com.spotter.ui.components.SpotterCard
+import com.spotter.ui.components.PanelCard
+import com.spotter.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,7 +88,7 @@ fun ProgramDetailScreen(
                 title = { Text(programName) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -150,7 +150,7 @@ fun ProgramDetailScreen(
                 }
             }
 
-            GradientButton(
+            PulseButton(
                 text = "Save",
                 onClick = { viewModel.save() },
                 modifier = Modifier.fillMaxWidth(),
@@ -231,7 +231,7 @@ private fun DayRow(
     onEdit: (() -> Unit)?,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    SpotterCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
+    PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
