@@ -6,6 +6,15 @@ on:
         description: Tag name to create
         required: true
         type: string
+      sha:
+        description: Commit SHA to tag (defaults to HEAD of main)
+        required: false
+        type: string
+      force:
+        description: Force-move tag if it already exists
+        required: false
+        default: 'false'
+        type: string
 jobs:
   create-tag:
     runs-on: ubuntu-latest
@@ -20,5 +29,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ github.event.inputs.tag }}"
+          TARGET_SHA="${{ github.event.inputs.sha }}"
+          if [ -z "$TARGET_SHA" ]; then
+            TARGET_SHA=$(git rev-parse HEAD)
+          fi
+          FORCE_FLAG=""
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            FORCE_FLAG="-f"
+            git push origin --delete "${{ github.event.inputs.tag }}" || true
+          fi
+          git tag $FORCE_FLAG "${{ github.event.inputs.tag }}" "$TARGET_SHA"
           git push origin "${{ github.event.inputs.tag }}"
