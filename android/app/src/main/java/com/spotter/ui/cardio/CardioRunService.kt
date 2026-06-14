@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.spotter.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -34,6 +35,7 @@ class CardioRunService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var collectJob: Job? = null
     private lateinit var notificationManager: NotificationManager
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +45,7 @@ class CardioRunService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForegroundCompat(buildNotification("Cardio", "Starting…"))
+        acquireWakeLock()
         collectJob?.cancel()
         collectJob = scope.launch {
             controller.state.collectLatest { state ->
@@ -115,8 +118,29 @@ class CardioRunService : Service() {
         }
     }
 
+    /**
+     * Hold a partial wake lock for the run's duration so the timer's tick loop keeps firing — and
+     * phase-change cues land on time — with the screen off (a foreground service keeps the process
+     * alive but does NOT keep the CPU awake). Released in [onDestroy] when the run ends; the
+     * generous timeout is only a leak backstop (matches the server's max elapsed cap).
+     */
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+            setReferenceCounted(false)
+            acquire(MAX_WAKELOCK_MS)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+    }
+
     override fun onDestroy() {
         collectJob?.cancel()
+        releaseWakeLock()
         scope.cancel()
         super.onDestroy()
     }
@@ -126,6 +150,8 @@ class CardioRunService : Service() {
     companion object {
         const val CHANNEL_ID = "spotter_cardio"
         const val NOTIFICATION_ID = 2001
+        private const val WAKE_LOCK_TAG = "spotter:cardio_run"
+        private const val MAX_WAKELOCK_MS = 6L * 60 * 60 * 1000  // 6h backstop
 
         fun start(context: Context) {
             val intent = Intent(context, CardioRunService::class.java)
