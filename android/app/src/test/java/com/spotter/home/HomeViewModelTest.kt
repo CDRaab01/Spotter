@@ -1,10 +1,12 @@
 package com.spotter.home
 
 import com.spotter.data.local.dao.RoutineExerciseDao
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
@@ -43,6 +45,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.mockito.kotlin.wheneverBlocking
+import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -63,6 +66,7 @@ class HomeViewModelTest {
     private lateinit var programDao: WorkoutProgramDao
     private lateinit var programDayDao: ProgramDayDao
     private lateinit var routineExerciseDao: RoutineExerciseDao
+    private lateinit var cardioSessionDao: CardioSessionDao
     private lateinit var apiService: ApiService
     private lateinit var viewModel: HomeViewModel
 
@@ -79,7 +83,9 @@ class HomeViewModelTest {
         programDao = mock()
         programDayDao = mock()
         routineExerciseDao = mock()
+        cardioSessionDao = mock()
         apiService = mock()
+        wheneverBlocking { cardioSessionDao.getCompleted() }.thenReturn(emptyList())
         whenever(routineRepository.routines).thenReturn(emptyFlow())
         whenever(programDao.getAll()).thenReturn(emptyFlow())
         whenever(programDayDao.observeAll()).thenReturn(emptyFlow())
@@ -104,6 +110,7 @@ class HomeViewModelTest {
         programDao,
         programDayDao,
         routineExerciseDao,
+        cardioSessionDao,
     )
 
     @After
@@ -258,6 +265,31 @@ class HomeViewModelTest {
         assertEquals(50, viewModel.weeklyActiveMinutes.value)
         // Two completed sessions on the same day count once.
         assertEquals(1, viewModel.streak.value)
+    }
+
+    @Test
+    fun `loadStats folds completed cardio minutes into active minutes`() = runTest(testDispatcher) {
+        val today = LocalDate.now().toString()
+        whenever(sessionRepository.listSessions()).thenReturn(
+            listOf(
+                SessionSummary(id = "a", date = today, status = "completed", durationSeconds = 1800, totalSets = 5, completedSets = 5),
+            )
+        )
+        wheneverBlocking { cardioSessionDao.getCompleted() }.thenReturn(
+            listOf(
+                CardioSessionEntity(
+                    id = "c1", serverId = "c1", programId = "c25k", weekNumber = 1, dayNumber = 1,
+                    startedAt = Instant.now().toString(), completedAt = Instant.now().toString(),
+                    status = "completed", totalElapsedSec = 600,
+                ),
+            )
+        )
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        // 1800s strength + 600s cardio = 2400s = 40 min.
+        assertEquals(40, viewModel.weeklyActiveMinutes.value)
     }
 
     @Test

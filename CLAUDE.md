@@ -492,3 +492,16 @@ screen (distinct from the set/rep lifting UI). Two programs ship: **Couch to 5K*
   exits can complete — the spec only named Pause/Skip.
 - **Deferred:** AI post-run coaching note; GPS/distance/pace; audio/music. The emulator path needs a
   KVM host, so the run screen was verified by build + unit tests, not interactive UI.
+
+### Follow-ups (same day)
+- **Rest timer reliability:** the between-sets cue was foreground-only (the vibration lived in a
+  `WorkoutScreen` `LaunchedEffect`) and `RestTimerService` was a naive `remaining--` loop with no
+  wake lock. `RestTimerService` is now the authoritative timer — drift-free off
+  `SystemClock.elapsedRealtime`, holds a `PARTIAL_WAKE_LOCK` for the rest, and vibrates at
+  completion itself (so the cue fires backgrounded/screen-off); the duplicate UI vibration was
+  removed and the service moved to `specialUse` (a 240s failed-set rest exceeds the `shortService`
+  limit). `CardioRunService` got the same wake lock.
+- **Active minutes include cardio:** Home's "Active minutes" stat (and the Mon–Sun sparkline) now
+  sum completed *cardio* run durations (`totalElapsedSec`, bucketed by completion date) alongside
+  completed strength sessions in the current week. `HomeViewModel.loadStats` reads
+  `CardioSessionDao.getCompleted()`; covered by a new `HomeViewModelTest` case.

@@ -21,6 +21,9 @@ interface CardioSessionDao {
     @Query("SELECT * FROM cardio_sessions WHERE programId = :programId AND status = 'in_progress'")
     suspend fun getInProgress(programId: String): List<CardioSessionEntity>
 
+    @Query("SELECT * FROM cardio_sessions WHERE status = 'completed'")
+    suspend fun getCompleted(): List<CardioSessionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(session: CardioSessionEntity)
 

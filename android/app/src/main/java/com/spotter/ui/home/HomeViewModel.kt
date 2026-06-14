@@ -3,6 +3,7 @@ package com.spotter.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.dao.RoutineExerciseDao
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
@@ -29,6 +30,7 @@ import com.spotter.util.SessionAnchor
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
 import com.spotter.util.WorkoutProjection
+import com.spotter.ui.cardio.CardioFormat
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +61,7 @@ class HomeViewModel @Inject constructor(
     private val programDao: WorkoutProgramDao,
     private val programDayDao: ProgramDayDao,
     private val routineExerciseDao: RoutineExerciseDao,
+    private val cardioSessionDao: CardioSessionDao,
 ) : ViewModel() {
 
     private val _routines = MutableStateFlow<UiState<List<WorkoutRoutineEntity>>>(UiState.Loading)
@@ -182,17 +185,25 @@ class HomeViewModel @Inject constructor(
                 _streak.value = streak
 
                 // Active minutes: sum of completed-session durations within the current
-                // week (Monday → today).
+                // week (Monday → today) — both strength workouts and cardio runs.
                 val weekStart = today.with(DayOfWeek.MONDAY)
-                val thisWeek = completed.mapNotNull { s ->
+                fun inThisWeek(date: LocalDate) = !date.isBefore(weekStart) && !date.isAfter(today)
+
+                val strengthThisWeek = completed.mapNotNull { s ->
                     val date = runCatching { LocalDate.parse(s.date) }.getOrNull()
                         ?: return@mapNotNull null
-                    if (!date.isBefore(weekStart) && !date.isAfter(today)) {
-                        date to (s.durationSeconds ?: 0)
-                    } else {
-                        null
-                    }
+                    if (inThisWeek(date)) date to (s.durationSeconds ?: 0) else null
                 }
+                // Completed cardio runs count too, bucketed by their completion date.
+                val cardioCompleted = runCatching { cardioSessionDao.getCompleted() }.getOrDefault(emptyList())
+                val cardioThisWeek = cardioCompleted.mapNotNull { c ->
+                    val date = CardioFormat.parseDate(c.completedAt)
+                        ?: CardioFormat.parseDate(c.startedAt)
+                        ?: return@mapNotNull null
+                    if (inThisWeek(date)) date to c.totalElapsedSec else null
+                }
+                val thisWeek = strengthThisWeek + cardioThisWeek
+
                 _weeklyActiveMinutes.value = thisWeek.sumOf { it.second } / 60
                 _weeklyMinutesByDay.value = (0..6).map { offset ->
                     val day = weekStart.plusDays(offset.toLong())
