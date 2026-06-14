@@ -39,6 +39,7 @@ class SessionRepository @Inject constructor(
             id = localId, userId = userId, routineId = req.routineId, date = req.date,
             status = "in_progress", durationSeconds = null, note = req.note,
             exerciseNotes = null, serverId = null, syncPending = true,
+            startedAtMs = System.currentTimeMillis(),
         )
         sessionDao.upsert(sessionEntity)
 
@@ -129,6 +130,7 @@ class SessionRepository @Inject constructor(
                     updatedSession.toEntity().copy(
                         serverId = serverSessionId,
                         syncPending = cached.syncPending,
+                        startedAtMs = cached.startedAtMs,
                     )
                 )
                 updatedSession
@@ -178,6 +180,7 @@ class SessionRepository @Inject constructor(
             result.copy(id = localSessionId).toEntity().copy(
                 serverId = serverSessionId,
                 syncPending = cached.syncPending,
+                startedAtMs = cached.startedAtMs,
             )
         )
         return result.copy(id = localSessionId)

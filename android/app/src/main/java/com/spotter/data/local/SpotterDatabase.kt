@@ -35,7 +35,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         ProgramDayEntity::class,
         CardioSessionEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -190,6 +190,13 @@ abstract class SpotterDatabase : RoomDatabase() {
                         syncPending INTEGER NOT NULL DEFAULT 0
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Local-only start timestamp for the in-progress banner's live elapsed clock.
+                db.execSQL("ALTER TABLE workout_sessions ADD COLUMN startedAtMs INTEGER")
             }
         }
     }

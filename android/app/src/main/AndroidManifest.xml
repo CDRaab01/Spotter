@@ -38,5 +38,12 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="cardio_interval_timer" />
         </service>
+        <service
+            android:name=".ui.workout.WorkoutSessionService"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="workout_session" />
+        </service>
     </application>
 </manifest>
