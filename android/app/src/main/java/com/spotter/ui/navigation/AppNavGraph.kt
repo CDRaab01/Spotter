@@ -24,6 +24,10 @@ import com.spotter.ui.auth.LoginScreen
 import com.spotter.ui.auth.RegisterScreen
 import com.spotter.ui.auth.ResetPasswordScreen
 import com.spotter.ui.calendar.CalendarScreen
+import com.spotter.ui.cardio.CardioHomeScreen
+import com.spotter.ui.cardio.CardioOverviewScreen
+import com.spotter.ui.cardio.CardioRunScreen
+import com.spotter.ui.cardio.FreeRunConfigScreen
 import com.spotter.ui.exercise.ExerciseLibraryScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
@@ -48,6 +52,7 @@ private val noChromeRoutes = setOf(
     Screen.Onboarding.route,
     Screen.Workout.route,
     Screen.WorkoutSummary.route,
+    Screen.CardioRun.route,
 )
 
 private val bottomBarRoutes = TopLevelDestination.entries.map { it.route }.toSet()
@@ -220,6 +225,21 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
             }
             composable(Screen.ExerciseLibrary.route) {
                 ExerciseLibraryScreen(navController = navController)
+            }
+            composable(Screen.Cardio.route) {
+                CardioHomeScreen(navController = navController)
+            }
+            composable(
+                route = Screen.CardioOverview.route,
+                arguments = listOf(navArgument("programId") { type = NavType.StringType }),
+            ) {
+                CardioOverviewScreen(navController = navController)
+            }
+            composable(Screen.FreeRunConfig.route) {
+                FreeRunConfigScreen(navController = navController)
+            }
+            composable(Screen.CardioRun.route) {
+                CardioRunScreen(navController = navController)
             }
         }
     }
