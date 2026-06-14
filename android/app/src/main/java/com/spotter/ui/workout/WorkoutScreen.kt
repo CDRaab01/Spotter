@@ -1,9 +1,5 @@
 package com.spotter.ui.workout
 
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -51,7 +47,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.ImeAction
@@ -98,23 +93,8 @@ fun WorkoutScreen(
 
     var showFinishDialog by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
-    LaunchedEffect(restTimerSeconds) {
-        if (restTimerSeconds == 0) {
-            @Suppress("DEPRECATION")
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            if (vibrator?.hasVibrator() == true) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(
-                        VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1)
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(longArrayOf(0, 300, 150, 300), -1)
-                }
-            }
-        }
-    }
+    // The end-of-rest vibration is owned by RestTimerService (which holds a wake lock and fires
+    // even when the app is backgrounded / screen-off), so there's no foreground-only cue here.
 
     // Reload on every ON_RESUME (covers first entry and returning from the coach chat,
     // where a popBackStack wouldn't re-key a LaunchedEffect(sessionId)) so AI-applied
