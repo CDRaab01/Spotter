@@ -21,3 +21,4 @@ class User(Base):
     routines = relationship("WorkoutRoutine", back_populates="user", lazy="raise")
     sessions = relationship("WorkoutSession", back_populates="user", lazy="raise")
     metrics = relationship("BodyMetric", back_populates="user", lazy="raise")
+    cardio_sessions = relationship("CardioSession", back_populates="user", lazy="raise")

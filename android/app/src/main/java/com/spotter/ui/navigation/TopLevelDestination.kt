@@ -4,9 +4,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.DirectionsRun
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -35,6 +37,13 @@ enum class TopLevelDestination(
         label = "Calendar",
         icon = Icons.Filled.CalendarMonth,
         iconOutlined = Icons.Outlined.CalendarMonth,
+    ),
+    CARDIO(
+        route = Screen.Cardio.route,
+        navRoute = Screen.Cardio.route,
+        label = "Cardio",
+        icon = Icons.Filled.DirectionsRun,
+        iconOutlined = Icons.Outlined.DirectionsRun,
     ),
     COACH(
         route = Screen.AiChat.route,

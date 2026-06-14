@@ -453,3 +453,42 @@ scene.)
 - **Deferred:** no undo stack — reverting is conversational ("put bench back in" = another `add`).
   Editing a *completed* session is still disallowed (409). Offline apply is unsupported by design
   (chat requires the server anyway).
+
+## Sprint 7 — Cardio module (2026-06-14)
+A net-new **Cardio** feature area alongside strength training, with its own interval-timer run
+screen (distinct from the set/rep lifting UI). Two programs ship: **Couch to 5K** (guided 8-week ×
+3-day) and **Free Run** (open-ended or custom intervals). Verified: server 175 pytest green +
+`ruff check app` clean (8 new `tests/test_cardio.py`); Android `:app:testDebugUnitTest` +
+`:app:assembleDebug` green (new `CardioProgramsTest`, 6/6). No new dependencies.
+
+- **Integration path (chosen):** server-backed `CardioSession` + Room mirror, matching the existing
+  convention that sessions are the server's source of truth (not the spec's Room-only fallback).
+  Program *definitions* are static client-side (`ui/cardio/CardioPrograms.kt`); only session records
+  persist. The AI post-run coaching hook is **deferred** (sessions are stored so it can be added).
+- **Server (cardio-isolated):** `models/cardio_session.py`, `schemas/cardio.py`,
+  `services/cardio_service.py`, `routers/cardio.py` (`GET/POST /cardio/sessions`,
+  `PATCH /cardio/sessions/{id}`), migration `0010`. Auth + per-user ownership like every other
+  endpoint; status restricted to `in_progress|completed|abandoned`; `completed` stamps `completed_at`.
+  No `GET /cardio/programs` — definitions are static client-side.
+- **Android:** `CardioSessionEntity`/`Dao` (Room v5→v6, `MIGRATION_5_6`), `CardioRepository`
+  (offline-tolerant local-first writes + best-effort server push, dedup-safe sync), the static
+  catalog + an 8-week C25K table (5-min warm-up + run/walk + 5-min cool-down each day, ramping to a
+  continuous 30-min run; every day's intervals sum to its total — asserted in tests). Screens:
+  `CardioHomeScreen`, `CardioOverviewScreen` (completed/current/upcoming day states, Resume/Restart,
+  segmented `IntervalBar` preview, 3×/week target dates), `CardioRunScreen` (phase label +
+  recovery-green `ProgressRing` countdown, lock toggle, Pause/Skip-warm-up/Finish), `FreeRunConfigScreen`.
+- **Drift-free timer:** `CardioRunController` (@Singleton) measures time from
+  `SystemClock.elapsedRealtime` deltas (not a tick counter), so pause/resume and screen-off never
+  accumulate error; phase transitions cue via vibration + optional TTS. `CardioRunService` is a
+  foreground service (`specialUse` type — no extra runtime permission) that keeps the run alive
+  backgrounded and self-stops when the run ends.
+- **Theme:** all colors/type/shapes come from PULSE tokens — cardio uses the **recovery green**
+  channel for active/run, **streak amber** for completed (trophy), reusing `PanelCard`, `PulseButton`,
+  `ProgressRing`, `DataText`. No new design language.
+- **Deviations from the spec (to match existing Spotter conventions):** (1) integrated server path
+  instead of Room-only; (2) the "green primary accent" maps to the existing `recovery` channel
+  rather than a hardcoded green; (3) Cardio is added as a 5th bottom-nav tab (the app uses a bottom
+  bar, not a drawer); (4) added a **Finish** action (from the paused state) so Free Run and early
+  exits can complete — the spec only named Pause/Skip.
+- **Deferred:** AI post-run coaching note; GPS/distance/pace; audio/music. The emulator path needs a
+  KVM host, so the run screen was verified by build + unit tests, not interactive UI.

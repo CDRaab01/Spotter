@@ -1,4 +1,5 @@
 from app.models.body_metric import BodyMetric
+from app.models.cardio_session import CardioSession
 from app.models.exercise import Exercise
 from app.models.routine_exercise import RoutineExercise
 from app.models.program_day import ProgramDay
@@ -18,4 +19,5 @@ __all__ = [
     "BodyMetric",
     "WorkoutProgram",
     "ProgramDay",
+    "CardioSession",
 ]

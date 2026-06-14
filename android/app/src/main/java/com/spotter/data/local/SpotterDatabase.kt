@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spotter.data.local.dao.BodyMetricDao
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.ChatMessageDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.RoutineExerciseDao
@@ -13,6 +14,7 @@ import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutRoutineDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.BodyMetricEntity
+import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.RoutineExerciseEntity
@@ -31,8 +33,9 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         RoutineExerciseEntity::class,
         WorkoutProgramEntity::class,
         ProgramDayEntity::class,
+        CardioSessionEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -44,6 +47,7 @@ abstract class SpotterDatabase : RoomDatabase() {
     abstract fun routineExerciseDao(): RoutineExerciseDao
     abstract fun workoutProgramDao(): WorkoutProgramDao
     abstract fun programDayDao(): ProgramDayDao
+    abstract fun cardioSessionDao(): CardioSessionDao
 
     companion object {
         val MIGRATION_2_3 = object : Migration(2, 3) {
@@ -167,6 +171,25 @@ abstract class SpotterDatabase : RoomDatabase() {
                 )
                 db.execSQL("DROP TABLE program_days")
                 db.execSQL("ALTER TABLE program_days_new RENAME TO program_days")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS cardio_sessions (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        serverId TEXT,
+                        programId TEXT NOT NULL,
+                        weekNumber INTEGER,
+                        dayNumber INTEGER,
+                        startedAt TEXT NOT NULL,
+                        completedAt TEXT,
+                        status TEXT NOT NULL,
+                        totalElapsedSec INTEGER NOT NULL DEFAULT 0,
+                        syncPending INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
             }
         }
     }

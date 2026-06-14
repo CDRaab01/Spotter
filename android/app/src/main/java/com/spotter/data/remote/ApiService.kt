@@ -5,6 +5,9 @@ import com.spotter.data.model.ApplyAdjustmentRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
+import com.spotter.data.model.CardioSessionCreate
+import com.spotter.data.model.CardioSessionOut
+import com.spotter.data.model.CardioSessionUpdate
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.ExerciseOut
@@ -184,4 +187,19 @@ interface ApiService {
 
     @PUT("programs/{id}/days")
     suspend fun replaceProgramDays(@Path("id") id: String, @Body req: ProgramDaysUpdate): ProgramOut
+
+    // Cardio
+    @GET("cardio/sessions")
+    suspend fun listCardioSessions(
+        @Query("program_id") programId: String? = null,
+    ): List<CardioSessionOut>
+
+    @POST("cardio/sessions")
+    suspend fun createCardioSession(@Body req: CardioSessionCreate): CardioSessionOut
+
+    @PATCH("cardio/sessions/{id}")
+    suspend fun updateCardioSession(
+        @Path("id") id: String,
+        @Body req: CardioSessionUpdate,
+    ): CardioSessionOut
 }

@@ -2,6 +2,7 @@ package com.spotter.di
 
 import com.spotter.data.local.SpotterDatabase
 import com.spotter.data.local.dao.BodyMetricDao
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
@@ -45,4 +46,8 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideProgramDayDao(db: SpotterDatabase): ProgramDayDao = db.programDayDao()
+
+    @Provides
+    @Singleton
+    fun provideCardioSessionDao(db: SpotterDatabase): CardioSessionDao = db.cardioSessionDao()
 }
