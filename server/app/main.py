@@ -8,7 +8,7 @@ from app.limiter import limiter
 from app.routers import ai, auth, calendar, cardio, exercises, metrics, routines, progress, programs, sessions, users
 
 # Single source for the human-facing version, reused by GET /version below.
-APP_VERSION = "0.1.0"
+APP_VERSION = "1.1.2"
 
 # Interactive docs are handy locally but are an unnecessary surface on a public deployment.
 app = FastAPI(
