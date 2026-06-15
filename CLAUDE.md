@@ -492,3 +492,39 @@ screen (distinct from the set/rep lifting UI). Two programs ship: **Couch to 5K*
   exits can complete — the spec only named Pause/Skip.
 - **Deferred:** AI post-run coaching note; GPS/distance/pace; audio/music. The emulator path needs a
   KVM host, so the run screen was verified by build + unit tests, not interactive UI.
+
+## Sprint 8 — Unified background timers (2026-06-15)
+The workout, rest, and cardio timers were unified onto one drift-free, background-correct model so
+every timer stays accurate when the phone is locked, the app is backgrounded, or the process is
+killed (Android: `:app:testDebugUnitTest` + `:app:assembleDebug` green; no server/schema changes,
+no new deps). Cardio was already the gold standard (`CardioRunController` @Singleton, monotonic
+`elapsedRealtime` deltas, foreground service + wake-lock); this brings the workout side up to it.
+- **Root problem fixed:** the workout session elapsed clock and the on-screen rest ring were naive
+  `delay(1000)` counters in `WorkoutViewModel` that drifted, **froze when backgrounded**, and reset
+  on process death — so the in-app clock disagreed with its own notification chronometer and the
+  server-reported `durationSeconds` was wrong after any backgrounding.
+- **New `util/TimeProvider.kt`** (injectable `nowMs`/`elapsedRealtimeMs`, `@Binds` to `SystemTimeProvider`)
+  — one clock seam everywhere, deterministically faked in tests.
+- **Elapsed clock** is now recomputed each tick from the persisted `WorkoutSessionEntity.startedAtMs`
+  epoch anchor (`SessionRepository.getStartedAtMs`), matching the notification chronometer and bottom
+  bar; `durationSeconds` on finish is anchor-derived (the core bug fix).
+- **New `ui/workout/WorkoutTimerController.kt`** (@Singleton, the workout analogue of
+  `CardioRunController`): single source of truth for the rest countdown + work count-up. Drift-free
+  (recomputes from a monotonic end-anchor), runs in an app-scoped coroutine (`@ApplicationScope`,
+  added to `DispatchersModule`) so the end-of-rest **vibration fires once even backgrounded**, owns
+  the rest `PARTIAL_WAKE_LOCK` itself (acquired synchronously in `startRest`, no CPU-sleep race), and
+  uses a **generation guard** so a superseded/skip-raced countdown can't clobber newer state, leak the
+  wake-lock, or fire a stray cue. `WorkoutViewModel` and the service only *read* its `restState`, so
+  the ring and notification stay in lock-step (no parallel counter).
+- **One notification per workout:** `RestTimerService` was **deleted** and its rest countdown merged
+  into `WorkoutSessionService` (elapsed chronometer + `"Resting · M:SS"`/`"x/y sets"` line, combined
+  from `ActiveWorkoutStore` + `restState`; rest state changes at most once/sec so no notify spam).
+- **Shared infra `util/ForegroundServiceSupport.kt`** (`startForegroundSpecialUse`, `ensureChannel`,
+  `tapIntent`, null-tolerant `WakeLockHolder`) — adopted by the merged workout service **and**
+  `CardioRunService`, removing the triplicated channel/wake-lock/foreground/deep-link boilerplate.
+  Cardio's proven timing internals were intentionally left untouched (behavior-preserving).
+- **Tests:** `WorkoutViewModelTest` rewired to the new constructor + a scheduler-backed fake clock
+  (elapsed reflects the anchor; finish sends anchor-derived duration; rest/work timers deterministic);
+  new `WorkoutTimerControllerTest` pins the drift-free `remainingSec` math.
+- **Deferred:** rest state is not persisted across process death (the countdown vanishes on relaunch,
+  elapsed stays correct) — matches prior behavior; offline has no bearing (timers are local).

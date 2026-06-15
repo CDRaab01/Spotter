@@ -93,7 +93,7 @@ fun WorkoutScreen(
 
     var showFinishDialog by remember { mutableStateOf(false) }
 
-    // The end-of-rest vibration is owned by RestTimerService (which holds a wake lock and fires
+    // The end-of-rest vibration is owned by WorkoutTimerController (which holds a wake lock and fires
     // even when the app is backgrounded / screen-off), so there's no foreground-only cue here.
 
     // Reload on every ON_RESUME (covers first entry and returning from the coach chat,

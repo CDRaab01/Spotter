@@ -1,18 +1,14 @@
 package com.spotter.ui.workout
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.spotter.MainActivity
 import com.spotter.data.local.dao.SetLogDao
 import com.spotter.util.ActiveWorkoutStore
+import com.spotter.util.ForegroundServiceSupport
 import com.spotter.util.NotificationNav
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -27,13 +24,17 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Surfaces an ongoing "workout in progress" notification while a strength session is live — the
- * counterpart to [com.spotter.ui.cardio.CardioRunService]. It holds no timer: the notification's
- * elapsed clock is a native chronometer anchored to the session's start time, and set progress is
- * mirrored straight from Room. It self-stops when no workout is in progress (finished/deleted).
+ * The single foreground notification for a live strength session. It merges what used to be two
+ * notifications: the "workout in progress" elapsed clock (a native chronometer anchored to the
+ * session's `startedAtMs`, set progress mirrored from Room) and the between-sets rest countdown
+ * (read from [WorkoutTimerController], the source of truth). When resting the content line shows the
+ * countdown; otherwise it shows set progress — the elapsed chronometer is always present.
  *
- * Unlike the cardio/rest services it takes no wake lock — there is no background timer to keep
- * firing; the chronometer ticks in the system UI on its own.
+ * It holds no timer and no wake-lock: the elapsed chronometer self-ticks in the system UI, and the
+ * rest wake-lock + drift-free countdown + end cue all live in [WorkoutTimerController]. It self-stops
+ * when no workout is in progress (finished/deleted). Started by [com.spotter.util.ActiveWorkoutNotifier]
+ * on the in-progress edge — already running before any rest can begin, so it protects the process
+ * for the whole rest.
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @AndroidEntryPoint
@@ -41,6 +42,7 @@ class WorkoutSessionService : Service() {
 
     @Inject lateinit var activeWorkoutStore: ActiveWorkoutStore
     @Inject lateinit var setLogDao: SetLogDao
+    @Inject lateinit var workoutTimer: WorkoutTimerController
 
     private val scope = CoroutineScope(Dispatchers.Default)
     private var collectJob: Job? = null
@@ -56,73 +58,68 @@ class WorkoutSessionService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createChannel()
+        ForegroundServiceSupport.ensureChannel(this, CHANNEL_ID, "Workout", "Ongoing workout session")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat(buildNotification(null, "Workout in progress", "Tap to resume"))
+        ForegroundServiceSupport.startForegroundSpecialUse(
+            this, NOTIFICATION_ID, buildNotification(null, "Workout in progress", "Tap to resume"),
+        )
         collectJob?.cancel()
         collectJob = scope.launch {
-            activeWorkoutStore.activeSession
-                .flatMapLatest { session ->
-                    if (session == null) {
-                        flowOf(null)
-                    } else {
-                        setLogDao.observeBySession(session.id).map { logs ->
-                            Snapshot(
-                                sessionId = session.id,
-                                startedAtMs = session.startedAtMs,
-                                doneSets = logs.count { it.completed },
-                                totalSets = logs.size,
-                            )
-                        }
+            val snapshots = activeWorkoutStore.activeSession.flatMapLatest { session ->
+                if (session == null) {
+                    flowOf(null)
+                } else {
+                    setLogDao.observeBySession(session.id).map { logs ->
+                        Snapshot(
+                            sessionId = session.id,
+                            startedAtMs = session.startedAtMs,
+                            doneSets = logs.count { it.completed },
+                            totalSets = logs.size,
+                        )
                     }
                 }
-                .collectLatest { snap ->
+            }
+            // Re-notify whenever set progress OR the rest countdown changes. The rest state only
+            // changes once per whole second (the controller dedups), so this stays well under the
+            // notification rate limit; the chronometer self-ticks regardless.
+            combine(snapshots, workoutTimer.restState) { snap, rest -> snap to rest }
+                .collectLatest { (snap, rest) ->
                     if (snap == null) {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
                         return@collectLatest
                     }
+                    val text = if (rest != null) {
+                        "Resting · ${format(rest.remainingSec)}"
+                    } else {
+                        "${snap.doneSets}/${snap.totalSets} sets"
+                    }
                     notificationManager.notify(
                         NOTIFICATION_ID,
-                        buildNotification(
-                            snap = snap,
-                            title = "Workout in progress",
-                            text = "${snap.doneSets}/${snap.totalSets} sets",
-                        ),
+                        buildNotification(snap = snap, title = "Workout in progress", text = text),
                     )
                 }
         }
         return START_NOT_STICKY
     }
 
-    private fun startForegroundCompat(notification: android.app.Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+    private fun format(sec: Int): String {
+        val s = sec.coerceAtLeast(0)
+        return "%d:%02d".format(s / 60, s % 60)
     }
 
     private fun buildNotification(snap: Snapshot?, title: String, text: String): android.app.Notification {
-        val tapIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra(NotificationNav.EXTRA_NAV_TARGET, NotificationNav.TARGET_WORKOUT)
-                snap?.sessionId?.let { putExtra(NotificationNav.EXTRA_SESSION_ID, it) }
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
             .setSilent(true)
-            .setContentIntent(tapIntent)
+            .setContentIntent(
+                ForegroundServiceSupport.tapIntent(this, NotificationNav.TARGET_WORKOUT, snap?.sessionId),
+            )
         // Native, self-ticking elapsed clock anchored to the session start — no manual updates.
         val started = snap?.startedAtMs
         if (started != null) {
@@ -131,20 +128,6 @@ class WorkoutSessionService : Service() {
             builder.setShowWhen(false)
         }
         return builder.build()
-    }
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Workout",
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = "Ongoing workout session"
-                setShowBadge(false)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
     }
 
     override fun onDestroy() {
@@ -161,7 +144,7 @@ class WorkoutSessionService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, WorkoutSessionService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
                 context.startService(intent)

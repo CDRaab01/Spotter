@@ -1,18 +1,15 @@
 package com.spotter.ui.cardio
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import androidx.core.app.NotificationCompat
-import com.spotter.MainActivity
+import com.spotter.util.ForegroundServiceSupport
 import com.spotter.util.NotificationNav
+import com.spotter.util.WakeLockHolder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,17 +33,19 @@ class CardioRunService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var collectJob: Job? = null
     private lateinit var notificationManager: NotificationManager
-    private var wakeLock: PowerManager.WakeLock? = null
+    private val wakeLock by lazy { WakeLockHolder(this, WAKE_LOCK_TAG, MAX_WAKELOCK_MS) }
 
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createChannel()
+        ForegroundServiceSupport.ensureChannel(this, CHANNEL_ID, "Cardio", "Ongoing cardio run")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat(buildNotification("Cardio", "Starting…"))
-        acquireWakeLock()
+        ForegroundServiceSupport.startForegroundSpecialUse(
+            this, NOTIFICATION_ID, buildNotification("Cardio", "Starting…"),
+        )
+        wakeLock.acquire()
         collectJob?.cancel()
         collectJob = scope.launch {
             controller.state.collectLatest { state ->
@@ -69,81 +68,27 @@ class CardioRunService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startForegroundCompat(notification: android.app.Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-    }
-
     private fun format(sec: Int): String {
         val s = sec.coerceAtLeast(0)
         return "%d:%02d".format(s / 60, s % 60)
     }
 
     private fun buildNotification(title: String, text: String): android.app.Notification {
-        val tapIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra(NotificationNav.EXTRA_NAV_TARGET, NotificationNav.TARGET_CARDIO)
-                controller.activeSessionId?.let { putExtra(NotificationNav.EXTRA_SESSION_ID, it) }
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
             .setSilent(true)
-            .setContentIntent(tapIntent)
+            .setContentIntent(
+                ForegroundServiceSupport.tapIntent(this, NotificationNav.TARGET_CARDIO, controller.activeSessionId),
+            )
             .build()
-    }
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Cardio",
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = "Ongoing cardio run"
-                setShowBadge(false)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-    }
-
-    /**
-     * Hold a partial wake lock for the run's duration so the timer's tick loop keeps firing — and
-     * phase-change cues land on time — with the screen off (a foreground service keeps the process
-     * alive but does NOT keep the CPU awake). Released in [onDestroy] when the run ends; the
-     * generous timeout is only a leak backstop (matches the server's max elapsed cap).
-     */
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
-            setReferenceCounted(false)
-            acquire(MAX_WAKELOCK_MS)
-        }
-    }
-
-    private fun releaseWakeLock() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
     }
 
     override fun onDestroy() {
         collectJob?.cancel()
-        releaseWakeLock()
+        wakeLock.release()
         scope.cancel()
         super.onDestroy()
     }

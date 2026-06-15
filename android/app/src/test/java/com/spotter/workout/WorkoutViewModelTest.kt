@@ -7,12 +7,16 @@ import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.repository.SessionRepository
+import com.spotter.ui.workout.WorkoutTimerController
 import com.spotter.ui.workout.WorkoutViewModel
+import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -21,6 +25,8 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -35,14 +41,28 @@ class WorkoutViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var repository: SessionRepository
     private lateinit var context: Context
+    private lateinit var time: FakeTimeProvider
     private lateinit var viewModel: WorkoutViewModel
+
+    /**
+     * Wall-clock ([nowMs]) is a settable value so elapsed assertions are deterministic; the
+     * monotonic clock ([elapsedRealtimeMs]) tracks the test scheduler so rest countdowns and the
+     * work count-up advance with virtual time (and the countdown loop always terminates).
+     */
+    private class FakeTimeProvider(private val scheduler: TestCoroutineScheduler) : TimeProvider {
+        var nowMsValue: Long = 0
+        override fun nowMs(): Long = nowMsValue
+        override fun elapsedRealtimeMs(): Long = scheduler.currentTime
+    }
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mock()
         context = mock()
-        viewModel = WorkoutViewModel(repository, context)
+        time = FakeTimeProvider(testDispatcher.scheduler)
+        val timer = WorkoutTimerController(context, time, CoroutineScope(testDispatcher))
+        viewModel = WorkoutViewModel(repository, timer, time)
     }
 
     @After
@@ -291,12 +311,40 @@ class WorkoutViewModelTest {
     }
 
     @Test
-    fun `elapsedSeconds increments every second while observed`() = runTest(testDispatcher) {
+    fun `elapsedSeconds reflects time since the session start anchor`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        // Anchor 3s in the past; elapsed is derived from (now - startedAtMs), not a counter.
+        time.nowMsValue = 100_000
+        whenever(repository.getStartedAtMs(session.id)).thenReturn(97_000L)
+
         assertEquals(0, viewModel.elapsedSeconds.value)
         val job = launch { viewModel.elapsedSeconds.collect {} }
-        advanceTimeBy(3500)
+        viewModel.loadSession(session.id)
+        advanceTimeBy(1100)
+
         assertEquals(3, viewModel.elapsedSeconds.value)
         job.cancel()
+    }
+
+    @Test
+    fun `finishSession sends anchor-derived duration`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        time.nowMsValue = 100_000
+        whenever(repository.getStartedAtMs(session.id)).thenReturn(95_000L) // 5s elapsed
+        whenever(repository.updateSession(any(), any())).thenReturn(session.copy(status = "completed"))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.finishSession(session.id)
+        advanceTimeBy(200)
+
+        val captor = argumentCaptor<SessionUpdate>()
+        verify(repository).updateSession(eq(session.id), captor.capture())
+        assertEquals(5, captor.firstValue.durationSeconds)
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
