@@ -1,7 +1,5 @@
 package com.spotter.ui.workout
 
-import android.content.Context
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.model.ExercisePrior
@@ -12,10 +10,9 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.repository.SessionRepository
+import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,25 +46,30 @@ object WorkoutSummaryStore {
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
-    @ApplicationContext private val context: Context,
+    private val workoutTimer: WorkoutTimerController,
+    private val time: TimeProvider,
 ) : ViewModel() {
 
     private val _session = MutableStateFlow<UiState<SessionOut>>(UiState.Loading)
     val session: StateFlow<UiState<SessionOut>> = _session
 
-    // Session timer. Implemented as a WhileSubscribed flow so it only ticks while
-    // something is collecting it (the WorkoutScreen). This keeps unit tests that
-    // don't observe the timer from leaving an infinite delay loop on the test
-    // scheduler, which would hang runTest's end-of-test drain. The running count
-    // lives in `elapsed` so it survives brief resubscriptions (e.g. rotation).
-    private var elapsed = 0
+    // Session elapsed clock. Recomputed each tick from the persisted `startedAtMs` epoch anchor
+    // (read from Room in loadSession) rather than incrementing a counter, so it's drift-free and
+    // immediately correct after backgrounding, screen-off, or process death — and matches the
+    // notification chronometer and the bottom-bar clock, which derive from the same anchor.
+    // WhileSubscribed keeps the loop from hanging runTest when nothing observes it.
+    private var startedAtMs: Long? = null
     val elapsedSeconds: StateFlow<Int> = flow {
         while (true) {
+            emit(currentElapsedSec())
             delay(1000)
-            elapsed++
-            emit(elapsed)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    private fun currentElapsedSec(): Int {
+        val anchor = startedAtMs ?: return 0
+        return ((time.nowMs() - anchor) / 1000L).coerceAtLeast(0L).toInt()
+    }
 
     private val _finishState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val finishState: StateFlow<UiState<Unit>> = _finishState
@@ -93,37 +95,50 @@ class WorkoutViewModel @Inject constructor(
     val priorBests: StateFlow<Map<String, ExercisePrior>> = _priorBests.asStateFlow()
 
     // Work timer counts UP while NOT resting and resets to 0 each time a rest ends.
-    // Driven off the rest-timer flow so the screen always has a live timer: a "Rest"
-    // countdown right after a set, then a "Working" count-up until the next set is
-    // completed. Uses flatMapLatest + WhileSubscribed so the infinite loop only runs
-    // while something is collecting — same pattern as elapsedSeconds, which prevents
-    // runTest's end-of-test drain from hanging.
+    // Driven off the controller's rest state so the screen always has a live timer: a "Rest"
+    // countdown right after a set, then a "Working" count-up (recomputed from the controller's
+    // drift-free anchor) until the next set is completed. flatMapLatest + WhileSubscribed keep the
+    // infinite loop running only while something collects — preventing runTest's drain from hanging.
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val workSeconds: StateFlow<Int> = _restTimerSeconds
+    val workSeconds: StateFlow<Int> = workoutTimer.restState
         .flatMapLatest { rest ->
             if (rest != null) flowOf(0)   // resting — work timer paused/hidden
             else flow {
-                var sec = 0
-                emit(0)
                 while (true) {
+                    emit(workoutTimer.workElapsedSec())
                     delay(1000)
-                    emit(++sec)
                 }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    private var restTimerJob: Job? = null
+    init {
+        // The controller is the single source of truth for the rest countdown; mirror it into the
+        // UI-facing state so the on-screen ring stays in lock-step with the notification and never
+        // drifts (no parallel countdown lives here anymore).
+        viewModelScope.launch {
+            workoutTimer.restState.collect { rest ->
+                _restTimerSeconds.value = rest?.remainingSec
+                _restDurationSeconds.value = rest?.durationSec
+            }
+        }
+    }
 
-    // Which session the elapsed timer belongs to. loadSession is re-invoked on
-    // rotation/resume for the same session (timer must keep running), but a reused
-    // VM loading a *different* session must start from 0.
+    // Which session is loaded. loadSession is re-invoked on rotation/resume for the same session,
+    // but a reused VM loading a *different* session must re-read that session's start anchor.
     private var timerSessionId: String? = null
 
     fun loadSession(sessionId: String) {
         if (timerSessionId != sessionId) {
-            elapsed = 0
             timerSessionId = sessionId
+            startedAtMs = null
+        }
+        viewModelScope.launch {
+            startedAtMs = try {
+                sessionRepository.getStartedAtMs(sessionId)
+            } catch (_: Exception) {
+                startedAtMs
+            }
         }
         viewModelScope.launch {
             // Only show the spinner when there's nothing on screen yet — an ON_RESUME
@@ -230,27 +245,18 @@ class WorkoutViewModel @Inject constructor(
         }
         val failure = actualReps != null && targetReps != null && actualReps < targetReps
         val duration = if (failure) base + 60 else base
-        restTimerJob?.cancel()
+        // Reflect immediately for instant UI; the controller (single source) then drives the
+        // drift-free countdown, owns the wake-lock, and fires the end-of-rest cue even when
+        // backgrounded. No countdown loop lives here, so the ring can't drift out of sync.
         _restTimerSeconds.value = duration
         _restDurationSeconds.value = duration
-        ContextCompat.startForegroundService(context, RestTimerService.startIntent(context, duration))
-        restTimerJob = viewModelScope.launch {
-            var remaining = duration
-            while (remaining > 0) {
-                delay(1000)
-                remaining--
-                _restTimerSeconds.value = remaining
-            }
-            _restTimerSeconds.value = null
-            _restDurationSeconds.value = null
-        }
+        workoutTimer.startRest(duration)
     }
 
     fun dismissRestTimer() {
-        restTimerJob?.cancel()
         _restTimerSeconds.value = null
         _restDurationSeconds.value = null
-        context.startService(RestTimerService.cancelIntent(context))
+        workoutTimer.dismissRest()
     }
 
     fun deleteSession(sessionId: String) {
@@ -265,6 +271,8 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun finishSession(sessionId: String) {
+        // End any in-progress rest so its wake-lock is released and no cue fires post-finish.
+        workoutTimer.dismissRest()
         viewModelScope.launch {
             _finishState.value = UiState.Loading
             try {
@@ -272,7 +280,7 @@ class WorkoutViewModel @Inject constructor(
                     sessionId,
                     SessionUpdate(
                         status = "completed",
-                        durationSeconds = elapsedSeconds.value,
+                        durationSeconds = currentElapsedSec(),
                     ),
                 )
                 _finishState.value = UiState.Success(Unit)
@@ -296,7 +304,7 @@ class WorkoutViewModel @Inject constructor(
                     }
                 _navigateToSummary.emit(
                     WorkoutSummaryData(
-                        durationSeconds = elapsedSeconds.value,
+                        durationSeconds = currentElapsedSec(),
                         doneSets = doneSets,
                         totalSets = totalSets,
                         totalVolumeLb = volumeLb,

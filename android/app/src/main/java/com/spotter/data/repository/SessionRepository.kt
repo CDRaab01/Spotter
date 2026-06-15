@@ -149,6 +149,13 @@ class SessionRepository @Inject constructor(
     }
 
     /**
+     * The session's wall-clock start anchor (epoch millis), or null for sessions created before the
+     * column existed. The elapsed workout timer is derived from this so it stays correct across
+     * backgrounding and process death (it is not carried on [SessionOut]).
+     */
+    suspend fun getStartedAtMs(id: String): Long? = sessionDao.getById(id)?.startedAtMs
+
+    /**
      * Apply a user-accepted AI workout adjustment. Online-required by design — the
      * suggestion could only exist if chat (and therefore the server) was reachable.
      *
