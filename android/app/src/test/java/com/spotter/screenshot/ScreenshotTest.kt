@@ -62,7 +62,8 @@ import com.spotter.ui.components.SectionHeader
 import com.spotter.ui.components.StatTile
 import com.spotter.ui.navigation.PulseBottomBar
 import com.spotter.ui.navigation.Screen
-import com.spotter.ui.navigation.WorkoutResumeBar
+import com.spotter.ui.navigation.ActiveBarUi
+import com.spotter.ui.navigation.ActiveSessionBar
 import com.spotter.ui.progress.LineChart
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.workout.SetLogRow
@@ -528,11 +529,19 @@ private fun CoachAdjustmentScene() {
     }
 }
 
-/** The app shell: workout-in-progress strip stacked over the bottom navigation bar. */
+/** The app shell: in-progress session strip stacked over the bottom navigation bar. */
 @Composable
 private fun ShellScene() {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Bottom) {
-        WorkoutResumeBar(onResume = {})
+        ActiveSessionBar(
+            ui = ActiveBarUi.Workout(
+                sessionId = "s1",
+                doneSets = 5,
+                totalSets = 12,
+                startedAtMs = null,
+            ),
+            onResume = {},
+        )
         PulseBottomBar(currentRoute = Screen.Home.route, onNavigate = {})
     }
 }

@@ -21,6 +21,10 @@ interface CardioSessionDao {
     @Query("SELECT * FROM cardio_sessions WHERE programId = :programId AND status = 'in_progress'")
     suspend fun getInProgress(programId: String): List<CardioSessionEntity>
 
+    /** All in-progress cardio sessions across programs, for the app-shell "resume" banner. */
+    @Query("SELECT * FROM cardio_sessions WHERE status = 'in_progress' ORDER BY startedAt DESC")
+    fun observeInProgress(): Flow<List<CardioSessionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(session: CardioSessionEntity)
 

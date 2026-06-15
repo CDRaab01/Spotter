@@ -77,6 +77,9 @@ class CardioRunController @Inject constructor(
     private var sessionLocalId: String? = null
     private var runJob: Job? = null
 
+    /** The local id of the session this run is logging to, for notification deep-links. */
+    val activeSessionId: String? get() = sessionLocalId
+
     // Monotonic timing baseline.
     private var accumulatedMs: Long = 0L
     private var segmentStartRealtime: Long = 0L
@@ -106,7 +109,7 @@ class CardioRunController @Inject constructor(
         )
     }
 
-    fun startFree(openEnded: Boolean, intervals: List<Interval>) {
+    fun startFree(openEnded: Boolean, intervals: List<Interval>, resume: CardioSessionEntity? = null) {
         val effective = if (openEnded) listOf(Interval(CardioPhase.RUN, 0)) else intervals
         startRun(
             RunPlan(
@@ -118,7 +121,7 @@ class CardioRunController @Inject constructor(
                 label = "Free Run",
                 weekDayLabel = null,
             ),
-            resume = null,
+            resume = resume,
         )
     }
 

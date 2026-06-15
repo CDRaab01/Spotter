@@ -42,6 +42,7 @@ import com.spotter.ui.program.ProgramScreen
 import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
 import com.spotter.ui.workout.WorkoutSummaryStore
+import com.spotter.util.DeepLinkTarget
 
 /** Routes where the shell chrome (bottom bar + resume strip) must stay out of the way. */
 private val noChromeRoutes = setOf(
@@ -58,7 +59,10 @@ private val noChromeRoutes = setOf(
 private val bottomBarRoutes = TopLevelDestination.entries.map { it.route }.toSet()
 
 @Composable
-fun AppNavGraph(startDestination: String = Screen.Login.route) {
+fun AppNavGraph(
+    startDestination: String = Screen.Login.route,
+    initialDeepLink: DeepLinkTarget? = null,
+) {
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val shellViewModel: AppShellViewModel = hiltViewModel()
@@ -67,23 +71,50 @@ fun AppNavGraph(startDestination: String = Screen.Login.route) {
             navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
         }
     }
+    // Notification taps: deep-link straight back into the in-progress session. The cold-start
+    // target (if the app was launched from a notification) is handled once, then live taps.
+    LaunchedEffect(Unit) {
+        suspend fun handle(target: DeepLinkTarget) {
+            when (target) {
+                is DeepLinkTarget.Workout ->
+                    navController.navigate(Screen.Workout.createRoute(target.sessionId))
+                is DeepLinkTarget.Cardio -> {
+                    val session = shellViewModel.cardioSession(target.sessionId)
+                    if (session != null) {
+                        shellViewModel.resumeCardio(session)
+                        navController.navigate(Screen.CardioRun.route)
+                    }
+                }
+            }
+        }
+        initialDeepLink?.let { handle(it) }
+        shellViewModel.deepLinks.collect { handle(it) }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in bottomBarRoutes
-    val activeSession by shellViewModel.activeSession.collectAsState()
-    val showResumeBar = activeSession != null && currentRoute != null && currentRoute !in noChromeRoutes
+    val activeBar by shellViewModel.activeBar.collectAsState()
+    val showResumeBar = activeBar != null && currentRoute != null && currentRoute !in noChromeRoutes
 
     Scaffold(
         bottomBar = {
             Column {
                 if (showResumeBar) {
-                    WorkoutResumeBar(
-                        onResume = {
-                            activeSession?.let {
-                                navController.navigate(Screen.Workout.createRoute(it.id))
-                            }
-                        },
-                    )
+                    activeBar?.let { bar ->
+                        ActiveSessionBar(
+                            ui = bar,
+                            onResume = {
+                                when (bar) {
+                                    is ActiveBarUi.Workout ->
+                                        navController.navigate(Screen.Workout.createRoute(bar.sessionId))
+                                    is ActiveBarUi.Cardio -> {
+                                        shellViewModel.resumeCardio(bar.session)
+                                        navController.navigate(Screen.CardioRun.route)
+                                    }
+                                }
+                            },
+                        )
+                    }
                 }
                 if (showBottomBar) {
                     PulseBottomBar(

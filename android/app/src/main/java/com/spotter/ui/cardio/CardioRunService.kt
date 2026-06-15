@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.spotter.MainActivity
+import com.spotter.util.NotificationNav
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +92,8 @@ class CardioRunService : Service() {
             0,
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(NotificationNav.EXTRA_NAV_TARGET, NotificationNav.TARGET_CARDIO)
+                controller.activeSessionId?.let { putExtra(NotificationNav.EXTRA_SESSION_ID, it) }
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
