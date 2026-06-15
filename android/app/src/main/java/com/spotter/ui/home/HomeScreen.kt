@@ -200,12 +200,19 @@ fun HomeScreen(
                         if (upcomingList.isNotEmpty()) {
                             item { SectionHeader("Upcoming") }
                             items(upcomingList, key = { "${it.date}-${it.routineId}-${it.dayLabel}" }) { workout ->
+                                val cardio = workout.cardio
                                 UpcomingWorkoutCard(
                                     workout = workout,
                                     isStarting = isStarting,
                                     onStart = { workout.routineId?.let { viewModel.startSession(it) } },
-                                    onTapCard = activeProgramId?.let { pid ->
-                                        { navController.navigate(Screen.ProgramDetail.createRoute(pid)) }
+                                    onTapCard = when {
+                                        cardio != null -> {
+                                            { navController.navigate(Screen.CardioOverview.createRoute(cardio.programId)) }
+                                        }
+                                        activeProgramId != null -> {
+                                            { navController.navigate(Screen.ProgramDetail.createRoute(activeProgramId!!)) }
+                                        }
+                                        else -> null
                                     },
                                 )
                             }
@@ -345,21 +352,34 @@ private fun UpcomingWorkoutCard(
     onStart: () -> Unit,
     onTapCard: (() -> Unit)? = null,
 ) {
+    val cardio = workout.cardio
     PanelCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onTapCard,
+        channel = if (cardio != null) SpotterTheme.pulse.recovery else null,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = formatUpcomingDate(workout.date).uppercase(),
                     style = MaterialTheme.typography.labelMedium,
-                    color = SpotterTheme.pulse.effort,
+                    color = if (cardio != null) SpotterTheme.pulse.recovery else SpotterTheme.pulse.effort,
                 )
                 Text(
-                    text = workout.routineName ?: workout.dayLabel,
+                    text = if (cardio != null) {
+                        "${cardio.programName} · W${cardio.week} D${cardio.day}"
+                    } else {
+                        workout.routineName ?: workout.dayLabel
+                    },
                     style = MaterialTheme.typography.titleMedium,
                 )
+                if (cardio != null) {
+                    Text(
+                        text = "Run · ${com.spotter.ui.cardio.CardioFormat.minutesLabel(cardio.totalDurationSec)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (workout.routineId != null) {
                 PulseButton(

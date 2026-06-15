@@ -29,8 +29,26 @@ data class ProjectedSlot(
 )
 
 /**
+ * A scheduled cardio run riding the same upcoming-workout rail as strength days. When present on an
+ * [UpcomingWorkout], the slot is a cardio run (Couch to 5K week/day) rather than a strength routine,
+ * so it has no [UpcomingWorkout.routineId] and is opened via the Cardio overview instead of started
+ * in place.
+ */
+data class CardioUpcoming(
+    val programId: String,
+    val programName: String,
+    val week: Int,
+    val day: Int,
+    val totalDurationSec: Int,
+)
+
+/**
  * A fully-resolved upcoming workout: a projected slot plus a short preview of its lifts.
  * Shared by the Home upcoming block and the Calendar projected-day detail card.
+ *
+ * A slot is a cardio run when [cardio] is non-null (in which case [routineId] is null and [lifts]
+ * is empty); otherwise it is a strength routine day (or a strength rest day when [routineId] is null
+ * and [cardio] is null).
  */
 data class UpcomingWorkout(
     val date: LocalDate,
@@ -40,6 +58,7 @@ data class UpcomingWorkout(
     val lifts: List<RoutineExerciseEntity>,
     /** 0-based position of this day within the program — drives per-day calendar colors. */
     val dayIndex: Int = 0,
+    val cardio: CardioUpcoming? = null,
 )
 
 /**

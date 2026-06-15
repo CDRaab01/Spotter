@@ -2,6 +2,7 @@ package com.spotter.ui.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
@@ -12,6 +13,8 @@ import com.spotter.data.repository.CalendarRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
+import com.spotter.ui.cardio.CardioPrograms
+import com.spotter.ui.cardio.CardioSchedule
 import com.spotter.util.AppPreferences
 import com.spotter.util.ProjectionDay
 import com.spotter.util.SessionAnchor
@@ -43,6 +46,7 @@ class CalendarViewModel @Inject constructor(
     private val programDao: WorkoutProgramDao,
     private val programDayDao: ProgramDayDao,
     private val routineExerciseDao: RoutineExerciseDao,
+    private val cardioSessionDao: CardioSessionDao,
 ) : ViewModel() {
 
     private val _displayedMonth = MutableStateFlow(YearMonth.now())
@@ -55,7 +59,7 @@ class CalendarViewModel @Inject constructor(
     private val _projected = MutableStateFlow<List<UpcomingWorkout>>(emptyList())
     val projected: StateFlow<List<UpcomingWorkout>> = _projected.asStateFlow()
 
-    /** False when there's no active program to schedule — drives an empty-state hint. */
+    /** False when there's nothing scheduled (no active strength OR cardio program) — empty-state hint. */
     private val _hasActiveProgram = MutableStateFlow(true)
     val hasActiveProgram: StateFlow<Boolean> = _hasActiveProgram.asStateFlow()
 
@@ -107,13 +111,27 @@ class CalendarViewModel @Inject constructor(
         entries: List<CalendarEntry>,
     ): List<UpcomingWorkout> {
         val active = programDao.getActive()
-        _hasActiveProgram.value = active != null
+        val cardioId = appPreferences.activeCardioProgramId.first()
+        _hasActiveProgram.value = active != null || cardioId != null
 
         val today = LocalDate.now()
         val monthStart = month.atDay(1)
         val monthEnd = month.atEndOfMonth()
         if (monthEnd.isBefore(today)) return emptyList()
 
+        val realDates = entries.mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }.toSet()
+        val strength = computeProjectedStrength(active, today, monthStart, monthEnd, realDates)
+        val cardio = computeProjectedCardio(cardioId, today, monthStart, monthEnd)
+        return (strength + cardio).sortedBy { it.date }
+    }
+
+    private suspend fun computeProjectedStrength(
+        active: com.spotter.data.local.entity.WorkoutProgramEntity?,
+        today: LocalDate,
+        monthStart: LocalDate,
+        monthEnd: LocalDate,
+        realDates: Set<LocalDate>,
+    ): List<UpcomingWorkout> {
         if (active == null) return emptyList()
         val days = programDayDao.getByProgram(active.id)
             .map { ProjectionDay(it.routineId, it.label, it.routineName) }
@@ -132,7 +150,6 @@ class CalendarViewModel @Inject constructor(
         // Enough slots to reach the end of the visible month, with headroom for cycling.
         val span = ChronoUnit.DAYS.between(today, monthEnd).coerceAtLeast(0)
         val count = (span / effectiveStep + days.size + 2).toInt().coerceIn(1, 200)
-        val realDates = entries.mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }.toSet()
 
         return WorkoutProjection.project(today, cadence, anchor, days, count)
             .filter { !it.date.isBefore(monthStart) && !it.date.isAfter(monthEnd) && it.date !in realDates }
@@ -142,6 +159,20 @@ class CalendarViewModel @Inject constructor(
                     ?: emptyList()
                 UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts, slot.dayIndex)
             }
+    }
+
+    private suspend fun computeProjectedCardio(
+        cardioId: String?,
+        today: LocalDate,
+        monthStart: LocalDate,
+        monthEnd: LocalDate,
+    ): List<UpcomingWorkout> {
+        if (cardioId == null) return emptyList()
+        val program = CardioPrograms.byId(cardioId)?.takeIf { it.weeks != null } ?: return emptyList()
+        val sessions = cardioSessionDao.observeByProgram(cardioId).first()
+        // Cardio runs are completion-driven, so projecting the full remaining plan covers any month.
+        return CardioSchedule.upcoming(program, sessions, today, count = CardioSchedule.orderedDays(program).size)
+            .filter { !it.date.isBefore(monthStart) && !it.date.isAfter(monthEnd) }
     }
 
     fun nextMonth() = loadMonth(_displayedMonth.value.plusMonths(1))

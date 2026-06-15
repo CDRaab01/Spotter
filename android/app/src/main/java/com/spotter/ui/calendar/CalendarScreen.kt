@@ -52,6 +52,7 @@ import com.spotter.ui.components.DataText
 import com.spotter.ui.components.PulsingDots
 import com.spotter.ui.components.PanelCard
 import com.spotter.ui.components.PulseButton
+import com.spotter.ui.cardio.CardioFormat
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.dayChannel
@@ -185,7 +186,9 @@ fun CalendarScreen(
                     val entryMap: Map<LocalDate, CalendarEntry> = state.data.associate {
                         LocalDate.parse(it.date) to it
                     }
-                    val projectedMap: Map<LocalDate, UpcomingWorkout> = projected.associateBy { it.date }
+                    // A date can carry both a strength day and a cardio run, so group rather than
+                    // overwrite.
+                    val projectedMap: Map<LocalDate, List<UpcomingWorkout>> = projected.groupBy { it.date }
 
                     MonthGrid(
                         month = displayedMonth,
@@ -200,28 +203,9 @@ fun CalendarScreen(
                     val selected = selectedDate
                     if (selected != null) {
                         val entry = entryMap[selected]
-                        val projection = projectedMap[selected]
-                        when {
-                            entry != null -> SessionDetailCard(
-                                entry = entry,
-                                onResume = {
-                                    navController.navigate(
-                                        Screen.Workout.createRoute(entry.sessionId)
-                                    )
-                                },
-                            )
-
-                            projection != null && projection.routineId == null ->
-                                RestDayCard(projection)
-
-                            projection != null -> UpcomingDetailCard(
-                                workout = projection,
-                                onStart = {
-                                    projection.routineId?.let { viewModel.startProjectedSession(it) }
-                                },
-                            )
-
-                            else -> Box(
+                        val projections = projectedMap[selected].orEmpty()
+                        if (entry == null && projections.isEmpty()) {
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(16.dp),
@@ -233,6 +217,36 @@ fun CalendarScreen(
                                     }",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (entry != null) {
+                            SessionDetailCard(
+                                entry = entry,
+                                onResume = {
+                                    navController.navigate(Screen.Workout.createRoute(entry.sessionId))
+                                },
+                            )
+                        }
+                        projections.forEach { projection ->
+                            val cardio = projection.cardio
+                            when {
+                                cardio != null -> CardioUpcomingCard(
+                                    workout = projection,
+                                    onOpen = {
+                                        navController.navigate(
+                                            Screen.CardioOverview.createRoute(cardio.programId)
+                                        )
+                                    },
+                                )
+
+                                projection.routineId == null -> RestDayCard(projection)
+
+                                else -> UpcomingDetailCard(
+                                    workout = projection,
+                                    onStart = {
+                                        projection.routineId?.let { viewModel.startProjectedSession(it) }
+                                    },
                                 )
                             }
                         }
@@ -249,7 +263,7 @@ fun CalendarScreen(
 private fun MonthGrid(
     month: YearMonth,
     entryMap: Map<LocalDate, CalendarEntry>,
-    projectedMap: Map<LocalDate, UpcomingWorkout>,
+    projectedMap: Map<LocalDate, List<UpcomingWorkout>>,
     selectedDate: LocalDate?,
     onDayClick: (LocalDate) -> Unit,
 ) {
@@ -267,15 +281,21 @@ private fun MonthGrid(
                 week.forEach { day ->
                     if (day != null) {
                         val date = month.atDay(day)
-                        val pw = projectedMap[date]
+                        val pws = projectedMap[date].orEmpty()
+                        val strength = pws.firstOrNull { it.routineId != null }
+                        val hasCardio = pws.any { it.cardio != null }
+                        // A strength routine day wins the dot color; else a cardio run; else a
+                        // strength rest day shows the quiet ring.
+                        val isRestDay = strength == null && !hasCardio && pws.isNotEmpty()
                         DayCell(
                             day = day,
                             isToday = date == today,
                             isSelected = date == selectedDate,
                             entry = entryMap[date],
-                            isProjected = pw != null,
-                            isRestDay = pw?.routineId == null,
-                            projectedDayIndex = pw?.dayIndex,
+                            isProjected = pws.isNotEmpty(),
+                            isRestDay = isRestDay,
+                            isCardio = strength == null && hasCardio,
+                            projectedDayIndex = strength?.dayIndex,
                             onClick = { onDayClick(date) },
                             modifier = Modifier.weight(1f),
                         )
@@ -296,6 +316,7 @@ private fun DayCell(
     entry: CalendarEntry?,
     isProjected: Boolean,
     isRestDay: Boolean,
+    isCardio: Boolean,
     projectedDayIndex: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -317,6 +338,7 @@ private fun DayCell(
     val dotColor = when {
         entry?.status == "completed" -> pulse.recovery
         entry != null -> pulse.effort
+        isCardio -> pulse.recovery
         isProjected && !isRestDay -> pulse.dayChannel(projectedDayIndex ?: 0)
         else -> Color.Transparent
     }
@@ -463,6 +485,46 @@ private fun UpcomingDetailCard(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+@Composable
+private fun CardioUpcomingCard(
+    workout: UpcomingWorkout,
+    onOpen: () -> Unit,
+) {
+    val cardio = workout.cardio ?: return
+    val pulse = SpotterTheme.pulse
+    PanelCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        channel = pulse.recovery,
+    ) {
+        Text(
+            text = workout.date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+            style = MaterialTheme.typography.labelMedium,
+            color = pulse.recovery,
+        )
+        Text(
+            text = "${cardio.programName} · Week ${cardio.week} Day ${cardio.day}",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Run · ${CardioFormat.minutesLabel(cardio.totalDurationSec)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        PulseButton(
+            text = "Open in Cardio",
+            onClick = onOpen,
+            modifier = Modifier.fillMaxWidth(),
+            channel = pulse.recovery,
+            onChannel = pulse.onRecovery,
+            gradient = androidx.compose.ui.graphics.SolidColor(pulse.recovery),
+        )
     }
 }
 
