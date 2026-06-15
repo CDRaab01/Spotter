@@ -56,6 +56,7 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val PROFILE_AGE_GROUP = stringPreferencesKey("pref_age_group")
         private val PROFILE_LIMITATIONS = stringPreferencesKey("pref_limitations")
         private val SERVER_URL = stringPreferencesKey("pref_server_url")
+        private val ACTIVE_CARDIO_PROGRAM = stringPreferencesKey("pref_active_cardio_program_id")
     }
 
     /** Base URL of the Spotter server. Defaults to the build-time value when unset. */
@@ -87,6 +88,16 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         prefs[ONBOARDING_DONE] ?: false
     }
 
+    /**
+     * Id of the cardio program the user has added to their schedule (e.g. "c25k"), or null when
+     * none is active. Cardio program *definitions* are static client-side, so — unlike strength
+     * [com.spotter.data.local.entity.WorkoutProgramEntity] — there is no server "is_active" flag;
+     * this client-side preference is the source of truth for "do upcoming cardio runs show up?".
+     */
+    val activeCardioProgramId: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[ACTIVE_CARDIO_PROGRAM]?.takeIf { it.isNotBlank() }
+    }
+
     val userProfile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
         UserProfile(
             experience = prefs[PROFILE_EXPERIENCE] ?: "",
@@ -115,6 +126,13 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
 
     suspend fun setServerUrl(value: String) {
         context.dataStore.edit { it[SERVER_URL] = value }
+    }
+
+    /** Adds (non-null id) or removes (null) the active cardio program from the schedule. */
+    suspend fun setActiveCardioProgram(id: String?) {
+        context.dataStore.edit { prefs ->
+            if (id.isNullOrBlank()) prefs.remove(ACTIVE_CARDIO_PROGRAM) else prefs[ACTIVE_CARDIO_PROGRAM] = id
+        }
     }
 
     suspend fun saveProfile(profile: UserProfile) {

@@ -8,6 +8,7 @@ import com.spotter.data.model.CardioProgram
 import com.spotter.data.model.CardioStatus
 import com.spotter.data.model.Interval
 import com.spotter.data.repository.CardioRepository
+import com.spotter.util.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,13 +48,11 @@ class CardioOverviewViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: CardioRepository,
     private val controller: CardioRunController,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val programId: String = savedStateHandle["programId"] ?: CardioPrograms.C25K_ID
     private val program: CardioProgram? = CardioPrograms.byId(programId)
-
-    // Days the user is allowed between sessions, cycling for a 3-per-week cadence.
-    private val cadence = listOf(2L, 2L, 3L)
 
     val uiState: StateFlow<CardioOverviewUi> =
         repository.sessionsFor(programId)
@@ -64,36 +63,40 @@ class CardioOverviewViewModel @Inject constructor(
                 CardioOverviewUi(program?.name ?: "Cardio", emptyList()),
             )
 
+    /** True when this program is the user's active cardio program (its runs show on Home/Calendar). */
+    val isOnSchedule: StateFlow<Boolean> =
+        appPreferences.activeCardioProgramId
+            .map { it == programId }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     init {
         viewModelScope.launch {
             try { repository.sync(programId) } catch (_: Exception) {}
         }
     }
 
+    /** Add this program to the schedule (or remove it) so upcoming runs surface on Home/Calendar. */
+    fun setOnSchedule(onSchedule: Boolean) {
+        viewModelScope.launch {
+            appPreferences.setActiveCardioProgram(if (onSchedule) programId else null)
+        }
+    }
+
     private fun build(sessions: List<CardioSessionEntity>): CardioOverviewUi {
         val weeks = program?.weeks ?: return CardioOverviewUi(program?.name ?: "Cardio", emptyList())
 
-        val ordered = weeks.flatMap { w -> w.days.map { d -> w.weekNumber to d.dayNumber } }
+        val ordered = CardioSchedule.orderedDays(program)
+        val completedAt = CardioSchedule.completedDates(sessions)
+        val today = LocalDate.now()
+        val targets = CardioSchedule.targetDates(ordered, completedAt, today)
 
-        // Latest completed session per (week, day).
-        val completedAt = HashMap<Pair<Int, Int>, LocalDate>()
-        sessions.filter { it.status == CardioStatus.COMPLETED && it.weekNumber != null && it.dayNumber != null }
-            .forEach { s ->
-                val key = s.weekNumber!! to s.dayNumber!!
-                val date = CardioFormat.parseDate(s.completedAt) ?: CardioFormat.parseDate(s.startedAt)
-                if (date != null && completedAt[key]?.isAfter(date) != true) completedAt[key] = date
-            }
-
-        val currentIndex = ordered.indexOfFirst { it !in completedAt.keys }
+        val currentIndex = ordered.indexOfFirst { (it.week to it.day) !in completedAt.keys }
             .let { if (it == -1) ordered.size else it }
 
-        val today = LocalDate.now()
         val inProgressToday = sessions
             .filter { it.status == CardioStatus.IN_PROGRESS }
             .filter { CardioFormat.parseDate(it.startedAt) == today }
             .maxByOrNull { it.startedAt }
-
-        val targets = targetDates(ordered, completedAt, today)
 
         var globalIndex = 0
         val weekUis = weeks.map { w ->
@@ -124,33 +127,6 @@ class CardioOverviewViewModel @Inject constructor(
             CardioWeekUi(w.weekNumber, w.intro, dayUis)
         }
         return CardioOverviewUi(program.name, weekUis)
-    }
-
-    private fun targetDates(
-        ordered: List<Pair<Int, Int>>,
-        completed: Map<Pair<Int, Int>, LocalDate>,
-        today: LocalDate,
-    ): Map<Int, LocalDate> {
-        val out = HashMap<Int, LocalDate>()
-        val lastCompletedPos = ordered.indexOfLast { it in completed.keys }
-        if (lastCompletedPos >= 0) {
-            var d = completed[ordered[lastCompletedPos]]!!
-            for (pos in lastCompletedPos + 1 until ordered.size) {
-                d = d.plusDays(cadence[pos % cadence.size])
-                out[pos] = if (d.isBefore(today)) today else d
-            }
-        } else {
-            var d = today
-            for (pos in ordered.indices) {
-                if (pos == 0) {
-                    out[pos] = d
-                } else {
-                    d = d.plusDays(cadence[(pos - 1) % cadence.size])
-                    out[pos] = d
-                }
-            }
-        }
-        return out
     }
 
     /** Resume an in-progress session for this day. */

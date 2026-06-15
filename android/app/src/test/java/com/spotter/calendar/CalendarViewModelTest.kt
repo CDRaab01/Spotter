@@ -1,5 +1,6 @@
 package com.spotter.calendar
 
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
@@ -46,6 +47,7 @@ class CalendarViewModelTest {
     private lateinit var programDao: WorkoutProgramDao
     private lateinit var programDayDao: ProgramDayDao
     private lateinit var routineExerciseDao: RoutineExerciseDao
+    private lateinit var cardioSessionDao: CardioSessionDao
 
     @Before
     fun setup() {
@@ -59,7 +61,10 @@ class CalendarViewModelTest {
         programDao = mock()
         programDayDao = mock()
         routineExerciseDao = mock()
+        cardioSessionDao = mock()
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
+        whenever(appPreferences.activeCardioProgramId).thenReturn(flowOf(null))
+        whenever(cardioSessionDao.observeByProgram(any())).thenReturn(flowOf(emptyList()))
     }
 
     private fun createViewModel() = CalendarViewModel(
@@ -72,6 +77,7 @@ class CalendarViewModelTest {
         programDao,
         programDayDao,
         routineExerciseDao,
+        cardioSessionDao,
     )
 
     @After

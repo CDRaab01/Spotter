@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +49,7 @@ fun CardioOverviewScreen(
     viewModel: CardioOverviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val onSchedule by viewModel.isOnSchedule.collectAsState()
     val pulse = SpotterTheme.pulse
 
     Scaffold(
@@ -69,6 +71,12 @@ fun CardioOverviewScreen(
             contentPadding = PaddingValues(SpotterTheme.spacing.lg),
             verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.lg),
         ) {
+            item(key = "schedule") {
+                ScheduleCard(
+                    onSchedule = onSchedule,
+                    onToggle = { viewModel.setOnSchedule(!onSchedule) },
+                )
+            }
             state.weeks.forEach { week ->
                 item(key = "w${week.weekNumber}") {
                     Column(verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.sm)) {
@@ -102,6 +110,66 @@ fun CardioOverviewScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Lets the user add this guided program to their schedule so its upcoming runs surface in the
+ * Home "Upcoming" block and on the Calendar alongside any strength program.
+ */
+@Composable
+private fun ScheduleCard(
+    onSchedule: Boolean,
+    onToggle: () -> Unit,
+) {
+    val pulse = SpotterTheme.pulse
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        channel = if (onSchedule) pulse.recovery else null,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.EventAvailable,
+                contentDescription = null,
+                tint = if (onSchedule) pulse.recovery else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = SpotterTheme.spacing.md),
+            ) {
+                Text(
+                    text = if (onSchedule) "On your schedule" else "Add to your schedule",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = if (onSchedule) {
+                        "Upcoming runs show on Home and the Calendar."
+                    } else {
+                        "Schedule it to see upcoming runs on Home and the Calendar."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (onSchedule) {
+                OutlinedButton(
+                    onClick = onToggle,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = pulse.recovery),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, pulse.recovery),
+                ) { Text("Remove") }
+            } else {
+                PulseButton(
+                    text = "Add",
+                    onClick = onToggle,
+                    compact = true,
+                    channel = pulse.recovery,
+                    onChannel = pulse.onRecovery,
+                    gradient = SolidColor(pulse.recovery),
+                )
             }
         }
     }

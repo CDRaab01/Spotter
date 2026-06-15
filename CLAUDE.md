@@ -528,3 +528,29 @@ no new deps). Cardio was already the gold standard (`CardioRunController` @Singl
   new `WorkoutTimerControllerTest` pins the drift-free `remainingSec` math.
 - **Deferred:** rest state is not persisted across process death (the countdown vanishes on relaunch,
   elapsed stays correct) — matches prior behavior; offline has no bearing (timers are local).
+
+## Sprint 9 — Cardio programs in Upcoming (2026-06-15)
+Accepting a guided cardio program (e.g. Couch to 5K) now schedules it: its next runs appear in the
+Home "Upcoming" block and on the Calendar alongside any strength program, so a user can run a
+strength **and** a cardio program at once. Android-only (no server/schema change); verified
+`:app:testDebugUnitTest` (incl. new `CardioScheduleTest`, updated Home/Calendar VM tests) +
+`:app:assembleDebug` green.
+- **Active cardio program (client-side):** cardio definitions are static client-side, so — unlike
+  strength `WorkoutProgram.is_active` — there is no server flag. A new `AppPreferences`
+  `activeCardioProgramId` (DataStore) is the source of truth for "do upcoming runs show?". The
+  Cardio overview gained an **Add to / Remove from schedule** card (`CardioOverviewViewModel`
+  `isOnSchedule`/`setOnSchedule`); only one cardio program is active at a time.
+- **Shared scheduling (`ui/cardio/CardioSchedule.kt`):** the completion-driven "next run + target
+  date" math (3-per-week 2/2/3 cadence, overdue clamped to today) was extracted from
+  `CardioOverviewViewModel` into one helper so the overview, Home, and Calendar all agree.
+  `CardioSchedule.upcoming(...)` returns cardio runs as `UpcomingWorkout`s carrying a new
+  `CardioUpcoming` payload (so a slot is a run when `cardio != null`; `routineId` stays null).
+- **Home / Calendar:** `HomeViewModel.loadUpcoming` and `CalendarViewModel.computeProjected` now
+  project strength **and** cardio independently and merge by date (Home keeps the 4 soonest). The
+  strength-only early-returns were removed so cardio-only users still see a schedule.
+  `UpcomingWorkout` cards / calendar dots/detail render cardio in the **recovery green** channel and
+  tap through to the Cardio overview (no inline "Start"). The Calendar projection map became
+  `Map<LocalDate, List<UpcomingWorkout>>` so a strength day and a cardio run can share a date.
+- **Deferred:** Free Run is open-ended (no schedule), so it is not acceptable/scheduled; only guided
+  programs surface in Upcoming. No direct "start the run" from Home/Calendar — the card opens the
+  overview where the day is started (keeps the run-launch path in one place).

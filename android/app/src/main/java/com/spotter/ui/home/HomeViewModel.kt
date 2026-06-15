@@ -2,6 +2,7 @@ package com.spotter.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
@@ -23,6 +24,8 @@ import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
+import com.spotter.ui.cardio.CardioPrograms
+import com.spotter.ui.cardio.CardioSchedule
 import com.spotter.util.AppPreferences
 import com.spotter.util.ProjectionDay
 import com.spotter.util.SessionAnchor
@@ -59,6 +62,7 @@ class HomeViewModel @Inject constructor(
     private val programDao: WorkoutProgramDao,
     private val programDayDao: ProgramDayDao,
     private val routineExerciseDao: RoutineExerciseDao,
+    private val cardioSessionDao: CardioSessionDao,
 ) : ViewModel() {
 
     private val _routines = MutableStateFlow<UiState<List<WorkoutRoutineEntity>>>(UiState.Loading)
@@ -244,39 +248,52 @@ class HomeViewModel @Inject constructor(
     private fun loadUpcoming() {
         viewModelScope.launch {
             try {
+                val today = LocalDate.now()
+                // Strength program projection (empty when there's no active strength program).
                 val active = programDao.getActive()
                 _activeProgramId.value = active?.id
-                if (active == null) {
-                    _upcoming.value = UiState.Success(emptyList())
-                    return@launch
-                }
-                val days = programDayDao.getByProgram(active.id)
-                    .map { ProjectionDay(it.routineId, it.label, it.routineName) }
-                if (days.isEmpty()) {
-                    _upcoming.value = UiState.Success(emptyList())
-                    return@launch
-                }
-                val cadence = appPreferences.workoutCadenceDays.first()
-                val anchor = sessionDao.getAll()
-                    .filter { it.status == "completed" || it.status == "in_progress" }
-                    .mapNotNull { s ->
-                        runCatching { LocalDate.parse(s.date) }.getOrNull()
-                            ?.let { SessionAnchor(it, s.routineId, s.status) }
+                val strength = active?.let { program ->
+                    val days = programDayDao.getByProgram(program.id)
+                        .map { ProjectionDay(it.routineId, it.label, it.routineName) }
+                    if (days.isEmpty()) {
+                        emptyList()
+                    } else {
+                        val cadence = appPreferences.workoutCadenceDays.first()
+                        val anchor = sessionDao.getAll()
+                            .filter { it.status == "completed" || it.status == "in_progress" }
+                            .mapNotNull { s ->
+                                runCatching { LocalDate.parse(s.date) }.getOrNull()
+                                    ?.let { SessionAnchor(it, s.routineId, s.status) }
+                            }
+                            .maxByOrNull { it.date }
+                        WorkoutProjection.project(today, cadence, anchor, days, count = 4).map { slot ->
+                            val lifts = slot.routineId
+                                ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
+                                ?: emptyList()
+                            UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts, slot.dayIndex)
+                        }
                     }
-                    .maxByOrNull { it.date }
+                }.orEmpty()
 
-                val slots = WorkoutProjection.project(LocalDate.now(), cadence, anchor, days, count = 4)
-                val result = slots.map { slot ->
-                    val lifts = slot.routineId
-                        ?.let { routineExerciseDao.getByRoutineId(it).take(4) }
-                        ?: emptyList()
-                    UpcomingWorkout(slot.date, slot.label, slot.routineId, slot.routineName, lifts, slot.dayIndex)
-                }
-                _upcoming.value = UiState.Success(result)
+                // Cardio program projection — independent of the strength program, so a user can
+                // have both scheduled at once.
+                val cardio = loadUpcomingCardio(today)
+
+                // Merge and keep the four soonest across both, so an accepted cardio program shows
+                // up in Upcoming next to (or instead of) strength days.
+                val merged = (strength + cardio).sortedBy { it.date }.take(4)
+                _upcoming.value = UiState.Success(merged)
             } catch (_: Exception) {
                 _upcoming.value = UiState.Success(emptyList())
             }
         }
+    }
+
+    private suspend fun loadUpcomingCardio(today: LocalDate): List<UpcomingWorkout> {
+        val cardioId = appPreferences.activeCardioProgramId.first() ?: return emptyList()
+        val program = CardioPrograms.byId(cardioId)?.takeIf { it.weeks != null } ?: return emptyList()
+        val sessions = cardioSessionDao.observeByProgram(cardioId).first()
+        return CardioSchedule.upcoming(program, sessions, today, count = 4)
     }
 
     private fun observeRoutines() {

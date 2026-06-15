@@ -1,5 +1,6 @@
 package com.spotter.home
 
+import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
@@ -21,6 +22,7 @@ import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
+import com.spotter.ui.cardio.CardioPrograms
 import com.spotter.ui.home.HomeViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
@@ -63,6 +65,7 @@ class HomeViewModelTest {
     private lateinit var programDao: WorkoutProgramDao
     private lateinit var programDayDao: ProgramDayDao
     private lateinit var routineExerciseDao: RoutineExerciseDao
+    private lateinit var cardioSessionDao: CardioSessionDao
     private lateinit var apiService: ApiService
     private lateinit var viewModel: HomeViewModel
 
@@ -79,12 +82,15 @@ class HomeViewModelTest {
         programDao = mock()
         programDayDao = mock()
         routineExerciseDao = mock()
+        cardioSessionDao = mock()
         apiService = mock()
         whenever(routineRepository.routines).thenReturn(emptyFlow())
         whenever(programDao.getAll()).thenReturn(emptyFlow())
         whenever(programDayDao.observeAll()).thenReturn(emptyFlow())
         whenever(appPreferences.onboardingDone).thenReturn(flowOf(false))
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
+        whenever(appPreferences.activeCardioProgramId).thenReturn(flowOf(null))
+        whenever(cardioSessionDao.observeByProgram(any())).thenReturn(flowOf(emptyList()))
         whenever(metricRepository.metrics).thenReturn(emptyFlow())
         wheneverBlocking { apiService.getMe() }.thenReturn(
             UserOut(id = "user-1", name = "Sonic Hedgehog", email = "sonic@spotter.com"),
@@ -104,6 +110,7 @@ class HomeViewModelTest {
         programDao,
         programDayDao,
         routineExerciseDao,
+        cardioSessionDao,
     )
 
     @After
@@ -238,6 +245,23 @@ class HomeViewModelTest {
         assertEquals(4, state.data[0].lifts.size)
         // activeProgramId is surfaced for the tappable upcoming block.
         assertEquals("prog-1", viewModel.activeProgramId.value)
+    }
+
+    @Test
+    fun `upcoming includes cardio days when a cardio program is active`() = runTest(testDispatcher) {
+        // No strength program, but a cardio program is on the schedule.
+        whenever(programDao.getActive()).thenReturn(null)
+        whenever(appPreferences.activeCardioProgramId).thenReturn(flowOf(CardioPrograms.C25K_ID))
+        whenever(cardioSessionDao.observeByProgram(CardioPrograms.C25K_ID)).thenReturn(flowOf(emptyList()))
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val state = viewModel.upcoming.value
+        assertIs<UiState.Success<List<com.spotter.util.UpcomingWorkout>>>(state)
+        assertTrue(state.data.isNotEmpty(), "expected cardio days in upcoming")
+        assertTrue(state.data.all { it.cardio != null }, "all entries should be cardio runs")
+        assertEquals(CardioPrograms.C25K_ID, state.data.first().cardio?.programId)
     }
 
     @Test
