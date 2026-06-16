@@ -81,6 +81,7 @@ The AI assists with workout planning only. The server enforces these — never r
 - `GET/POST /programs`, `GET/PATCH/DELETE /programs/{id}`, `PUT /programs/{id}/days`, `GET /programs/active/next`
 - `GET /health` — liveness probe (`{"status":"ok"}`). **Unauthenticated.**
 - `GET /version` — running build: `{name, version, commit, built_at}`. **Unauthenticated** (so the app's Settings → About can show it pre-login). `commit`/`built_at` are stamped at deploy time (see Deployment); `"unknown"` otherwise.
+- `GET /workouts?date=` — **cross-app**, read-only training status for the sister app **Plate**: `{date, trained, strength_sessions, cardio_sessions}` (counts *completed* strength + cardio sessions). **Not** Spotter's own user-token auth — it takes a cross-app JWT signed with `CROSS_APP_SECRET` carrying the user's email, resolved to a Spotter user by email (`get_cross_app_user`). Disabled (401) unless `CROSS_APP_SECRET` is set. 60/min.
 
 ## Security
 - Auth on every endpoint (token-based); no anonymous access to user data. The only unauthenticated endpoints are `GET /health` and `GET /version`, which expose no user data.
@@ -554,3 +555,22 @@ strength **and** a cardio program at once. Android-only (no server/schema change
 - **Deferred:** Free Run is open-ended (no schedule), so it is not acceptable/scheduled; only guided
   programs surface in Upcoming. No direct "start the run" from Home/Calendar — the card opens the
   overview where the day is started (keeps the run-launch path in one place).
+
+## Sprint 10 — Cross-app workout status for Plate (2026-06-16)
+Added a small **read-only `GET /workouts?date=`** endpoint so the sister app **Plate** (calorie/macro
+tracker) can apply a training-day intake bump when the user trained. This is the server side of
+Plate's Phase 7 "Spotter-awareness"; verified server **185 pytest green** (10 new
+`tests/test_workouts.py`) + `ruff check app` clean. Additive — **no schema change**, no change to
+Spotter's own clients.
+- **Endpoint (cross-app-isolated):** `routers/workouts.py` + `services/workout_service.py` +
+  `schemas/workout.py`. Counts *completed* `WorkoutSession`s (by `date`) and `CardioSession`s (by the
+  day's UTC `completed_at` window) and returns `{date, trained, strength_sessions, cardio_sessions}`.
+- **Auth (deliberately separate surface):** `get_cross_app_user` (new in `security.py`) accepts a JWT
+  signed with the new **`CROSS_APP_SECRET`** setting and typed `cross_app`, carrying the user's
+  **email** — the only stable identity across the two apps' independent `users` tables — and resolves
+  the Spotter user by email. It does **not** trust Spotter's own `secret_key`/`access` tokens, and a
+  cross-app token can't act as a normal Spotter session. Unset secret ⇒ the endpoint 401s (disabled).
+  Rate-limited 60/min. The shared-DB option was considered and rejected (would couple Plate to
+  Spotter's schema + co-locate the databases); the endpoint gives a stable contract instead.
+- **Integration shape** was a gated decision (Plate CLAUDE.md §8) confirmed before building: read-only
+  endpoint over HTTP, not a shared backend.

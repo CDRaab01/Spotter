@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     git_sha: str = "unknown"
     built_at: str = "unknown"
 
+    # Cross-app integration (sister app "Plate" reads workout status via GET /workouts).
+    # Plate mints a short-lived JWT signed with THIS secret, carrying the user's email; Spotter
+    # validates it and resolves its own user by email. Deliberately separate from `secret_key`
+    # so a normal Spotter user/refresh token can't reach the cross-app surface (and vice versa).
+    # Leave unset to disable /workouts entirely (every call then 401s).
+    cross_app_secret: str | None = None
+
     # Optional SMTP — if unset, reset codes are printed to stdout instead
     smtp_host: str | None = None
     smtp_port: int = 587

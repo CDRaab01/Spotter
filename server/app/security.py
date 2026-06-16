@@ -74,3 +74,43 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[object, Depends(get_current_user)]
+
+
+async def get_cross_app_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Resolve the Spotter user from a sister-app (Plate) cross-app token.
+
+    The cross-app token is signed with ``cross_app_secret`` (not Spotter's own ``secret_key``) and
+    carries the user's email — the only stable identity shared across two independent user tables.
+    We validate it, then look the Spotter user up by email. This is the only entry point that
+    trusts the cross-app secret, so a normal Spotter access/refresh token can't reach it.
+    """
+    from app.models.user import User
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    # No shared secret configured → the cross-app surface is disabled.
+    if not settings.cross_app_secret:
+        raise credentials_exception
+    try:
+        payload = jwt.decode(
+            token, settings.cross_app_secret, algorithms=[settings.algorithm]
+        )
+        if payload.get("type") != "cross_app":
+            raise credentials_exception
+        email: str | None = payload.get("email")
+        if not email:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise credentials_exception
+    return user
