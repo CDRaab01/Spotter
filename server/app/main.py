@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.limiter import limiter
-from app.routers import ai, auth, calendar, cardio, exercises, metrics, routines, progress, programs, sessions, users
+from app.routers import ai, auth, calendar, cardio, exercises, metrics, routines, progress, programs, sessions, users, workouts
 
 # Single source for the human-facing version, reused by GET /version below.
 APP_VERSION = "1.1.2"
@@ -55,6 +55,7 @@ app.include_router(exercises.router)
 app.include_router(users.router)
 app.include_router(programs.router)
 app.include_router(cardio.router)
+app.include_router(workouts.router)
 
 
 @app.get("/health", tags=["health"])
