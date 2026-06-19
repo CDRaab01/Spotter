@@ -14,3 +14,8 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Spotter"
 include(":app")
+
+// Sift design-slop audit (test-only). Consumed via a composite build of the sibling Sift repo so
+// the audit stays binary-compatible (same AGP/Kotlin/Compose/Robolectric versions). Assumes the
+// three repos remain siblings under one parent dir: <parent>/{Spotter,Plate,Sift}.
+includeBuild("../../Sift")
