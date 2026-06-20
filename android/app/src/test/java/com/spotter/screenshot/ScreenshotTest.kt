@@ -130,7 +130,7 @@ class ScreenshotTest {
 }
 
 @Composable
-private fun HomeScene() {
+internal fun HomeScene() {
     val pulse = SpotterTheme.pulse
     Column(
         Modifier
@@ -151,7 +151,7 @@ private fun HomeScene() {
             Text(
                 "Next up: Push Day · Today",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.85f),
+                color = Color.White,
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,7 +200,7 @@ private fun HomeScene() {
 }
 
 @Composable
-private fun SummaryScene(prCount: Int = 0, perfect: Boolean = true) {
+internal fun SummaryScene(prCount: Int = 0, perfect: Boolean = true) {
     val pulse = SpotterTheme.pulse
     Column(
         Modifier
@@ -273,6 +273,7 @@ private fun SummaryScene(prCount: Int = 0, perfect: Boolean = true) {
         PulseButton(
             text = "Return to Home",
             gradient = pulse.energyGradient,
+            onChannel = pulse.onEnergy,
             onClick = {},
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
@@ -296,7 +297,7 @@ private fun SummaryStat(modifier: Modifier, value: String, label: String) {
 }
 
 @Composable
-private fun WorkoutScene() {
+internal fun WorkoutScene() {
     val pulse = SpotterTheme.pulse
     fun set(n: Int, reps: Int, w: Double?, done: Boolean) = SetLogOut(
         id = "s$n", sessionId = "x", exerciseId = "e", setNumber = n,
@@ -364,7 +365,7 @@ private fun WorkoutScene() {
 }
 
 @Composable
-private fun StatesScene() {
+internal fun StatesScene() {
     EmptyState(
         icon = Icons.AutoMirrored.Filled.Chat,
         title = "Meet your AI Coach",
@@ -374,7 +375,7 @@ private fun StatesScene() {
 }
 
 @Composable
-private fun ProgressScene() {
+internal fun ProgressScene() {
     val pulse = SpotterTheme.pulse
     // Renders the genuine LineChart component (internal) with sample data.
     val points = listOf(135f, 140f, 138f, 145f, 150f, 148f, 155f, 160f)
@@ -411,7 +412,7 @@ private fun ProgressScene() {
 }
 
 @Composable
-private fun LoginScene() {
+internal fun LoginScene() {
     var email by remember { mutableStateOf("casey@spotter.app") }
     var password by remember { mutableStateOf("••••••••") }
     Column(
@@ -441,7 +442,7 @@ private fun LoginScene() {
 }
 
 @Composable
-private fun OnboardingScene() {
+internal fun OnboardingScene() {
     val pulse = SpotterTheme.pulse
     Column(
         Modifier.fillMaxSize().padding(24.dp),
@@ -486,7 +487,7 @@ private fun OptionCardPreview(label: String, selected: Boolean) {
 
 /** The coach's live-workout adjustment card (Apply + future-workouts toggle). */
 @Composable
-private fun CoachAdjustmentScene() {
+internal fun CoachAdjustmentScene() {
     val pulse = SpotterTheme.pulse
     var applyToRoutine by remember { mutableStateOf(true) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -531,7 +532,7 @@ private fun CoachAdjustmentScene() {
 
 /** The app shell: in-progress session strip stacked over the bottom navigation bar. */
 @Composable
-private fun ShellScene() {
+internal fun ShellScene() {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Bottom) {
         ActiveSessionBar(
             ui = ActiveBarUi.Workout(
@@ -586,7 +587,7 @@ private fun IconMask(shape: androidx.compose.ui.graphics.Shape, size: androidx.c
 }
 
 @Composable
-private fun SettingsScene() {
+internal fun SettingsScene() {
     val pulse = SpotterTheme.pulse
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -628,17 +629,23 @@ private fun SettingsScene() {
         PanelCard(Modifier.fillMaxWidth()) {
             SectionHeader("Account")
             Spacer(Modifier.height(8.dp))
+            // Tonal error treatment (mirrors the real SettingsScreen): white on the saturated error
+            // red is only ~3:1; errorContainer/onErrorContainer is legible (11:1) and still reads
+            // as destructive.
             Button(
                 onClick = {},
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
             ) { Text("Sign out") }
         }
     }
 }
 
 @Composable
-private fun CalendarScene() {
+internal fun CalendarScene() {
     val pulse = SpotterTheme.pulse
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader("June 2026")

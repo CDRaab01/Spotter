@@ -46,10 +46,13 @@ data class PulseColors(
     // Brand gradients
     val heroGradient: Brush,    // blue → indigo: greeting, primary CTAs
     val energyGradient: Brush,  // orange → amber: streak/celebration moments
+    // Content color for text/icons ON the energy gradient. Dark in BOTH themes (the gradient is
+    // light orange/amber in both): white on it is only ~2.1:1, this warm ink is 7.6–8.8:1.
+    val onEnergy: Color,
 )
 
 fun darkPulseColors() = PulseColors(
-    effort = PulseBlue, effortDim = Color(0xFF1B2440), onEffort = Color(0xFFFFFFFF),
+    effort = PulseBlue, effortDim = Color(0xFF151C33), onEffort = Color(0xFFFFFFFF),
     strength = PulseViolet, strengthDim = Color(0xFF231F3F), onStrength = Color(0xFF120A38),
     streak = PulseOrange, streakDim = Color(0xFF3B2418), onStreak = Color(0xFF2B1100),
     recovery = PulseGreen, recoveryDim = Color(0xFF11332A), onRecovery = Color(0xFF00301F),
@@ -58,12 +61,16 @@ fun darkPulseColors() = PulseColors(
     panel = PulsePanel,
     panelHigh = PulsePanelHigh,
     glow = PulseBlue,
-    heroGradient = Brush.linearGradient(listOf(PulseBlue, PulseIndigo)),
+    // Hero gradient starts at PulseBlueDeep (not PulseBlue): white CTA/greeting text needs >= 4.5:1
+    // and white-on-PulseBlue is only 3.72:1, while white-on-PulseBlueDeep is 5.20:1. PulseBlue stays
+    // the accent-text token (kept light for 5.23:1 on dark surfaces).
+    heroGradient = Brush.linearGradient(listOf(PulseBlueDeep, PulseIndigo)),
     energyGradient = Brush.linearGradient(listOf(PulseOrange, PulseAmber)),
+    onEnergy = Color(0xFF2B1100),
 )
 
 fun lightPulseColors() = PulseColors(
-    effort = PulseBlueDeep, effortDim = Color(0xFFDEE7FF), onEffort = Color(0xFFFFFFFF),
+    effort = PulseBlueDeep, effortDim = Color(0xFFECF1FF), onEffort = Color(0xFFFFFFFF),
     strength = PulseVioletDeep, strengthDim = Color(0xFFE6E2FB), onStrength = Color(0xFFFFFFFF),
     streak = PulseOrangeDeep, streakDim = Color(0xFFFBE3D4), onStreak = Color(0xFFFFFFFF),
     recovery = PulseGreenDeep, recoveryDim = Color(0xFFD8F3E8), onRecovery = Color(0xFFFFFFFF),
@@ -74,6 +81,7 @@ fun lightPulseColors() = PulseColors(
     glow = PulseBlueDeep,
     heroGradient = Brush.linearGradient(listOf(PulseBlueDeep, PulseIndigoDeep)),
     energyGradient = Brush.linearGradient(listOf(Color(0xFFFF6B35), PulseAmber)),
+    onEnergy = Color(0xFF2B1100),
 )
 
 val LocalPulse = staticCompositionLocalOf { darkPulseColors() }

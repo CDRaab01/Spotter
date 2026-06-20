@@ -303,7 +303,8 @@ private fun GreetingPanel(greeting: String, nextWorkout: UpcomingWorkout?) {
         Text(
             text = status,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.85f),
+            // Full white (not 0.85 alpha) so the subtitle clears AA on the hero gradient.
+            color = Color.White,
         )
     }
 }

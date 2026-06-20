@@ -301,8 +301,12 @@ fun SettingsScreen(
                 Button(
                     onClick = { viewModel.logout() },
                     modifier = Modifier.fillMaxWidth(),
+                    // Tonal error treatment: white on the saturated error red is only ~3:1; the
+                    // errorContainer/onErrorContainer pair is legible (11:1) and still reads as a
+                    // destructive action.
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     ),
                 ) {
                     Text("Sign out")

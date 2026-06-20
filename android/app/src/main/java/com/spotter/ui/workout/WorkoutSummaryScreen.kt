@@ -246,6 +246,9 @@ fun WorkoutSummaryScreen(
             PulseButton(
                 text = "Return to Home",
                 gradient = pulse.energyGradient,
+                // White on the orange/amber energy gradient is only ~2.1:1; onEnergy is a warm dark
+                // ink (dark in BOTH themes — onStreak is white in light) that clears AA (7.6-8.8:1).
+                onChannel = pulse.onEnergy,
                 onClick = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
