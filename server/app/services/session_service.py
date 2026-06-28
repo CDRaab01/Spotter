@@ -60,10 +60,9 @@ def suggest_next_weight(
 async def create_session(
     db: AsyncSession, user_id: uuid.UUID, req: SessionCreate
 ) -> SessionOut:
-    session = WorkoutSession(user_id=user_id, **req.model_dump())
-    db.add(session)
-    await db.flush()
-
+    # Validate the referenced routine BEFORE inserting the session. Flushing a session
+    # that points at a non-existent routine_id trips the FK constraint and surfaces as a
+    # 500 instead of this 404.
     if req.routine_id:
         routine_check = await db.execute(
             select(WorkoutRoutine).where(
@@ -74,6 +73,11 @@ async def create_session(
         if routine_check.scalar_one_or_none() is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Routine not found")
 
+    session = WorkoutSession(user_id=user_id, **req.model_dump())
+    db.add(session)
+    await db.flush()
+
+    if req.routine_id:
         pe_result = await db.execute(
             select(RoutineExercise)
             .where(RoutineExercise.routine_id == req.routine_id)

@@ -5,9 +5,25 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.exercise import Exercise
 from app.models.routine_exercise import RoutineExercise
 from app.models.workout_routine import WorkoutRoutine
 from app.schemas.routine import RoutineCreate, RoutineExerciseOut, RoutineExercisesUpdate, RoutineOut, RoutineUpdate
+
+
+async def _verify_exercises_exist(db: AsyncSession, exercises) -> None:
+    """Ensure every referenced exercise_id exists before inserting RoutineExercise rows.
+
+    Inserting a routine_exercise with an unknown exercise_id trips the FK constraint and
+    surfaces as a 500; this turns it into a clean 404.
+    """
+    ids = {ex.exercise_id for ex in exercises}
+    if not ids:
+        return
+    found = await db.execute(select(Exercise.id).where(Exercise.id.in_(ids)))
+    missing = ids - {row[0] for row in found.all()}
+    if missing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found")
 
 
 def _routine_to_out(routine: WorkoutRoutine) -> RoutineOut:
@@ -51,6 +67,7 @@ async def get_user_routines(db: AsyncSession, user_id: uuid.UUID) -> list[Routin
 async def create_routine(
     db: AsyncSession, user_id: uuid.UUID, req: RoutineCreate
 ) -> RoutineOut:
+    await _verify_exercises_exist(db, req.exercises)
     routine = WorkoutRoutine(user_id=user_id, name=req.name, source=req.source)
     db.add(routine)
     await db.flush()
@@ -139,6 +156,8 @@ async def update_routine_exercises(
     routine = result.scalar_one_or_none()
     if not routine:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Routine not found")
+
+    await _verify_exercises_exist(db, req.exercises)
 
     await db.execute(delete(RoutineExercise).where(RoutineExercise.routine_id == routine.id))
     await db.flush()
