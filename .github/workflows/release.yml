@@ -1,23 +1,32 @@
 name: Release
+
+# Automatic release. Any push to main that changes the Android app cuts a signed release APK,
+# generates version.json, and publishes a GitHub Release — so shipping to devices is just pushing
+# to main. Dragonfly (the suite hub) polls releases/latest and diffs versionCode.
+#
+# versionCode = epoch minutes: monotonic across workflow changes and always far above any prior
+# run-number-based code, so a fresh release never looks like a downgrade to Android or the hub.
+# versionName = the app's major.minor from build.gradle + the commit count (readable, monotonic,
+# and won't collide with the old X.Y.Z tags). Signs with the CI release key when the KEYSTORE_*
+# secrets are set; otherwise the committed stable key (build.gradle fallback).
 on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Tag name to build and publish (e.g. v1.1)
-        required: true
-        type: string
 
 jobs:
-  android-test:
+  test:
     name: "Android — Unit Tests"
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,10 +37,10 @@ jobs:
           echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'https://spotter.dragonflymedia.org/' }}" >> local.properties
       - run: ./gradlew :app:testDebugUnitTest --no-daemon
 
-  android-build:
-    name: "Android — Build Signed Release APK"
+  release:
+    name: "Android — Release"
+    needs: test
     runs-on: ubuntu-latest
-    needs: android-test
     permissions:
       contents: write
     defaults:
@@ -40,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag }}
+          fetch-depth: 0 # full history so `git rev-list --count` gives the commit count
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -49,33 +58,45 @@ jobs:
       - run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "server.url=${{ vars.SPOTTER_SERVER_URL || 'https://spotter.dragonflymedia.org/' }}" >> local.properties
-      - name: Decode keystore
-        run: echo "$KEYSTORE_BASE64" | base64 -d > app/keystore.jks
+      - name: Derive version
+        id: version
+        run: |
+          BASE=$(sed -n 's/.*VERSION_NAME") ?: "\([0-9]*\.[0-9]*\).*/\1/p' app/build.gradle.kts)
+          if [ -z "$BASE" ]; then echo "::error::could not read major.minor from build.gradle.kts"; exit 1; fi
+          COMMITS=$(git rev-list --count HEAD)
+          CODE=$(( $(date +%s) / 60 ))
+          echo "name=$BASE.$COMMITS" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Releasing $BASE.$COMMITS (versionCode $CODE)"
+      - name: Build signed release APK
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      - name: Build release APK
-        env:
-          KEYSTORE_PATH: keystore.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          VERSION_CODE: ${{ github.run_number }}
-          VERSION_NAME: ${{ github.event.inputs.tag }}
-        run: ./gradlew :app:assembleRelease --no-daemon
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk spotter-${{ github.event.inputs.tag }}.apk
-      # Dragonfly (the suite hub) reads this asset to learn the release's versionCode — the
-      # GitHub API only exposes the tag. Keep the values in lock-step with the gradle env above.
-      - name: Generate version.json for Dragonfly
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
-          SHA256=$(sha256sum spotter-${{ github.event.inputs.tag }}.apk | cut -d' ' -f1)
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/keystore.jks
+            export KEYSTORE_PATH=keystore.jks
+            echo "Signing with the CI release key."
+          else
+            echo "No KEYSTORE_BASE64 secret; signing with the committed stable key."
+          fi
+          ./gradlew :app:assembleRelease --no-daemon
+      - name: Stage APK + version.json for Dragonfly
+        run: |
+          APK=spotter-v${{ steps.version.outputs.name }}.apk
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
           printf '{"versionCode": %d, "versionName": "%s", "sha256": "%s", "minSdk": 26}\n' \
-            "${{ github.run_number }}" "${{ github.event.inputs.tag }}" "$SHA256" > version.json
+            "${{ steps.version.outputs.code }}" "${{ steps.version.outputs.name }}" "$SHA256" > version.json
           cat version.json
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag }}
+          tag_name: v${{ steps.version.outputs.name }}
           generate_release_notes: true
           files: |
-            android/spotter-${{ github.event.inputs.tag }}.apk
+            android/spotter-v${{ steps.version.outputs.name }}.apk
             android/version.json
