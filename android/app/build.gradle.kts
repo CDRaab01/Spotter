@@ -30,8 +30,10 @@ android {
         applicationId = "com.spotter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.2"
+        // CI passes VERSION_CODE (the run number) so each signed release installs cleanly over the
+        // previous one; defaults to the last shipped value for local/debug builds.
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
+        versionName = System.getenv("VERSION_NAME") ?: "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
             "String", "SERVER_URL",
@@ -40,6 +42,16 @@ android {
     }
 
     signingConfigs {
+        // A stable, committed key so every build — debug, local release, CI release — shares one
+        // signing identity. New APKs install over the top of existing ones without Android
+        // complaining about INSTALL_FAILED_UPDATE_INCOMPATIBLE. Password is not secret.
+        create("stable") {
+            storeFile = file("spotter-debug.keystore")
+            storePassword = "spotter"
+            keyAlias = "spotter"
+            keyPassword = "spotter"
+        }
+        // CI's real release key, only when KEYSTORE_PATH is supplied in the environment.
         if (keystorePath != null) {
             create("release") {
                 storeFile = file(keystorePath)
@@ -51,8 +63,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stable")
+        }
         release {
+            // Prefer CI's release key; fall back to the stable committed key for local releases.
             signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("stable")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
