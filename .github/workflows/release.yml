@@ -64,8 +64,18 @@ jobs:
         run: ./gradlew :app:assembleRelease --no-daemon
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk spotter-${{ github.event.inputs.tag }}.apk
+      # Dragonfly (the suite hub) reads this asset to learn the release's versionCode — the
+      # GitHub API only exposes the tag. Keep the values in lock-step with the gradle env above.
+      - name: Generate version.json for Dragonfly
+        run: |
+          SHA256=$(sha256sum spotter-${{ github.event.inputs.tag }}.apk | cut -d' ' -f1)
+          printf '{"versionCode": %d, "versionName": "%s", "sha256": "%s", "minSdk": 26}\n' \
+            "${{ github.run_number }}" "${{ github.event.inputs.tag }}" "$SHA256" > version.json
+          cat version.json
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag }}
           generate_release_notes: true
-          files: android/spotter-${{ github.event.inputs.tag }}.apk
+          files: |
+            android/spotter-${{ github.event.inputs.tag }}.apk
+            android/version.json
