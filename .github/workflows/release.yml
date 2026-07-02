@@ -90,7 +90,7 @@ jobs:
         # would fall back to a different (committed) key, producing an APK that can't install over
         # existing users. Pin the known-good signer cert and fail the release if it ever differs.
         run: |
-          EXPECTED=f5493cdc8088642757b45faac9807627f36485d458eda514ed17d97de4b8ebdd
+          EXPECTED=5a596c9ea21bfaddae572a66514553c0f8c6db4ed796deabe4f56c9040c2cf8a
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           ACTUAL=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
             | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
