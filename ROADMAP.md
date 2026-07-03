@@ -22,6 +22,15 @@ host-level roadmap; this is Spotter-specific.
 5. **Deploy operability niceties:** dump `docker compose logs` on health-gate failure;
    configurable health timeout. Small, listed since June, keeps biting during incident triage.
 
+## Cross-app work (approved 2026-07-03 — see Dragonfly/CROSS-APP.md for the full design)
+
+- **Bodyweight write-through to Plate** (CROSS-APP item 1): Plate becomes the weight
+  authority; Spotter's bodyweight logging writes through to Plate's `/cross-app/weight`
+  (kg on the wire), keeps `BodyMetric` as the offline cache, and charts read the merged
+  series. Flagged on `PLATE_BASE_URL` + secret.
+- **Range form of `/workouts`** (CROSS-APP item 4): additive `?start=&end=` alongside the
+  single-date form, for Plate and the future suite digest.
+
 ## Feature work (in value order)
 
 1. **Progressive overload engine.** The data is all there (`prior-bests` already computes
