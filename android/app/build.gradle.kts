@@ -35,6 +35,9 @@ android {
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
         versionName = System.getenv("VERSION_NAME") ?: "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // AppAuth's redirect receiver binds to this scheme (BROKER.md Phase 2c) — the custom-scheme
+        // half of com.spotter:/oauth2redirect registered in dragonfly-id.
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.spotter"
         buildConfigField(
             "String", "SERVER_URL",
             "\"${localProperties.getProperty("server.url", "https://spotter.dragonflymedia.org/")}\""
@@ -150,6 +153,9 @@ dependencies {
 
     // Confetti (celebration moments)
     implementation(libs.konfetti.compose)
+
+    // Suite SSO (BROKER.md Phase 2c): OpenID Connect authorization-code + PKCE via AppAuth.
+    implementation(libs.appauth)
 
     // Testing
     testImplementation(libs.junit)

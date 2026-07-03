@@ -35,6 +35,7 @@ import com.spotter.data.model.ProgramDaysUpdate
 import com.spotter.data.model.ProgramOut
 import com.spotter.data.model.ProgramUpdate
 import com.spotter.data.model.ResetPasswordRequest
+import com.spotter.data.model.SuiteLoginRequest
 import com.spotter.data.model.TokenResponse
 import com.spotter.data.model.TrackedExercise
 import com.spotter.data.model.UserOut
@@ -58,6 +59,10 @@ interface ApiService {
 
     @POST("auth/refresh")
     suspend fun refresh(@Body req: RefreshRequest): TokenResponse
+
+    // Trade a Dragonfly suite token for a Spotter session (BROKER.md Phase 2c).
+    @POST("auth/suite")
+    suspend fun suiteLogin(@Body req: SuiteLoginRequest): TokenResponse
 
     @POST("auth/forgot-password")
     suspend fun forgotPassword(@Body req: ForgotPasswordRequest)

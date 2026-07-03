@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +45,10 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showServerDialog by remember { mutableStateOf(false) }
+
+    val suiteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result -> viewModel.completeSuiteLogin(result.data) }
 
     LaunchedEffect(authState) {
         if (authState is UiState.Success) onLoginSuccess(viewModel.isOnboardingDone())
@@ -96,6 +103,14 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = authState !is UiState.Loading,
         )
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = { suiteLauncher.launch(viewModel.suiteAuthorizeIntent()) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = authState !is UiState.Loading,
+        ) {
+            Text("Sign in with Dragonfly")
+        }
         if (authState is UiState.Error) {
             Spacer(Modifier.height(8.dp))
             Text(

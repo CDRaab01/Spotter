@@ -1,7 +1,9 @@
 package com.spotter.ui.auth
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.remote.SuiteAuthManager
 import com.spotter.data.repository.AuthRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.AuthEventBus
@@ -20,6 +22,7 @@ import javax.inject.Inject
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val appPreferences: AppPreferences,
+    private val suiteAuthManager: SuiteAuthManager,
     authEventBus: AuthEventBus,
 ) : ViewModel() {
 
@@ -109,6 +112,22 @@ class AuthViewModel @Inject constructor(
                 UiState.Success(Unit)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Invalid or expired code. Please try again.")
+            }
+        }
+    }
+
+    /** Intent that launches the Dragonfly (suite SSO) sign-in — launch via an ActivityResult. */
+    fun suiteAuthorizeIntent(): Intent = suiteAuthManager.authorizeIntent()
+
+    /** Handle the sign-in result: exchange → /auth/suite → session. Success drives navigation. */
+    fun completeSuiteLogin(data: Intent?) {
+        viewModelScope.launch {
+            _authState.value = UiState.Loading
+            _authState.value = try {
+                suiteAuthManager.complete(data)
+                UiState.Success(Unit)
+            } catch (e: Exception) {
+                UiState.Error(e.message ?: "Dragonfly sign-in failed")
             }
         }
     }
