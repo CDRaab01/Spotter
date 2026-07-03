@@ -73,6 +73,8 @@ class AuthViewModel @Inject constructor(
             _authState.value = UiState.Loading
             _authState.value = try {
                 authRepository.login(email, password)
+                // Existing account → not a new user; skip the onboarding intro on this + future launches.
+                appPreferences.setOnboardingDone()
                 UiState.Success(Unit)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Login failed")
@@ -125,6 +127,8 @@ class AuthViewModel @Inject constructor(
             _authState.value = UiState.Loading
             _authState.value = try {
                 suiteAuthManager.complete(data)
+                // Existing account → not a new user; skip the onboarding intro on this + future launches.
+                appPreferences.setOnboardingDone()
                 UiState.Success(Unit)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Dragonfly sign-in failed")

@@ -147,6 +147,16 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
     }
 
     /**
+     * Marks onboarding complete without collecting a questionnaire profile. Used after a normal
+     * login or "Sign in with Dragonfly": the account already exists, so the new-user intro must
+     * be skipped (the flag is device-local, so a returning user on a fresh install would otherwise
+     * be re-onboarded every launch). The AI intake protocol fills any missing profile gaps later.
+     */
+    suspend fun setOnboardingDone() {
+        context.dataStore.edit { it[ONBOARDING_DONE] = true }
+    }
+
+    /**
      * Clears the saved questionnaire profile and onboarding flag so the user is sent back
      * through the onboarding questionnaire. Used by account reset. Leaves app preferences
      * (theme, units, server URL) intact.
