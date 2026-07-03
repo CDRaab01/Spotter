@@ -7,7 +7,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.config import settings
 from app.limiter import limiter
-from app.routers import ai, auth, calendar, cardio, exercises, metrics, routines, progress, programs, sessions, users, workouts
+from app.routers import ai, auth, calendar, cardio, exercises, metrics, routines, progress, programs, sessions, suite_auth, users, workouts
 
 # Single source for the human-facing version, reused by GET /version below.
 APP_VERSION = "1.1.2"
@@ -75,6 +75,7 @@ async def security_headers(request: Request, call_next) -> Response:
 
 
 app.include_router(auth.router)
+app.include_router(suite_auth.router)
 app.include_router(routines.router)
 app.include_router(sessions.router)
 app.include_router(metrics.router)

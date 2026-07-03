@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # Leave unset to disable /workouts entirely (every call then 401s).
     cross_app_secret: str | None = None
 
+    # Suite SSO (BROKER.md Phase 2b). When suite_jwks_url + suite_issuer are set, POST /auth/suite
+    # accepts a suite access token (RS256, from the Dragonfly identity server), validates it
+    # against the published JWKS, and trades it for a Spotter session — linking by email. Unset ⇒
+    # the endpoint is disabled and the app's own email/password login is unaffected (dual-auth).
+    suite_jwks_url: str | None = None
+    suite_issuer: str | None = None
+    suite_audience: str = "suite"
+
     # Optional SMTP — if unset, reset codes are printed to stdout instead
     smtp_host: str | None = None
     smtp_port: int = 587
