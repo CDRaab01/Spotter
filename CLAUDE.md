@@ -574,3 +574,54 @@ Spotter's own clients.
   Spotter's schema + co-locate the databases); the endpoint gives a stable contract instead.
 - **Integration shape** was a gated decision (Plate CLAUDE.md §8) confirmed before building: read-only
   endpoint over HTTP, not a shared backend.
+
+## Suite membership — Dragonfly hub, SSO, and release automation (2026-07-02/03)
+
+Spotter is one of five apps in the personal suite (Spotter, Plate, Cookbook, Hawksnest,
+Dragonfly). The suite-wide architecture and its as-built ledger live in the **Dragonfly repo**
+(`CLAUDE.md` + `BROKER.md`) — read those before touching anything in this section. What Spotter
+carries:
+
+- **Suite signing key (Phase 0).** Release APKs are signed with the shared suite key (kept
+  outside all repos on the host; the repos are public). `release.yml` builds a signed APK +
+  `version.json` on any push to `main` touching `android/**`, and a post-build `apksigner` guard
+  fails the release if the signer cert ≠ the pinned suite SHA-256 (`5a596c9e…`). versionCode =
+  epoch minutes — so a local debug build can never install over a CI release without
+  uninstalling first.
+- **Config broker (Phase 1).** `util/SuiteConfigReader` queries Dragonfly's
+  signature-permission ContentProvider (`content://com.dragonfly.suiteconfig/config/spotter`)
+  in `App.onCreate` and applies a hub-managed server URL to `AppPreferences.serverUrl`; silently
+  falls back when the hub is absent/denied/blank. Manifest carries the `<uses-permission>` +
+  `<queries>` entries for `com.dragonfly`.
+- **SSO (Phases 2b/2c — LIVE).** Server: `POST /auth/suite` (`routers/suite_auth.py` +
+  `services/suite_auth.py`) validates an RS256 suite access token against the identity server's
+  JWKS (https://id.dragonflymedia.org; `aud=suite`, issuer-checked; JWKS fetch uses a hardcoded
+  8 s timeout by design) and find-or-creates the local user **by email** (unusable random
+  password hash). Feature-flagged: without `SUITE_JWKS_URL`/`SUITE_ISSUER` it 404s and password
+  auth is untouched. **Those two vars are pinned in `docker-compose.yml`'s `environment:` block
+  on purpose** — Compose doesn't re-read changed `env_file` content on redeploy, and losing the
+  flag that way caused two production 404 regressions. Client: AppAuth
+  (`data/remote/SuiteAuthManager.kt`, client id `spotter`, redirect `com.spotter:/oauth2redirect`)
+  behind the "Sign in with Dragonfly" button; email/password login remains as fallback. The
+  manifest overrides `net.openid.appauth.RedirectUriReceiverActivity` with an AppCompat theme
+  (`tools:node="merge"`) — removing that crashes the app on the OAuth redirect because the app
+  theme is `android:Theme.Material`, not AppCompat.
+
+### Operational notes specific to Spotter
+
+- **The deploy runner is NOT a Windows service** (unlike Plate/Cookbook/Dragonfly/kidbot). It is
+  the original `C:\actions-runner` (agent name "DRAGONFLY") and must be started interactively
+  after a host reboot: `Start-Process C:\actions-runner\run.cmd -WorkingDirectory
+  C:\actions-runner -WindowStyle Hidden`. Symptom when forgotten: Deploy runs sit `queued`.
+  Installing it as a service is a known deferred task.
+- **`server/.env` history:** the live file was accidentally truncated and reconstructed on
+  2026-07-02 with a NEW `SECRET_KEY` (all prior sessions invalidated; users re-login once).
+  Custom SMTP / LM-model settings from before that date may be missing rather than "never set".
+  `CROSS_APP_SECRET` is the one shared suite-wide value — rotate it in Plate/Cookbook too or
+  cross-app calls 401.
+- **Local pytest recipe** (the suite is fast when done right, pathological otherwise): use a
+  throwaway Postgres, `DATABASE_URL` host **127.0.0.1** (never `localhost` — Docker publishes
+  IPv4-only and the ::1-first stall is catastrophic), and `DB_NULLPOOL=1` if you hit "Task
+  attached to a different loop" (SQLAlchemy pools bind asyncpg connections to the creating
+  event loop). Example: create a scratch DB in the spotter-db container (127.0.0.1:5432,
+  spotter/spotter), point `DATABASE_URL` at it, run pytest from `server/`.
