@@ -1,4 +1,5 @@
 import time
+import uuid
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -113,4 +114,36 @@ async def test_wrong_audience_rejected(client, suite_enabled):
 
 async def test_garbage_token_rejected(client, suite_enabled):
     r = await client.post("/auth/suite", json={"suite_token": "not-a-jwt"})
+    assert r.status_code == 401
+
+
+# --- Cross-app service tokens (ROADMAP T2 #5) — the RS256 dual-accept path on GET /workouts ---
+
+
+async def _make_user(email: str) -> None:
+    async with AsyncSessionLocal() as s:
+        s.add(User(name="X", email=email, hashed_password="x"))
+        await s.commit()
+
+
+async def test_cross_app_rs256_token_accepted(client, suite_enabled):
+    """A dragonfly-id RS256 token (aud="cross-app") authenticates the cross-app /workouts surface,
+    validated against the same JWKS as SSO — no cross_app_secret needed on this side."""
+    email = f"xapp-rs256-{uuid.uuid4().hex[:8]}@example.com"
+    await _make_user(email)
+    token = _suite_token(email, aud="cross-app")
+    r = await client.get(
+        "/workouts", params={"date": "2026-07-04"}, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["trained"] is False
+
+
+async def test_suite_sso_token_rejected_on_cross_app(client, suite_enabled):
+    """Audience scoping: a suite SSO user token (aud="suite") must NOT work on the cross-app
+    surface — the whole point of the distinct aud="cross-app". (401 fires before any user lookup.)"""
+    token = _suite_token("sso-user@example.com", aud="suite")
+    r = await client.get(
+        "/workouts", params={"date": "2026-07-04"}, headers={"Authorization": f"Bearer {token}"}
+    )
     assert r.status_code == 401
