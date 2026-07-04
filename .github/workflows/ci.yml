@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+  schedule:
+    # Weekly bit-rot check (Mondays 06:00 UTC) so "green" stays meaningful between pushes.
+    # Deploy is guarded against scheduled runs (see deploy.yml) so this never ships.
+    - cron: "0 6 * * 1"
 
 jobs:
   # ── Server ────────────────────────────────────────────────────────────────
