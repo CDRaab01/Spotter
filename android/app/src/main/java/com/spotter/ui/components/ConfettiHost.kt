@@ -13,11 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import com.spotter.ui.theme.PulseBlue
-import com.spotter.ui.theme.PulseGreen
-import com.spotter.ui.theme.PulseMotion
-import com.spotter.ui.theme.PulseOrange
-import com.spotter.ui.theme.PulseViolet
+import design.pulse.ui.theme.PulseBlue
+import design.pulse.ui.theme.PulseGreen
+import design.pulse.ui.theme.PulseMotion
+import design.pulse.ui.theme.PulseOrange
+import design.pulse.ui.theme.PulseViolet
 import com.spotter.ui.theme.SpotterTheme
 import nl.dionsegijn.konfetti.compose.KonfettiView
 import nl.dionsegijn.konfetti.core.Party

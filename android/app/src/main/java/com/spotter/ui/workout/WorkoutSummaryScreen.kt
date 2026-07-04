@@ -41,12 +41,12 @@ import androidx.navigation.NavController
 import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.ui.components.CelebrationPulse
 import com.spotter.ui.components.ConfettiHost
-import com.spotter.ui.components.DataText
+import design.pulse.ui.components.DataText
 import com.spotter.ui.components.HeatBar
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
-import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.TickerNumber
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
+import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.TickerNumber
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
@@ -210,7 +210,7 @@ fun WorkoutSummaryScreen(
             if (muscleGroups.isNotEmpty()) {
                 Spacer(Modifier.height(spacing.xl))
                 SectionHeader(
-                    title = "Muscles trained",
+                    label = "Muscles trained",
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = spacing.lg),

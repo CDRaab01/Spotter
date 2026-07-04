@@ -35,9 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.ui.components.DataText
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.DataText
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
 

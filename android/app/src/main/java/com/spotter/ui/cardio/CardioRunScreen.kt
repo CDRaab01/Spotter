@@ -35,9 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.CardioPhase
-import com.spotter.ui.components.DataText
-import com.spotter.ui.components.ProgressRing
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.DataText
+import design.pulse.ui.components.ProgressRing
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.theme.SpotterTheme
 
 @Composable

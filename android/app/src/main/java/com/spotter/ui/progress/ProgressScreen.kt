@@ -67,13 +67,13 @@ import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.PersonalRecord
 import com.spotter.data.model.TrackedExercise
-import com.spotter.ui.components.DataText
+import design.pulse.ui.components.DataText
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.PanelCard
+import design.pulse.ui.components.PanelCard
 import com.spotter.ui.navigation.Screen
-import com.spotter.ui.theme.PulseMotion
+import design.pulse.ui.theme.PulseMotion
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight

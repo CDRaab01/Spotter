@@ -1,5 +1,6 @@
 package com.spotter.ui.components
 
+import design.pulse.ui.components.PulseButton
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset

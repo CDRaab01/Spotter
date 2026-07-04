@@ -118,6 +118,28 @@ tunnel behind the `tunnel` profile). Migrations run automatically on container b
 - Server: pytest for routers + the AI guardrail/validation layer (mock the LLM; assert malformed/out-of-bounds output is rejected).
 - Android: unit-test ViewModels and the sync/repository logic.
 
+## Design system (PULSE) — now the shared library
+
+Spotter consumes the shared **Pulse library** (`design.pulse:pulse-ui`) via a Gradle composite build
+(`settings.gradle.kts` → `includeBuild("../../Pulse")`; the sibling `Pulse` repo must sit next to
+`Spotter`, and CI/release check it out) — migrated off the in-tree copy 2026-07-03. Spotter **leads
+blue** via `PulseAccent.Blue`. The app-side layer is `ui/theme/SpotterTheme.kt` (the workout channel
+map `PulseColors` — effort/strength/streak/recovery + structure + hero/energy gradients + `dayChannel`;
+`SpotterTheme.pulse`). `ui/theme/AppLocals.kt` (weight/distance units) stays app-side. Generic tokens
++ components come from the library.
+
+**Spotter was the component unification.** Spotter's components were the original, richer PULSE set;
+the library (extracted from Plate's leaner rewrite) was brought up to Spotter's versions as supersets:
+`StatTile` (dense metric layout via `dense = true` — icon/animatedValue/sparkline), `PanelCard`
+(onClick/channel/raised/contentPadding), `SectionHeader` (trailing slot), `Sparkline` (filled-line
+mode via `strokeWidth`), and `TickerNumber` were promoted into `design.pulse.ui.components`. The other
+apps (Cookbook/Dragonfly/Plate) render pixel-identically against the supersets; Spotter converged on
+two trivial cosmetics (section-header tick 12→14dp + rounded, and ~8dp section vertical spacing) — its
+Roborazzi baselines were re-recorded. Spotter-specific components stay app-side: `BrandLogo`,
+`ConfettiHost` (`CelebrationPulse`), `ExercisePreviewRow`, `HeatBar`, `States`, and `Modifiers`
+(`hairline`/`shimmer`). **Do not reintroduce in-tree token/component copies** — fix them in Pulse and
+rebuild all four consumers.
+
 ## Conventions for Claude
 - Ask before adding new dependencies or changing the architecture above.
 - Keep AI guardrail changes isolated and call them out explicitly.

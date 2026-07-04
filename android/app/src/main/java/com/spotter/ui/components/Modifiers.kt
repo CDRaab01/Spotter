@@ -3,47 +3,28 @@ package com.spotter.ui.components
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import com.spotter.ui.theme.PulseMotion
 import com.spotter.ui.theme.SpotterTheme
 
-/**
- * Tactile press feedback: the element springs down slightly while pressed. Pair with an
- * [interactionSource] that's also fed to the click handler so the scale tracks real presses.
- */
-fun Modifier.pressScale(
-    interactionSource: MutableInteractionSource,
-    pressedScale: Float = 0.96f,
-): Modifier = composed {
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) pressedScale else 1f,
-        animationSpec = PulseMotion.SpringPress,
-        label = "pressScale",
-    )
-    this.scale(scale)
-}
+// Spotter-specific modifiers. The generic press-scale (`Modifier.pressScale`) now comes from the
+// shared PULSE library (`design.pulse.ui.components`); these two are Spotter's own.
 
 /**
- * The 1px PULSE stroke for surfaces that aren't a [PanelCard] (input fields, chips, strips).
+ * The 1px PULSE stroke for surfaces that aren't a `PanelCard` (input fields, chips, strips).
  */
 fun Modifier.hairline(
     shape: Shape,

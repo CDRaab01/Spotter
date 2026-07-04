@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 

@@ -46,7 +46,7 @@ import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.PanelCard
+import design.pulse.ui.components.PanelCard
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState

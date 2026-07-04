@@ -66,9 +66,16 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: android
+        working-directory: Spotter/android
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: Spotter
+      # Composite build needs the sibling Pulse repo (settings.gradle.kts includeBuild ../../Pulse).
+      - uses: actions/checkout@v4
+        with:
+          repository: CDRaab01/Pulse
+          path: Pulse
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -85,9 +92,16 @@ jobs:
     needs: android-test
     defaults:
       run:
-        working-directory: android
+        working-directory: Spotter/android
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: Spotter
+      # Composite build needs the sibling Pulse repo (settings.gradle.kts includeBuild ../../Pulse).
+      - uses: actions/checkout@v4
+        with:
+          repository: CDRaab01/Pulse
+          path: Pulse
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -109,8 +123,8 @@ jobs:
         with:
           name: ui-screenshots-${{ github.sha }}
           path: |
-            android/app/screenshots/**
-            android/app/build/outputs/roborazzi/**
+            Spotter/android/app/screenshots/**
+            Spotter/android/app/build/outputs/roborazzi/**
           retention-days: 30
 
   android-build:
@@ -119,9 +133,16 @@ jobs:
     needs: android-test
     defaults:
       run:
-        working-directory: android
+        working-directory: Spotter/android
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: Spotter
+      # Composite build needs the sibling Pulse repo (settings.gradle.kts includeBuild ../../Pulse).
+      - uses: actions/checkout@v4
+        with:
+          repository: CDRaab01/Pulse
+          path: Pulse
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -134,7 +155,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: spotter-debug-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: Spotter/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
   android-release-build:
@@ -144,9 +165,16 @@ jobs:
     needs: android-test
     defaults:
       run:
-        working-directory: android
+        working-directory: Spotter/android
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: Spotter
+      # Composite build needs the sibling Pulse repo (settings.gradle.kts includeBuild ../../Pulse).
+      - uses: actions/checkout@v4
+        with:
+          repository: CDRaab01/Pulse
+          path: Pulse
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -169,7 +197,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: spotter-release-${{ github.sha }}
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: Spotter/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
   publish:

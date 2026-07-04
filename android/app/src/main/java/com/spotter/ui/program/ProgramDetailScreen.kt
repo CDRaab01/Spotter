@@ -51,8 +51,8 @@ import androidx.navigation.NavController
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.ui.components.ExercisePreviewRow
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -41,7 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.spotter.data.model.SetLogOut
-import com.spotter.ui.components.DataText
+import design.pulse.ui.components.DataText
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.fieldValue

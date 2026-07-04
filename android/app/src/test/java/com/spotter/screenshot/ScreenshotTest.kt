@@ -52,14 +52,14 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.spotter.R
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.components.BrandLogo
-import com.spotter.ui.components.DataText
+import design.pulse.ui.components.DataText
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.HeatBar
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.ProgressRing
-import com.spotter.ui.components.PulseButton
-import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.StatTile
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.ProgressRing
+import design.pulse.ui.components.PulseButton
+import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.StatTile
 import com.spotter.ui.navigation.PulseBottomBar
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.navigation.ActiveBarUi
@@ -155,15 +155,16 @@ internal fun HomeScene() {
             )
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile(modifier = Modifier.weight(1f), value = "12", label = "day streak", accent = pulse.streak)
+            StatTile(modifier = Modifier.weight(1f), dense = true, value = "12", label = "day streak", channel = pulse.streak)
             StatTile(
                 modifier = Modifier.weight(1f),
+                dense = true,
                 value = "148",
                 label = "active min",
-                accent = pulse.effort,
+                channel = pulse.effort,
                 sparkline = listOf(30f, 0f, 45f, 38f, 0f, 35f, 0f),
             )
-            StatTile(modifier = Modifier.weight(1f), value = "182 lb", label = "bodyweight")
+            StatTile(modifier = Modifier.weight(1f), dense = true, value = "182 lb", label = "bodyweight")
         }
         SectionHeader("Upcoming")
         PanelCard(Modifier.fillMaxWidth()) {

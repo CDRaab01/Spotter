@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.spotter.data.model.CardioProgram
 import com.spotter.data.model.CardioProgramType
-import com.spotter.ui.components.PanelCard
+import design.pulse.ui.components.PanelCard
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
 

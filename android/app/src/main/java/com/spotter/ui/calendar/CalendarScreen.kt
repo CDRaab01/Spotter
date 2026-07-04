@@ -48,10 +48,10 @@ import androidx.navigation.NavController
 import com.spotter.data.model.CalendarEntry
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
-import com.spotter.ui.components.DataText
+import design.pulse.ui.components.DataText
 import com.spotter.ui.components.PulsingDots
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.cardio.CardioFormat
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
