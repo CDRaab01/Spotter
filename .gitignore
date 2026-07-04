@@ -43,3 +43,7 @@ android/**/*.jks
 
 # Docker
 docker-compose.override.yml
+
+# never commit .env backups
+.env.bak*
+*.env.bak-*
