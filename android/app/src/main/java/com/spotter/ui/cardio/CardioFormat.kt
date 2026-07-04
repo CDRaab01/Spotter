@@ -3,7 +3,7 @@ package com.spotter.ui.cardio
 import com.spotter.data.model.CardioPhase
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -25,7 +25,7 @@ object CardioFormat {
 
     fun parseDate(iso: String?): LocalDate? = iso?.let {
         try {
-            Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalDate()
+            Instant.parse(it).atZone(ZoneOffset.UTC).toLocalDate()
         } catch (_: Exception) {
             null
         }
