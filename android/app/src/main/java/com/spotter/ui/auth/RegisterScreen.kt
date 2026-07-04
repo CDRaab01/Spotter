@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.spotter.ui.components.BrandLogo
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PulseButton
 import com.spotter.util.UiState
 
 @Composable

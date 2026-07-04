@@ -64,11 +64,11 @@ import com.spotter.ui.components.ConfettiHost
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.components.PulsingDots
-import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.StatTile
+import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.StatTile
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
@@ -244,7 +244,7 @@ fun HomeScreen(
                             programs.isNotEmpty() -> {
                                 item {
                                     SectionHeader(
-                                        title = "Your programs",
+                                        label = "Your programs",
                                         channel = SpotterTheme.pulse.strength,
                                         trailing = {
                                             TextButton(onClick = { navController.navigate(Screen.Programs.route) }) {
@@ -340,19 +340,22 @@ private fun StatsBand(
     ) {
         StatTile(
             modifier = Modifier.weight(1f),
+            dense = true,
             animatedValue = streak,
             label = "day streak",
-            accent = if (streak > 0 || streakMilestone) pulse.streak else null,
+            channel = if (streak > 0 || streakMilestone) pulse.streak else null,
         )
         StatTile(
             modifier = Modifier.weight(1f),
+            dense = true,
             animatedValue = weeklyActiveMinutes,
             label = "active min",
-            accent = pulse.effort,
+            channel = pulse.effort,
             sparkline = weeklyMinutesByDay.takeIf { week -> week.any { it > 0f } },
         )
         StatTile(
             modifier = Modifier.weight(1f),
+            dense = true,
             value = bodyweight?.let { weightUnit.formatWeight(it) } ?: "—",
             label = "bodyweight",
             onClick = onLogBodyweight,

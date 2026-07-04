@@ -32,7 +32,7 @@ import com.spotter.data.model.ExerciseOut
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.PanelCard
+import design.pulse.ui.components.PanelCard
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)

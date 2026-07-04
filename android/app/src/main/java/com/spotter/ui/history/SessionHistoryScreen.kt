@@ -44,8 +44,8 @@ import com.spotter.data.model.SessionSummary
 import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
-import com.spotter.ui.components.DataText
-import com.spotter.ui.components.PanelCard
+import design.pulse.ui.components.DataText
+import design.pulse.ui.components.PanelCard
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState

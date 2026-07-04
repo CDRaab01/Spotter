@@ -45,8 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeightLabel
 

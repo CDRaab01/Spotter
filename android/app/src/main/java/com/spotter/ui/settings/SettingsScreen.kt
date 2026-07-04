@@ -56,8 +56,8 @@ import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.ui.components.PulsingDots
-import com.spotter.ui.components.SectionHeader
-import com.spotter.ui.components.PanelCard
+import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.PanelCard
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.util.DarkModePreference

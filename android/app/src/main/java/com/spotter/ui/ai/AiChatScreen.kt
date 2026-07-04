@@ -61,8 +61,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.SuggestedRoutine
 import com.spotter.ui.components.EmptyState
-import com.spotter.ui.components.PanelCard
-import com.spotter.ui.components.PulseButton
+import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.util.UiState
 
