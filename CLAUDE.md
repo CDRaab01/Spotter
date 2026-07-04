@@ -609,11 +609,14 @@ carries:
 
 ### Operational notes specific to Spotter
 
-- **The deploy runner is NOT a Windows service** (unlike Plate/Cookbook/Dragonfly/kidbot). It is
-  the original `C:\actions-runner` (agent name "DRAGONFLY") and must be started interactively
-  after a host reboot: `Start-Process C:\actions-runner\run.cmd -WorkingDirectory
-  C:\actions-runner -WindowStyle Hidden`. Symptom when forgotten: Deploy runs sit `queued`.
-  Installing it as a service is a known deferred task.
+- **The deploy runner is a Windows service** as of 2026-07-03
+  (`actions.runner.CDRaab01-Spotter.DRAGONFLY`, runs as `NETWORK SERVICE`, delayed auto-start),
+  like Plate/Cookbook/Dragonfly/kidbot — it self-recovers across reboot. It was originally the
+  interactive `C:\actions-runner` (agent name "DRAGONFLY"); converted via
+  `C:\Scripts\Convert-SpotterRunnerToService.ps1`. Manual start if ever needed:
+  `Start-Service actions.runner.CDRaab01-Spotter.DRAGONFLY`. Because it now runs as NETWORK SERVICE,
+  the `C:\Code\Spotter` clone is excepted in the system gitconfig `safe.directory` so deploys don't
+  hit "dubious ownership" (host `OPERATIONS.md` §5).
 - **`server/.env` history:** the live file was accidentally truncated and reconstructed on
   2026-07-02 with a NEW `SECRET_KEY` (all prior sessions invalidated; users re-login once).
   Custom SMTP / LM-model settings from before that date may be missing rather than "never set".
