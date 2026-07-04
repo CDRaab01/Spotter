@@ -643,7 +643,11 @@ carries:
   2026-07-02 with a NEW `SECRET_KEY` (all prior sessions invalidated; users re-login once).
   Custom SMTP / LM-model settings from before that date may be missing rather than "never set".
   `CROSS_APP_SECRET` is the one shared suite-wide value — rotate it in Plate/Cookbook too or
-  cross-app calls 401.
+  cross-app calls 401. **2026-07-04:** the live `.env` (and the whole `server`+`cloudflared` stack)
+  was still running from the pre-relocation `C:\Users\Sonic\Documents\Code\Spotter`, and that copy
+  was **missing `CROSS_APP_SECRET`** (so `/workouts` was silently 401). Consolidated onto
+  `C:\Code\Spotter`: rebuilt `.env` = the live values **+** `CROSS_APP_SECRET`, redeployed, and
+  repointed `vars.SPOTTER_DIR` → `C:\Code\Spotter`. See host `OPERATIONS.md` §6 (2026-07-04).
 - **Local pytest recipe** (the suite is fast when done right, pathological otherwise): use a
   throwaway Postgres, `DATABASE_URL` host **127.0.0.1** (never `localhost` — Docker publishes
   IPv4-only and the ::1-first stall is catastrophic), and `DB_NULLPOOL=1` if you hit "Task
