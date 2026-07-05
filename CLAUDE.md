@@ -70,7 +70,7 @@ The AI assists with workout planning only. The server enforces these — never r
 ## API Surface
 - `POST /auth/register|login|refresh|forgot-password|reset-password`
 - `GET/POST /routines`, `GET /routines/{id}`, `PATCH/DELETE /routines/{id}`, `PUT /routines/{id}/exercises`
-- `GET/POST /sessions`, `GET/PATCH/DELETE /sessions/{id}`, `POST/PATCH /sessions/{id}/sets[/{set_id}]`, `GET /sessions/{id}/prior-bests` (includes progression-aware `suggested_weight`)
+- `GET/POST /sessions`, `GET/PATCH/DELETE /sessions/{id}`, `POST/PATCH /sessions/{id}/sets[/{set_id}]`, `GET /sessions/{id}/prior-bests` — the **progressive-overload engine** (`app/progression.py`, ROADMAP2 T3 #1): double progression on the routine's `target_reps` (`add_weight` only when reps are met, else `add_reps`), a stall→`deload` after 3 stuck sessions, plus best-set e1RM + a PR flag. Fields: `suggested_weight/suggested_reps/action/e1rm/is_pr` (+ legacy `suggested_reason`)
 - `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated `suggested_plan` OR `suggested_program`). Accepts an optional `current_session_id` for in-workout, session-aware advice.
 - `POST /ai/programs/accept` — persists a user-accepted AI `SuggestedProgram` (creates one plan per non-rest day + a program, activates it)
 - `POST /ai/sessions/{id}/adjust` — applies a user-accepted AI `SuggestedAdjustment` to a live in-progress session (swap/adjust/remove/add on incomplete sets only); `apply_to_routine` also rewrites the session's routine. Returns the updated `SessionOut`.

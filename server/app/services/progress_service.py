@@ -6,18 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.exercise import Exercise
 from app.models.set_log import SetLog
 from app.models.workout_session import WorkoutSession
+from app.progression import estimate_1rm as _epley_1rm
 from app.schemas.progress import (
     ExerciseProgressPoint,
     PersonalRecord,
     TrackedExercise,
 )
-
-
-def _epley_1rm(weight: float, reps: int) -> float:
-    """Estimated one-rep max (Epley). Mirrors the client's estimatedOneRM
-    (android util/FitnessFormulas.kt): a single rep is already a 1RM, so it
-    returns the weight unchanged; otherwise weight * (1 + reps / 30)."""
-    return weight if reps <= 1 else weight * (1 + reps / 30.0)
 
 
 async def get_tracked_exercises(

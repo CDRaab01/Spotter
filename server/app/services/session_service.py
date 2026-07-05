@@ -13,6 +13,12 @@ from app.models.set_log import SetLog
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
 from app.limits import clamp_weight
+from app.progression import (
+    LOWER_BODY_GROUPS,
+    SessionHistory,
+    SetResult,
+    suggest_progression,
+)
 from app.schemas.session import (
     ExercisePrior,
     ExerciseSummary,
@@ -26,8 +32,8 @@ from app.schemas.session import (
     SetLogUpdate,
 )
 
-# Muscle groups that take larger linear-progression jumps (bigger, stronger muscles).
-_LOWER_BODY_GROUPS = {"legs", "quads", "hamstrings", "glutes", "calves", "back"}
+# Number of recent sessions per exercise the progression engine looks back over (stall/PR).
+_PROGRESSION_HISTORY_SESSIONS = 5
 
 
 def suggest_next_weight(
@@ -50,7 +56,7 @@ def suggest_next_weight(
         return last_weight, "Missed reps last time — repeat this weight before adding load."
 
     group = (muscle_group or "").lower()
-    step = 5.0 if group in _LOWER_BODY_GROUPS else 2.5
+    step = 5.0 if group in LOWER_BODY_GROUPS else 2.5
     suggested = clamp_weight(last_weight + step)
     if suggested is not None and suggested <= last_weight:
         return last_weight, "At the upper weight limit — hold and add reps."
@@ -352,7 +358,8 @@ async def get_prior_bests(
             WorkoutSession.user_id == user_id,
         )
     )
-    if not session_result.scalar_one_or_none():
+    session = session_result.scalar_one_or_none()
+    if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
         )
@@ -367,88 +374,121 @@ async def get_prior_bests(
     # Load exercise names + muscle groups in one query
     exercise_names: dict[uuid.UUID, str] = {}
     exercise_muscle: dict[uuid.UUID, str | None] = {}
-    ex_result = await db.execute(
-        select(Exercise).where(Exercise.id.in_(exercise_ids))
-    )
+    ex_result = await db.execute(select(Exercise).where(Exercise.id.in_(exercise_ids)))
     for ex in ex_result.scalars().all():
         exercise_names[ex.id] = ex.name
         exercise_muscle[ex.id] = ex.muscle_group
 
+    # The routine's prescription (target_reps + bodyweight flag) per exercise — the double-progression
+    # threshold. Absent (freeform session or exercise not in the routine) → the engine degrades to
+    # plain linear progression.
+    routine_targets: dict[uuid.UUID, tuple[int | None, bool]] = {}
+    if session.routine_id is not None:
+        re_rows = await db.execute(
+            select(
+                RoutineExercise.exercise_id,
+                RoutineExercise.target_reps,
+                RoutineExercise.is_bodyweight,
+            ).where(RoutineExercise.routine_id == session.routine_id)
+        )
+        routine_targets = {ex_id: (tr, bw) for ex_id, tr, bw in re_rows.all()}
+
     priors: list[ExercisePrior] = []
     for exercise_id in exercise_ids:
-        # Most recent completed set for this exercise in a prior session for this user
-        row_result = await db.execute(
-            select(SetLog.reps, SetLog.weight, WorkoutSession.date)
-            .join(WorkoutSession, SetLog.session_id == WorkoutSession.id)
-            .where(
-                WorkoutSession.user_id == user_id,
-                WorkoutSession.id != session_id,
-                SetLog.exercise_id == exercise_id,
-                SetLog.completed == True,  # noqa: E712
-            )
-            .order_by(WorkoutSession.date.desc(), SetLog.set_number.desc())
-            .limit(1)
-        )
-        row = row_result.first()
-        if not row:
-            continue
-
-        # Fetch the most recent prior session's full set list for this exercise
-        prior_session_result = await db.execute(
-            select(WorkoutSession.id)
+        # The most recent prior sessions that include this exercise (most recent first). We fetch
+        # ALL their sets — completed AND incomplete — because a miss (an incomplete set) is exactly
+        # the stall/deload signal the engine reasons over.
+        sess_rows = await db.execute(
+            select(WorkoutSession.id, WorkoutSession.date)
             .join(SetLog, SetLog.session_id == WorkoutSession.id)
             .where(
                 WorkoutSession.user_id == user_id,
                 WorkoutSession.id != session_id,
                 SetLog.exercise_id == exercise_id,
-                SetLog.completed == True,  # noqa: E712
             )
+            .group_by(WorkoutSession.id, WorkoutSession.date)
             .order_by(WorkoutSession.date.desc())
-            .limit(1)
+            .limit(_PROGRESSION_HISTORY_SESSIONS)
         )
-        prior_session_id = prior_session_result.scalar_one_or_none()
+        recent_sessions = sess_rows.all()
+        if not recent_sessions:
+            continue
 
-        last_sets: list[SetLogOut] = []
-        if prior_session_id:
-            last_sets_result = await db.execute(
-                select(SetLog)
-                .where(
-                    SetLog.session_id == prior_session_id,
-                    SetLog.exercise_id == exercise_id,
-                    SetLog.completed == True,  # noqa: E712
-                )
-                .order_by(SetLog.set_number)
+        sids = [s[0] for s in recent_sessions]
+        set_rows = await db.execute(
+            select(SetLog)
+            .where(SetLog.session_id.in_(sids), SetLog.exercise_id == exercise_id)
+            .order_by(SetLog.set_number)
+        )
+        sets_by_session: dict[uuid.UUID, list[SetLog]] = defaultdict(list)
+        for sl in set_rows.scalars().all():
+            sets_by_session[sl.session_id].append(sl)
+
+        # Engine history, most recent first (all sets, so misses are visible).
+        history = [
+            SessionHistory(
+                date=sdate,
+                sets=[
+                    SetResult(reps=sl.reps, weight=sl.weight, completed=sl.completed)
+                    for sl in sets_by_session.get(sid, [])
+                ],
             )
-            last_sets = [
-                SetLogOut(
-                    id=sl.id,
-                    session_id=sl.session_id,
-                    exercise_id=sl.exercise_id,
-                    set_number=sl.set_number,
-                    reps=sl.reps,
-                    weight=sl.weight,
-                    completed=sl.completed,
-                    completed_at=sl.completed_at,
-                )
-                for sl in last_sets_result.scalars().all()
-            ]
+            for sid, sdate in recent_sessions
+        ]
 
-        suggested_weight, suggested_reason = suggest_next_weight(
-            last_weight=row[1],
-            last_sets=last_sets,
+        # Display "prior best": the most recent session that actually completed a set (the response's
+        # reps/weight/date + last_sets). If nothing was ever completed, there's nothing to show.
+        display: tuple[int, float | None, datetime.date, list[SetLogOut]] | None = None
+        for sid, sdate in recent_sessions:
+            completed = [sl for sl in sets_by_session.get(sid, []) if sl.completed]
+            if completed:
+                top = max(completed, key=lambda s: s.set_number)
+                display = (
+                    top.reps,
+                    top.weight,
+                    sdate,
+                    [
+                        SetLogOut(
+                            id=sl.id,
+                            session_id=sl.session_id,
+                            exercise_id=sl.exercise_id,
+                            set_number=sl.set_number,
+                            reps=sl.reps,
+                            weight=sl.weight,
+                            completed=sl.completed,
+                            completed_at=sl.completed_at,
+                        )
+                        for sl in completed
+                    ],
+                )
+                break
+        if display is None:
+            continue
+        disp_reps, disp_weight, disp_date, disp_last_sets = display
+
+        target_reps, is_bw = routine_targets.get(exercise_id, (None, False))
+        sugg = suggest_progression(
+            target_reps=target_reps,
+            last_sets=history[0].sets,
+            exercise_history=history[1:],
             muscle_group=exercise_muscle.get(exercise_id),
+            is_bodyweight=is_bw,
         )
 
         priors.append(
             ExercisePrior(
                 exercise_id=exercise_id,
                 exercise_name=exercise_names.get(exercise_id),
-                reps=row[0],
-                weight=row[1],
-                date=row[2],
-                last_sets=last_sets,
-                suggested_weight=suggested_weight,
-                suggested_reason=suggested_reason,
+                reps=disp_reps,
+                weight=disp_weight,
+                date=disp_date,
+                last_sets=disp_last_sets,
+                suggested_weight=sugg.suggested_weight,
+                suggested_reason=sugg.reason,
+                suggested_reps=sugg.suggested_reps,
+                action=sugg.action,
+                e1rm=round(sugg.e1rm, 1) if sugg.e1rm is not None else None,
+                is_pr=sugg.is_pr,
             )
         )
 

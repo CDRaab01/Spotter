@@ -101,3 +101,9 @@ class ExercisePrior(BaseModel):
     # Progression-aware suggestion for the upcoming session (None for bodyweight)
     suggested_weight: float | None = None
     suggested_reason: str | None = None
+    # Progressive-overload engine (ROADMAP2 T3 #1): the rep goal, the action the client renders
+    # (add_weight | add_reps | hold | deload | bodyweight), the best-set estimated 1RM, and a PR flag.
+    suggested_reps: int | None = None
+    action: str | None = None
+    e1rm: float | None = None
+    is_pr: bool = False

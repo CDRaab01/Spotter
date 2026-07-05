@@ -458,12 +458,30 @@ private fun ExerciseCard(
                             color = pulse.strength,
                         )
                     }
-                    priorBest.suggestedWeight?.let { suggested ->
+                    val prog = progressionUi(priorBest, weightUnit::formatWeight)
+                    prog.suggestionText?.let { txt ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                txt,
+                                style = MaterialTheme.typography.bodySmall,
+                                // Deload reads as a caution (amber), everything else as an action (blue).
+                                color = if (prog.isDeload) pulse.streak else pulse.effort,
+                            )
+                            if (prog.showPr) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "PR",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = pulse.strength,
+                                )
+                            }
+                        }
+                    }
+                    prog.e1rmText?.let {
                         Text(
-                            "Suggested: ${weightUnit.formatWeight(suggested)}" +
-                                (priorBest.suggestedReason?.let { " — $it" } ?: ""),
+                            it,
                             style = MaterialTheme.typography.bodySmall,
-                            color = pulse.effort,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -562,4 +580,29 @@ private fun buildTargetHeader(set: SetLogOut, weightUnit: WeightUnit): String {
     } else {
         "$targetSets × $targetReps @ ${weightUnit.formatWeight(set.targetWeight)}"
     }
+}
+
+/** Display pieces for the progressive-overload suggestion — pure so it's unit-testable without
+ *  Compose. `formatWeight` is injected (the caller passes the unit-aware formatter). */
+internal data class ProgressionUi(
+    val suggestionText: String?,
+    val isDeload: Boolean,
+    val showPr: Boolean,
+    val e1rmText: String?,
+)
+
+internal fun progressionUi(p: ExercisePrior, formatWeight: (Double) -> String): ProgressionUi {
+    val weight = p.suggestedWeight
+    val reason = p.suggestedReason
+    val text = when {
+        weight != null -> "Suggested: ${formatWeight(weight)}" + (reason?.let { " — $it" } ?: "")
+        reason != null -> reason // bodyweight / add-reps with no load
+        else -> null
+    }
+    return ProgressionUi(
+        suggestionText = text,
+        isDeload = p.action == "deload",
+        showPr = p.isPr,
+        e1rmText = p.e1rm?.let { "e1RM ~${formatWeight(it)}" },
+    )
 }

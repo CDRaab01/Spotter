@@ -25,8 +25,9 @@ Cross-app: Plate ─GET /workouts?date=→ Spotter (training-day status)
 logic, one service per domain) → `app/models/` (SQLAlchemy 2.0 async) with `app/schemas/`
 (Pydantic) validating every request/response. Cross-cutting: `security.py` (JWT session +
 `get_cross_app_user`), `limiter.py` (slowapi), `limits.py` (canonical numeric bounds — see
-Guardrails), `config.py` (pydantic-settings), `database.py` (asyncpg engine; NullPool under
-tests via `DB_NULLPOOL`).
+Guardrails), `progression.py` (pure progressive-overload engine — double progression / deload /
+e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `config.py`
+(pydantic-settings), `database.py` (asyncpg engine; NullPool under tests via `DB_NULLPOOL`).
 
 ### Domain map (router → service → models)
 
@@ -35,7 +36,7 @@ tests via `DB_NULLPOOL`).
 | Auth/users | `auth.py`, `users.py`, `suite_auth.py` | `auth_service`, `suite_auth` | `User` |
 | Routines (the user-facing "plans") | `routines.py` | `routine_service` | `WorkoutRoutine`, `RoutineExercise` |
 | Programs (multi-day) | `programs.py` | `program_service` | `WorkoutProgram`, `ProgramDay` |
-| Sessions + sets | `sessions.py` | `session_service` | `WorkoutSession`, `SetLog` |
+| Sessions + sets | `sessions.py` | `session_service` (+ `progression.py` for `/prior-bests`) | `WorkoutSession`, `SetLog` |
 | Cardio | `cardio.py` | `cardio_service` | `CardioSession` |
 | Metrics/progress/calendar | `metrics.py`, `progress.py`, `calendar.py` | matching services | `BodyMetric` + reads over sessions |
 | Exercise catalog | `exercises.py` | — (seeded reads) | `Exercise` |

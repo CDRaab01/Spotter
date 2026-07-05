@@ -102,4 +102,9 @@ data class ExercisePrior(
     @SerialName("last_sets") val lastSets: List<SetLogOut> = emptyList(),
     @SerialName("suggested_weight") val suggestedWeight: Double? = null,
     @SerialName("suggested_reason") val suggestedReason: String? = null,
+    // Progressive-overload engine (ROADMAP2 T3 #1)
+    @SerialName("suggested_reps") val suggestedReps: Int? = null,
+    val action: String? = null, // add_weight | add_reps | hold | deload | bodyweight
+    val e1rm: Double? = null,
+    @SerialName("is_pr") val isPr: Boolean = false,
 )
