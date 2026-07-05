@@ -93,8 +93,8 @@ a green CI build of `main` (or a manual button), it runs `git reset --hard` +
 | POST | `/auth/register` | Create account |
 | POST | `/auth/login` | Get tokens |
 | POST | `/auth/refresh` | Refresh access token |
-| GET/POST | `/plans` | List / create workout plans |
-| GET | `/plans/{id}` | Get a single plan |
+| GET/POST | `/routines` | List / create workout routines |
+| GET | `/routines/{id}` | Get a single routine |
 | POST | `/sessions` | Start a workout session |
 | GET | `/sessions/{id}` | Get session with set logs |
 | POST | `/sessions/{id}/sets` | Log a set |

@@ -44,8 +44,9 @@ tests via `DB_NULLPOOL`).
 | Export | `export.py` | `export_service` | generic `__table__.columns` dump |
 
 **Naming trap:** the original "plan" concept was renamed to **routine** (`/routines`,
-`WorkoutRoutine`); CLAUDE.md's API-surface section still says `/plans` in places. The AI schemas
-still say `SuggestedPlan` — that's the AI-draft object, not a DB row.
+`WorkoutRoutine`). The AI schemas still say `SuggestedPlan` — that's the AI-draft object, not a
+DB row, so the name is intentional. (Historical changelog entries in CLAUDE.md still reference the
+old `/plans` path and the `plan_id` column by design — they describe past fixes.)
 
 ### The AI module (`app/services/ai/`) — the part you must not casually edit
 

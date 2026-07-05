@@ -84,15 +84,15 @@ curl -s "$B/exercises" -H "$A" | python3 -c "import sys,json;print(len(json.load
 # IMPORTANT: url-encode searches with spaces — curl -G --data-urlencode "search=Bench Press"
 BENCH=$(curl -s -G "$B/exercises" --data-urlencode "search=Bench Press" -H "$A" \
   | python3 -c "import sys,json;print(next(e['id'] for e in json.load(sys.stdin) if e['name']=='Bench Press'))")
-PID=$(curl -s -X POST $B/plans -H "$A" -H "Content-Type: application/json" \
+RID=$(curl -s -X POST $B/routines -H "$A" -H "Content-Type: application/json" \
   -d '{"name":"Push Day","source":"manual","exercises":[{"exercise_id":"'$BENCH'","target_sets":3,"target_reps":8,"target_weight":135.0,"order":0}]}' \
   | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
-curl -s $B/plans/$PID -H "$A"            # plan detail — exercises include exercise_name
-curl -s -X PUT $B/plans/$PID/exercises -H "$A" -H "Content-Type: application/json" \
+curl -s $B/routines/$RID -H "$A"            # routine detail — exercises include exercise_name
+curl -s -X PUT $B/routines/$RID/exercises -H "$A" -H "Content-Type: application/json" \
   -d '{"exercises":[{"exercise_id":"'$BENCH'","target_sets":5,"target_reps":5,"order":0}]}'   # edit
 curl -s -X POST $B/sessions -H "$A" -H "Content-Type: application/json" \
-  -d '{"plan_id":"'$PID'","date":"2026-06-01"}'    # start session (auto-creates set logs)
-curl -s $B/sessions -H "$A"              # session history summary (plan_name, sets, per-exercise)
+  -d '{"routine_id":"'$RID'","date":"2026-06-01"}'    # start session (auto-creates set logs)
+curl -s $B/sessions -H "$A"              # session history summary (routine_name, sets, per-exercise)
 ```
 Stop the server: `pkill -f "uvicorn app.main:app"`.
 

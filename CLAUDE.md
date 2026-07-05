@@ -69,7 +69,7 @@ The AI assists with workout planning only. The server enforces these — never r
 
 ## API Surface
 - `POST /auth/register|login|refresh|forgot-password|reset-password`
-- `GET/POST /plans`, `GET /plans/{id}`, `PATCH/DELETE /plans/{id}`, `PUT /plans/{id}/exercises`
+- `GET/POST /routines`, `GET /routines/{id}`, `PATCH/DELETE /routines/{id}`, `PUT /routines/{id}/exercises`
 - `GET/POST /sessions`, `GET/PATCH/DELETE /sessions/{id}`, `POST/PATCH /sessions/{id}/sets[/{set_id}]`, `GET /sessions/{id}/prior-bests` (includes progression-aware `suggested_weight`)
 - `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated `suggested_plan` OR `suggested_program`). Accepts an optional `current_session_id` for in-workout, session-aware advice.
 - `POST /ai/programs/accept` — persists a user-accepted AI `SuggestedProgram` (creates one plan per non-rest day + a program, activates it)
