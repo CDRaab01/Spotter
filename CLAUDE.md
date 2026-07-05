@@ -141,6 +141,9 @@ Roborazzi baselines were re-recorded. Spotter-specific components stay app-side:
 rebuild all four consumers.
 
 ## Conventions for Claude
+- **Update `ARCHITECTURE.md` in the same PR** when a change alters architecture — a module's
+  responsibility, a layer boundary, a cross-app contract, or the data model. Silently-drifting
+  docs are how this repo's API docs said `/plans` for a round (ROADMAP2 T2 #5c).
 - Ask before adding new dependencies or changing the architecture above.
 - Keep AI guardrail changes isolated and call them out explicitly.
 - Prefer migrations over manual schema edits.
