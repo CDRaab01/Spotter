@@ -179,3 +179,115 @@ async def test_workouts_other_day_is_not_trained(client, trained_user):
     )
     body = resp.json()
     assert body["trained"] is False
+
+
+# --- range form (ROADMAP2 Tier 2 #1b): GET /workouts?start=&end= ---------------------------
+
+
+async def test_range_counts_by_day_and_totals(client, trained_user):
+    await _add_strength(trained_user.id, TODAY)
+    await _add_strength(trained_user.id, TODAY - datetime.timedelta(days=2))
+    completed_at = datetime.datetime(
+        TODAY.year, TODAY.month, TODAY.day, 12, 0, tzinfo=datetime.timezone.utc
+    )
+    await _add_cardio(trained_user.id, completed_at)
+
+    token = _cross_app_token(trained_user.email)
+    resp = await client.get(
+        "/workouts",
+        params={
+            "start": (TODAY - datetime.timedelta(days=6)).isoformat(),
+            "end": TODAY.isoformat(),
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["totals"] == {"days_trained": 2, "strength_sessions": 2, "cardio_sessions": 1}
+    today_row = next(d for d in body["days"] if d["date"] == TODAY.isoformat())
+    assert today_row["strength_sessions"] == 1 and today_row["cardio_sessions"] == 1
+    # Sparse: only active days appear.
+    assert len(body["days"]) == 2
+
+
+async def test_range_empty_week_is_zero_totals(client, trained_user):
+    token = _cross_app_token(trained_user.email)
+    resp = await client.get(
+        "/workouts",
+        params={
+            "start": (TODAY - datetime.timedelta(days=6)).isoformat(),
+            "end": TODAY.isoformat(),
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    body = resp.json()
+    assert body["days"] == []
+    assert body["totals"]["days_trained"] == 0
+
+
+async def test_range_cap_and_param_validation(client, trained_user):
+    token = _cross_app_token(trained_user.email)
+    headers = {"Authorization": f"Bearer {token}"}
+    # 32-day range exceeds the cap.
+    resp = await client.get(
+        "/workouts",
+        params={
+            "start": (TODAY - datetime.timedelta(days=31)).isoformat(),
+            "end": TODAY.isoformat(),
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    # Both forms at once is ambiguous.
+    resp = await client.get(
+        "/workouts",
+        params={"date": TODAY.isoformat(), "start": TODAY.isoformat(), "end": TODAY.isoformat()},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    # Neither form is a bad request too.
+    resp = await client.get("/workouts", headers=headers)
+    assert resp.status_code == 422
+    # end before start.
+    resp = await client.get(
+        "/workouts",
+        params={"start": TODAY.isoformat(), "end": (TODAY - datetime.timedelta(days=1)).isoformat()},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_range_requires_cross_app_token(client):
+    resp = await client.get(
+        "/workouts",
+        params={
+            "start": (TODAY - datetime.timedelta(days=6)).isoformat(),
+            "end": TODAY.isoformat(),
+        },
+    )
+    assert resp.status_code == 401
+
+
+async def test_range_response_matches_contract_fixture(client, trained_user):
+    """The committed contract (tests/contracts/workout_range.json) is what consumers parse —
+    this test pins the response KEYS to the fixture so a drift breaks the provider first."""
+    import json
+    import pathlib
+
+    fixture = json.loads(
+        (pathlib.Path(__file__).parent / "contracts" / "workout_range.json").read_text()
+    )
+    await _add_strength(trained_user.id, TODAY)
+    token = _cross_app_token(trained_user.email)
+    resp = await client.get(
+        "/workouts",
+        params={
+            "start": (TODAY - datetime.timedelta(days=6)).isoformat(),
+            "end": TODAY.isoformat(),
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    body = resp.json()
+    assert set(body.keys()) == set(fixture.keys()) - {"_comment"}
+    assert set(body["totals"].keys()) == set(fixture["totals"].keys())
+    assert set(body["days"][0].keys()) == set(fixture["days"][0].keys())

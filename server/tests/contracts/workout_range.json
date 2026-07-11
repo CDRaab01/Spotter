@@ -1,0 +1,10 @@
+{
+  "_comment": "Contract fixture for GET /workouts?start=&end= (cross-app, RS256/HS256 dual-accept). Consumers (Plate workout_source) build their parsers against this exact shape; the provider test asserts the live response matches it.",
+  "start": "2026-07-06",
+  "end": "2026-07-12",
+  "days": [
+    {"date": "2026-07-07", "strength_sessions": 1, "cardio_sessions": 0},
+    {"date": "2026-07-09", "strength_sessions": 1, "cardio_sessions": 1}
+  ],
+  "totals": {"days_trained": 2, "strength_sessions": 2, "cardio_sessions": 1}
+}
