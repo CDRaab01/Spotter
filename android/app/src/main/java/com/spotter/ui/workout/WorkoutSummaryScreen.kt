@@ -33,8 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import design.pulse.ui.theme.rememberPulseHaptics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -67,7 +66,7 @@ fun WorkoutSummaryScreen(
     val pulse = SpotterTheme.pulse
     val spacing = SpotterTheme.spacing
     val perfect = totalSets > 0 && doneSets == totalSets
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberPulseHaptics()
 
     var play by remember { mutableStateOf(false) }
     val badgeScale by animateFloatAsState(
@@ -77,7 +76,9 @@ fun WorkoutSummaryScreen(
     )
     LaunchedEffect(Unit) {
         play = true
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        // Pair the felt beat with the visual celebration (confetti + badge) using Pulse's shared
+        // haptics vocabulary — a completed workout should register as a positive commit, not a buzz.
+        haptics.celebrate()
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
