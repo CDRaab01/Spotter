@@ -4,6 +4,24 @@ Grounded in the deferred-backlog entries scattered through CLAUDE.md's sprint/au
 consolidated and prioritized. Suite-wide items (backups, Pulse migration, SSO 2e) live in the
 host-level roadmap; this is Spotter-specific.
 
+## Road to 1.0 (suite pivot, 2026-07-13)
+
+The suite entered its **1.0 polish round** (host-level ROADMAP3, C:\Code): every app must pass a
+shared bar — onboarding, designed empty/loading/error states, motion/celebration + dark/light
+parity, defined offline behavior, no dead settings, an on-device pass, gating screenshot
+baselines, icon quality, truthful docs. **Spotter is the suite's polish reference** (`States.kt`,
+`ui/onboarding/`, `Motion.kt`, confetti — Tier P of the host roadmap promotes these into Pulse
+for the siblings), so its remaining 1.0 items are structural, not cosmetic:
+
+1. **Offline-writes design** — Debt #1 below; the one place daily use still feels unfinished.
+2. **Rest countdown across process death** — Debt #3.
+3. **Progression-engine presentation polish** — the engine shipped (see below); give it the
+   premium frame: PR celebration moments via the Pulse celebration primitives, and the
+   est-1RM trend chart done right (Feature #4).
+
+Already at versionName 1.1.2 — no bump gate needed; Spotter's 1.0 declaration is passing the
+bar audit.
+
 ## Debt to retire first
 
 1. **Offline writes beyond workout mode** — the standing [MED] backlog item and the app's
@@ -28,16 +46,16 @@ host-level roadmap; this is Spotter-specific.
   authority; Spotter's bodyweight logging writes through to Plate's `/cross-app/weight`
   (kg on the wire), keeps `BodyMetric` as the offline cache, and charts read the merged
   series. Flagged on `PLATE_BASE_URL` + secret.
-- **Range form of `/workouts`** (CROSS-APP item 4): additive `?start=&end=` alongside the
-  single-date form, for Plate and the future suite digest.
+- ✓ **Range form of `/workouts`** — SHIPPED 2026-07-11 (federated-awareness Link B; also consumed
+  by Magpie's cost-per-visit, Link G, 2026-07-12). Additive `?start=&end=` alongside the
+  single-date form; contract fixture committed.
 
 ## Feature work (in value order)
 
-1. **Progressive overload engine.** The data is all there (`prior-bests` already computes
-   `suggested_weight`) — close the loop: after N successful sessions at a load, propose the
-   increment as an Apply card (same trust model as AI adjustments: suggest, never auto-write);
-   detect stalls and propose a deload week. This is the single feature that turns a workout
-   *logger* into a *coach*, and it needs no new AI surface.
+1. ✓ **Progressive overload engine — SHIPPED 2026-07-04** (ROADMAP2 T3 #1): `app/progression.py`
+   double progression on `target_reps` (`add_weight`/`add_reps`), stall → `deload` after 3 stuck
+   sessions, best-set e1RM + PR flag, surfaced in WorkoutScreen (same suggest-never-auto-write
+   trust model). Remaining work is presentation (Road to 1.0 #3 above), not the engine.
 2. **Cardio phase 2:** GPS distance/pace for outdoor runs, and the deliberately-stubbed
    **AI post-run coaching note** (sessions are already stored for it). Audio cues over music
    (ducking) before any music integration.
