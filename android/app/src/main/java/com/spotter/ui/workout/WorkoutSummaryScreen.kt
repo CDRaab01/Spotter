@@ -39,8 +39,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.spotter.data.model.MuscleGroupSummary
-import com.spotter.ui.components.CelebrationPulse
-import com.spotter.ui.components.ConfettiHost
+import design.pulse.ui.components.CelebrationPulse
+import design.pulse.ui.components.ConfettiHost
 import design.pulse.ui.components.DataText
 import com.spotter.ui.components.HeatBar
 import design.pulse.ui.components.PanelCard

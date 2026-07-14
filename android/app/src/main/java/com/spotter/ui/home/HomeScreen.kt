@@ -60,7 +60,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.spotter.R
 import com.spotter.data.local.entity.WorkoutProgramEntity
-import com.spotter.ui.components.ConfettiHost
+import design.pulse.ui.components.ConfettiHost
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
 import com.spotter.ui.components.LoadingState

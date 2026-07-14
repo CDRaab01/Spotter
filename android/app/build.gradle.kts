@@ -152,8 +152,8 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // Confetti (celebration moments)
-    implementation(libs.konfetti.compose)
+    // Confetti/celebration now comes from Pulse (design.pulse.ui.components.ConfettiHost brings
+    // konfetti transitively) — Spotter's own ConfettiHost fork was removed at Pulse v1.0.0 adoption.
 
     // Suite SSO (BROKER.md Phase 2c): OpenID Connect authorization-code + PKCE via AppAuth.
     implementation(libs.appauth)
