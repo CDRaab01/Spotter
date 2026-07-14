@@ -22,6 +22,21 @@ for the siblings), so its remaining 1.0 items are structural, not cosmetic:
 Already at versionName 1.1.2 — no bump gate needed; Spotter's 1.0 declaration is passing the
 bar audit.
 
+**Gap review 2026-07-14 (host ROADMAP3 additions — what a Hevy/Strong user would expect):**
+
+4. **Supersets in the UI.** The data model already carries `supersetGroup`
+   (`RoutineExerciseEntity`) — surface it: visually paired exercises in WorkoutScreen,
+   alternating set entry, shared rest timer. Scope alongside the `RoutineExercise` composite-PK
+   migration (Debt #4) since both touch routine-exercise identity.
+5. **Ongoing-notification workout mode** — the rest countdown as a live chronometer notification
+   on the lock screen (foreground service during an active session; tap → back to the workout).
+   *The* premium feel for a lifting app, and it pairs with Debt #3 (rest state across process
+   death) — one design solves both.
+6. **Body measurements beyond weight** (arms/waist/chest/thighs) — standard in every competitor;
+   design the tables/UI so the offline-writes work (Road-to-1.0 #1) covers them from day one.
+7. **Today's-workout / rest-timer widget** (host Tier W4 Pulse widget family) and a workout-day
+   morning nudge via the suite push pipeline (host Tier W2b, opt-in).
+
 ## Debt to retire first
 
 1. **Offline writes beyond workout mode** — the standing [MED] backlog item and the app's
