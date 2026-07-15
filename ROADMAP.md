@@ -11,44 +11,47 @@ shared bar — onboarding, designed empty/loading/error states, motion/celebrati
 parity, defined offline behavior, no dead settings, an on-device pass, gating screenshot
 baselines, icon quality, truthful docs. **Spotter is the suite's polish reference** (`States.kt`,
 `ui/onboarding/`, `Motion.kt`, confetti — Tier P of the host roadmap promotes these into Pulse
-for the siblings), so its remaining 1.0 items are structural, not cosmetic:
+for the siblings), so its remaining 1.0 items were structural, not cosmetic. **All of Spotter's
+solo 1.0 polish is now done (2026-07-15)** — only the cross-app Tier-W items (#7) remain, and
+those are gated on the suite push pipeline built in the Dragonfly repo, not on Spotter.
 
-1. **Offline-writes design** — Debt #1 below; the one place daily use still feels unfinished.
-2. **Rest countdown across process death** — Debt #3.
-3. **Progression-engine presentation polish** — the engine shipped (see below); give it the
-   premium frame: PR celebration moments via the Pulse celebration primitives, and the
-   est-1RM trend chart done right (Feature #4).
+1. ✓ **Offline-writes design** — DONE. Write-through + drain queue for bodyweight, routines, and
+   programs; calendar serves last-known on offline read; body measurements (below) inherited it
+   from day one. Debt #1.
+2. ✓ **Rest countdown across process death** — DONE. `WorkoutTimerController` persists the rest
+   end-anchor via `RestStore` and restores it on init, so reopening mid-rest resumes exactly.
+   Debt #3.
+3. ✓ **Progression-engine presentation polish** — DONE. PR celebration moments (Summary
+   `CelebrationPulse`/`ConfettiHost` + `newPrCount` pill, plus a per-set PR flag mid-workout) and
+   the est-1RM trend chart done right (per-set Epley over time + a Weight / Est. 1RM toggle;
+   Feature #4). Shipped 2026-07-15.
 
 Already at versionName 1.1.2 — no bump gate needed; Spotter's 1.0 declaration is passing the
 bar audit.
 
 **Gap review 2026-07-14 (host ROADMAP3 additions — what a Hevy/Strong user would expect):**
 
-4. **Supersets in the UI.** The data model already carries `supersetGroup`
-   (`RoutineExerciseEntity`) — surface it: visually paired exercises in WorkoutScreen,
-   alternating set entry, shared rest timer. Scope alongside the `RoutineExercise` composite-PK
-   migration (Debt #4) since both touch routine-exercise identity.
-5. **Ongoing-notification workout mode** — the rest countdown as a live chronometer notification
-   on the lock screen (foreground service during an active session; tap → back to the workout).
-   *The* premium feel for a lifting app, and it pairs with Debt #3 (rest state across process
-   death) — one design solves both.
-6. **Body measurements beyond weight** (arms/waist/chest/thighs) — standard in every competitor;
-   design the tables/UI so the offline-writes work (Road-to-1.0 #1) covers them from day one.
+4. ✓ **Supersets in the UI** — DONE. `WorkoutScreen` renders grouped exercises with a
+   "SUPERSET A/B" header off `supersetGroup`.
+5. ✓ **Ongoing-notification workout mode** — DONE (Sprint 8). One foreground-service notification
+   per session carries the elapsed chronometer + the live "Resting · M:SS" line; tap → workout.
+6. ✓ **Body measurements beyond weight** (neck/chest/waist/hips/arm/thigh) — SHIPPED 2026-07-15.
+   Server migration `0011` + offline write-through; log dialog expander + a Measurements trend
+   panel in the Body Weight tab.
 7. **Today's-workout / rest-timer widget** (host Tier W4 Pulse widget family) and a workout-day
-   morning nudge via the suite push pipeline (host Tier W2b, opt-in).
+   morning nudge via the suite push pipeline (host Tier W2b, opt-in). **The one remaining item** —
+   cross-app, gated on the suite push pipeline (Dragonfly repo), not Spotter-solo.
 
 ## Debt to retire first
 
-1. **Offline writes beyond workout mode** — the standing [MED] backlog item and the app's
-   biggest architectural gap. Metrics, routines, programs, and calendar all throw offline while
-   workout logging syncs beautifully. Design once (write-through + sync queue, reusing the
-   workout-mode reconciliation patterns), then apply per repository. Do the
-   "offline-finished workouts show no muscle-group breakdown" fix in the same pass (needs
-   `muscle_group` cached in Room).
+1. ✓ **Offline writes beyond workout mode** — DONE (2026-07). Write-through + drain queue applied
+   to bodyweight metrics, routines, and programs; calendar serves last-known on offline read.
+   (The "offline-finished workouts show no muscle-group breakdown" fix — needs `muscle_group`
+   cached in Room — is still open as a small follow-up.)
 2. **Persist the performed `ProgramDay` id on `WorkoutSession`** (migration) — kills the
    last-match heuristic in `get_next_day` for programs that repeat a routine.
-3. **Rest countdown across process death** — the anchor persistence pattern already exists for
-   the elapsed clock (`startedAtMs`); extend it to `WorkoutTimerController`'s rest state.
+3. ✓ **Rest countdown across process death** — DONE. `WorkoutTimerController` persists the rest
+   end-anchor via `RestStore` and restores it on init (mirrors the `startedAtMs` elapsed anchor).
 4. **`RoutineExercise` composite PK** forbids the same exercise twice in a routine (e.g.
    heavy/light squat in one day). Room migration + server-aligned identity; known, deferred,
    still worth doing before someone hits it.
@@ -76,8 +79,9 @@ bar audit.
    (ducking) before any music integration.
 3. **Health Connect integration** — bodyweight in from a smart scale, workouts out to the
    Android health ecosystem. Standard API, high leverage, and it feeds Plate's targets too.
-4. **Est-1RM trend** done right (per-set epley over time, not independent max(weight)/max(reps))
-   — the [LOW] backlog item; do it when touching progress charts for #1.
+4. ✓ **Est-1RM trend** done right — SHIPPED 2026-07-15. `GET /progress/exercises/{id}` now returns
+   `est_1rm` = the best per-set Epley of each day (not independent max(weight)/max(reps)); the
+   Strength tab has a Weight / Est. 1RM chart toggle.
 
 ## Explicitly not worth it (my judgment — reverse deliberately if the user disagrees)
 
