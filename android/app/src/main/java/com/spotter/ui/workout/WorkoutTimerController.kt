@@ -49,10 +49,6 @@ class WorkoutTimerController @Inject constructor(
     private val _restState = MutableStateFlow<RestState?>(null)
     val restState: StateFlow<RestState?> = _restState.asStateFlow()
 
-    init {
-        restorePendingRest()
-    }
-
     @Volatile private var countdownJob: Job? = null
     private val wakeLock = WakeLockHolder(context, WAKE_LOCK_TAG, MAX_WAKELOCK_MS)
 
@@ -66,6 +62,11 @@ class WorkoutTimerController @Inject constructor(
 
     /** Monotonic instant the current "working" stretch started (reset whenever a rest ends). */
     @Volatile private var workingSinceRealtime: Long = time.elapsedRealtimeMs()
+
+    // Runs AFTER the fields above are initialized (wakeLock/generation): resuming a rest touches them.
+    init {
+        restorePendingRest()
+    }
 
     /** Whole seconds spent working since the last rest ended (0-floored). For the on-screen strip. */
     fun workElapsedSec(): Int =
