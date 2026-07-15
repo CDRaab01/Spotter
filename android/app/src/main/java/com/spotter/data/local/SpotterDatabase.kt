@@ -35,7 +35,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         ProgramDayEntity::class,
         CardioSessionEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -207,6 +207,17 @@ abstract class SpotterDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE body_metrics ADD COLUMN serverId TEXT")
                 db.execSQL("ALTER TABLE body_metrics ADD COLUMN syncPending INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE body_metrics SET serverId = id")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Routines become offline-editable (write-through + queue + soft-delete). Existing
+                // rows are server-synced, so seed serverId=id; syncPending/pendingDelete default 0.
+                db.execSQL("ALTER TABLE workout_routines ADD COLUMN serverId TEXT")
+                db.execSQL("ALTER TABLE workout_routines ADD COLUMN syncPending INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE workout_routines ADD COLUMN pendingDelete INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE workout_routines SET serverId = id")
             }
         }
     }
