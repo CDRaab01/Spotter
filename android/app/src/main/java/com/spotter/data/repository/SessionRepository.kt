@@ -2,6 +2,7 @@ package com.spotter.data.repository
 
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
+import com.spotter.data.local.dao.WorkoutRoutineDao
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.SetLogEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
@@ -27,8 +28,23 @@ class SessionRepository @Inject constructor(
     private val sessionDao: WorkoutSessionDao,
     private val setLogDao: SetLogDao,
     private val routineExerciseDao: RoutineExerciseDao,
+    private val routineDao: WorkoutRoutineDao,
     private val tokenStore: TokenStore,
 ) {
+    /**
+     * The server id to send for a session's [routineId]. A routine created offline has a local
+     * UUID id whose server id lands only once it syncs; the server wouldn't recognise the local id,
+     * so translate to [WorkoutRoutineEntity.serverId] when we have it. Null routineId stays null; an
+     * id with no local row (server-native) passes through unchanged. When the routine isn't synced
+     * yet (serverId still null), we send the local id — the create will fail and the session stays
+     * queued, then succeeds on a later drain once the routine has its server id.
+     */
+    private suspend fun routineServerId(routineId: String?): String? {
+        if (routineId == null) return null
+        val local = routineDao.getById(routineId) ?: return routineId
+        return local.serverId ?: routineId
+    }
+
     // ── Session creation ──────────────────────────────────────────────────────
 
     suspend fun createSession(req: SessionCreate): SessionOut {
@@ -64,7 +80,7 @@ class SessionRepository @Inject constructor(
 
         // Try the server immediately; if offline, sync will happen later.
         try {
-            val serverSession = api.createSession(req)
+            val serverSession = api.createSession(req.copy(routineId = routineServerId(req.routineId)))
             reconcileNewSession(localId, sessionEntity, localSetLogs, serverSession)
         } catch (_: Exception) {}
 
@@ -331,7 +347,11 @@ class SessionRepository @Inject constructor(
         for (session in sessionDao.getUnsynced()) {
             try {
                 val serverSession = api.createSession(
-                    SessionCreate(routineId = session.routineId, date = session.date, note = session.note)
+                    SessionCreate(
+                        routineId = routineServerId(session.routineId),
+                        date = session.date,
+                        note = session.note,
+                    )
                 )
                 sessionDao.upsert(session.copy(serverId = serverSession.id, syncPending = false))
                 val localLogs = setLogDao.getBySession(session.id)
