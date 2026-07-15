@@ -35,7 +35,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         ProgramDayEntity::class,
         CardioSessionEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -197,6 +197,16 @@ abstract class SpotterDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Local-only start timestamp for the in-progress banner's live elapsed clock.
                 db.execSQL("ALTER TABLE workout_sessions ADD COLUMN startedAtMs INTEGER")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Body metrics become offline-capable (write-through + drain queue), matching
+                // workout_sessions/set_logs. Existing rows are all server-synced, so seed serverId=id.
+                db.execSQL("ALTER TABLE body_metrics ADD COLUMN serverId TEXT")
+                db.execSQL("ALTER TABLE body_metrics ADD COLUMN syncPending INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE body_metrics SET serverId = id")
             }
         }
     }

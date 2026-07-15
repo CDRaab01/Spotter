@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
+import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.SessionRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,7 @@ import javax.inject.Singleton
 class NetworkSyncObserver @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessionRepository: SessionRepository,
+    private val metricRepository: MetricRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -41,6 +43,9 @@ class NetworkSyncObserver @Inject constructor(
                 override fun onAvailable(network: Network) {
                     scope.launch {
                         try { sessionRepository.syncPending() } catch (_: Exception) {}
+                        // Drain offline-logged weigh-ins too, so a bodyweight entry made offline
+                        // reaches the server on reconnect without waiting for a screen open.
+                        try { metricRepository.sync() } catch (_: Exception) {}
                     }
                 }
             })
