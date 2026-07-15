@@ -10,7 +10,6 @@ import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.BodyMetricCreate
-import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.SessionSummary
 import com.spotter.data.model.RoutineUpdate
@@ -154,10 +153,7 @@ class HomeViewModelTest {
 
     @Test
     fun `logBodyweight delegates to metricRepository`() = runTest(testDispatcher) {
-        whenever(metricRepository.addMetric(any())).thenReturn(
-            BodyMetricOut(id = "m1", userId = "u1", date = "2026-06-01", weight = 185.0)
-        )
-
+        // addMetric returns Unit now (offline-capable, never throws) — no stub needed.
         viewModel.logBodyweight(185.0)
         advanceTimeBy(200)
 
