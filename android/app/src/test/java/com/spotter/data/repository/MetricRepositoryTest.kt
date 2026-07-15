@@ -16,7 +16,6 @@ import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import java.io.IOException
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -43,7 +42,7 @@ class MetricRepositoryTest {
 
     @Test
     fun `addMetric persists a pending row when the network is down`() = runTest {
-        whenever(api.addWeightMetric(any())).thenThrow(IOException("offline"))
+        whenever(api.addWeightMetric(any())).thenThrow(RuntimeException("offline"))
 
         repo.addMetric(BodyMetricCreate(date = "2026-07-15", weight = 80.0))
 
@@ -73,7 +72,7 @@ class MetricRepositoryTest {
     fun `sync drains a queued offline weigh-in without duplicating it`() = runTest {
         val saved = BodyMetricOut(id = "srv-1", userId = "u", date = "2026-07-15", weight = 80.0)
         // First push (during addMetric) fails; the drain retry succeeds.
-        whenever(api.addWeightMetric(any())).thenThrow(IOException("offline")).thenReturn(saved)
+        whenever(api.addWeightMetric(any())).thenThrow(RuntimeException("offline")).thenReturn(saved)
         whenever(api.getWeightMetrics()).thenReturn(listOf(saved))
 
         repo.addMetric(BodyMetricCreate(date = "2026-07-15", weight = 80.0))
