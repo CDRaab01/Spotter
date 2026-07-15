@@ -103,3 +103,51 @@ async def test_body_metric_within_bounds_accepted(auth_client):
         json={"date": str(datetime.date.today()), "weight": 180.0, "bodyfat": 15.0},
     )
     assert resp.status_code == 201
+
+
+async def test_body_metric_measurements_round_trip(auth_client):
+    """Optional tape measurements persist and come back on the metric."""
+    measurements = {
+        "neck": 38.0,
+        "chest": 102.0,
+        "waist": 84.0,
+        "hips": 98.0,
+        "arm": 36.0,
+        "thigh": 58.0,
+    }
+    resp = await auth_client.post(
+        "/metrics/weight",
+        json={"date": str(datetime.date.today()), "weight": 180.0, **measurements},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    for key, value in measurements.items():
+        assert body[key] == value
+
+
+async def test_body_metric_measurements_optional(auth_client):
+    """A plain weigh-in leaves every measurement null."""
+    resp = await auth_client.post(
+        "/metrics/weight",
+        json={"date": str(datetime.date.today()), "weight": 180.0},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    for key in ("neck", "chest", "waist", "hips", "arm", "thigh"):
+        assert body[key] is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"neck": 0.0},        # below MEASUREMENT_BOUNDS min
+        {"waist": 99999.0},   # above MEASUREMENT_BOUNDS max
+        {"thigh": -5.0},      # negative
+    ],
+)
+async def test_body_metric_measurement_out_of_range_rejected(auth_client, payload):
+    resp = await auth_client.post(
+        "/metrics/weight",
+        json={"date": str(datetime.date.today()), "weight": 180.0, **payload},
+    )
+    assert resp.status_code == 422

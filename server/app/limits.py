@@ -13,6 +13,7 @@ WEIGHT_BOUNDS_LB = (0.5, 600.0)
 CALORIE_BOUNDS = (1200, 6000)
 BODY_WEIGHT_BOUNDS_LB = (50.0, 1500.0)  # bodyweight metric (lbs)
 BODYFAT_BOUNDS = (1.0, 70.0)  # body fat percentage
+MEASUREMENT_BOUNDS = (1.0, 500.0)  # tape measurements, generous enough for both in and cm
 
 # Cap on actions in one AI live-workout adjustment (extraction truncates, apply rejects).
 MAX_ADJUSTMENT_ACTIONS = 6

@@ -15,5 +15,13 @@ class BodyMetric(Base):
     date: Mapped[datetime.date] = mapped_column(Date)
     weight: Mapped[float] = mapped_column(Float)
     bodyfat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Optional tape measurements (cm or in per the client's unit) — all nullable so an
+    # ordinary weigh-in carries none of them.
+    neck: Mapped[float | None] = mapped_column(Float, nullable=True)
+    chest: Mapped[float | None] = mapped_column(Float, nullable=True)
+    waist: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hips: Mapped[float | None] = mapped_column(Float, nullable=True)
+    arm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thigh: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     user = relationship("User", back_populates="metrics", lazy="raise")
