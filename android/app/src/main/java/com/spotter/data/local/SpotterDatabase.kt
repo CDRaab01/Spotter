@@ -35,7 +35,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         ProgramDayEntity::class,
         CardioSessionEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -228,6 +228,15 @@ abstract class SpotterDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE workout_programs ADD COLUMN syncPending INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE workout_programs ADD COLUMN pendingDelete INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE workout_programs SET serverId = id")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Optional tape measurements alongside the weigh-in (server migration 0011).
+                for (col in listOf("neck", "chest", "waist", "hips", "arm", "thigh")) {
+                    db.execSQL("ALTER TABLE body_metrics ADD COLUMN $col REAL")
+                }
             }
         }
     }

@@ -26,6 +26,18 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
+/** A weigh-in draft from the log dialog: weight is required; everything else is optional. */
+data class BodyLogDraft(
+    val weight: Double,
+    val bodyfat: Double? = null,
+    val neck: Double? = null,
+    val chest: Double? = null,
+    val waist: Double? = null,
+    val hips: Double? = null,
+    val arm: Double? = null,
+    val thigh: Double? = null,
+)
+
 enum class ChartRange(val label: String) {
     ONE_MONTH("1M"),
     SIX_MONTHS("6M"),
@@ -141,11 +153,21 @@ class ProgressViewModel @Inject constructor(
         _chartRange.value = range
     }
 
-    fun logBodyweight(weight: Double) {
+    fun logBodyweight(draft: BodyLogDraft) {
         viewModelScope.launch {
             try {
                 metricRepository.addMetric(
-                    BodyMetricCreate(date = LocalDate.now().toString(), weight = weight)
+                    BodyMetricCreate(
+                        date = LocalDate.now().toString(),
+                        weight = draft.weight,
+                        bodyfat = draft.bodyfat,
+                        neck = draft.neck,
+                        chest = draft.chest,
+                        waist = draft.waist,
+                        hips = draft.hips,
+                        arm = draft.arm,
+                        thigh = draft.thigh,
+                    )
                 )
             } catch (_: Exception) {}
         }

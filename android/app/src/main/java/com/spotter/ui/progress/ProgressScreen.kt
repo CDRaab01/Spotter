@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,10 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonitorWeight
@@ -47,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,6 +84,7 @@ import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
 import com.spotter.ui.theme.formatWeightNullable
+import com.spotter.ui.theme.measurementLabel
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,8 +107,8 @@ fun ProgressScreen(
     if (showBodyweightDialog) {
         BodyweightLogDialog(
             onDismiss = { showBodyweightDialog = false },
-            onConfirm = { weight ->
-                viewModel.logBodyweight(weight)
+            onConfirm = { draft ->
+                viewModel.logBodyweight(draft)
                 showBodyweightDialog = false
             },
         )
@@ -261,6 +267,10 @@ private fun BodyWeightTab(
                                 .height(180.dp),
                         )
                     }
+                    val trends = measurementTrends(metrics.data)
+                    if (trends.isNotEmpty()) {
+                        MeasurementsCard(trends)
+                    }
                     LazyColumn {
                         items(metrics.data.reversed()) { metric ->
                             Row(
@@ -287,6 +297,84 @@ private fun BodyWeightTab(
             }
         }
         else -> Unit
+    }
+}
+
+/** The latest value of a tape measurement, with its change since the prior time it was recorded. */
+private data class MeasurementTrend(val label: String, val value: Double, val delta: Double?)
+
+/** For each measurement, the most recent value + its delta vs the previous entry that had it. */
+private fun measurementTrends(ascending: List<BodyMetricEntity>): List<MeasurementTrend> {
+    val selectors: List<Pair<String, (BodyMetricEntity) -> Double?>> = listOf(
+        "Neck" to { it.neck },
+        "Chest" to { it.chest },
+        "Waist" to { it.waist },
+        "Hips" to { it.hips },
+        "Arm" to { it.arm },
+        "Thigh" to { it.thigh },
+    )
+    return selectors.mapNotNull { (label, selector) ->
+        val values = ascending.mapNotNull(selector)
+        val latest = values.lastOrNull() ?: return@mapNotNull null
+        val previous = values.getOrNull(values.size - 2)
+        MeasurementTrend(label, latest, previous?.let { latest - it })
+    }
+}
+
+private fun formatMeasurement(value: Double): String =
+    if (value % 1.0 == 0.0) value.toInt().toString() else "%.1f".format(value)
+
+/** A compact tape-measurement panel: the latest girths in a two-column grid, each with its trend. */
+@Composable
+private fun MeasurementsCard(trends: List<MeasurementTrend>) {
+    val unit = LocalWeightUnit.current.measurementLabel()
+    val pulse = SpotterTheme.pulse
+    PanelCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SpotterTheme.spacing.lg, vertical = SpotterTheme.spacing.sm),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.sm)) {
+            Text(
+                "Measurements",
+                style = MaterialTheme.typography.titleSmall,
+                color = pulse.effort,
+            )
+            trends.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.md)) {
+                    pair.forEach { trend ->
+                        MeasurementCell(trend, unit, Modifier.weight(1f))
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementCell(trend: MeasurementTrend, unit: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            trend.label.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DataText(
+                text = "${formatMeasurement(trend.value)} $unit",
+                style = SpotterTheme.dataType.numeral,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            trend.delta?.takeIf { it != 0.0 }?.let { delta ->
+                val sign = if (delta > 0) "+" else "−"
+                Text(
+                    "  $sign${formatMeasurement(kotlin.math.abs(delta))}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -586,28 +674,93 @@ internal fun LineChart(
     }
 }
 
+/** The six tape measurements, in the order they read down the body. */
+private val MEASUREMENT_FIELDS = listOf(
+    "Neck", "Chest", "Waist", "Hips", "Arm", "Thigh",
+)
+
 @Composable
 private fun BodyweightLogDialog(
     onDismiss: () -> Unit,
-    onConfirm: (Double) -> Unit,
+    onConfirm: (BodyLogDraft) -> Unit,
 ) {
     val weightUnit = LocalWeightUnit.current
+    val measureUnit = weightUnit.measurementLabel()
     var weightText by remember { mutableStateOf("") }
+    var bodyfatText by remember { mutableStateOf("") }
+    var showMeasurements by remember { mutableStateOf(false) }
+    // Keyed by field name; only non-blank, parseable entries are sent.
+    val measurements = remember { mutableStateMapOf<String, String>() }
+
+    fun decimal(input: String) = input.filter { c -> c.isDigit() || c == '.' }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Log bodyweight") },
         text = {
-            OutlinedTextField(
-                value = weightText,
-                onValueChange = { weightText = it.filter { c -> c.isDigit() || c == '.' } },
-                label = { Text(weightUnit.formatWeightFieldLabel()) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-            )
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.sm),
+            ) {
+                OutlinedTextField(
+                    value = weightText,
+                    onValueChange = { weightText = decimal(it) },
+                    label = { Text(weightUnit.formatWeightFieldLabel()) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = bodyfatText,
+                    onValueChange = { bodyfatText = decimal(it) },
+                    label = { Text("Body fat % (optional)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    onClick = { showMeasurements = !showMeasurements },
+                    modifier = Modifier.align(Alignment.Start),
+                ) {
+                    Icon(
+                        if (showMeasurements) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = SpotterTheme.spacing.xs),
+                    )
+                    Text(if (showMeasurements) "Hide measurements" else "Add measurements")
+                }
+                if (showMeasurements) {
+                    MEASUREMENT_FIELDS.forEach { field ->
+                        OutlinedTextField(
+                            value = measurements[field].orEmpty(),
+                            onValueChange = { measurements[field] = decimal(it) },
+                            label = { Text("$field ($measureUnit)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
         },
         confirmButton = {
             TextButton(
-                onClick = { weightText.toDoubleOrNull()?.let { onConfirm(it) } },
+                onClick = {
+                    val weight = weightText.toDoubleOrNull() ?: return@TextButton
+                    fun field(name: String) = measurements[name]?.toDoubleOrNull()
+                    onConfirm(
+                        BodyLogDraft(
+                            weight = weight,
+                            bodyfat = bodyfatText.toDoubleOrNull(),
+                            neck = field("Neck"),
+                            chest = field("Chest"),
+                            waist = field("Waist"),
+                            hips = field("Hips"),
+                            arm = field("Arm"),
+                            thigh = field("Thigh"),
+                        )
+                    )
+                },
                 enabled = weightText.toDoubleOrNull() != null,
             ) { Text("Log") }
         },

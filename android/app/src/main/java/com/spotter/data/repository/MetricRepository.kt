@@ -31,12 +31,7 @@ class MetricRepository @Inject constructor(
     /** Log a weigh-in. Persists locally first and never throws — offline, it queues for [sync]. */
     suspend fun addMetric(req: BodyMetricCreate) {
         val localId = UUID.randomUUID().toString()
-        dao.upsert(
-            BodyMetricEntity(
-                id = localId, userId = "", date = req.date, weight = req.weight,
-                bodyfat = req.bodyfat, serverId = null, syncPending = true,
-            ),
-        )
+        dao.upsert(req.toEntity(id = localId, userId = "", serverId = null, syncPending = true))
         // Best-effort immediate push; on success promote the local row to the acknowledged one.
         runCatching { promote(localId, api.addWeightMetric(req)) }
     }
@@ -45,9 +40,7 @@ class MetricRepository @Inject constructor(
     private suspend fun drainPending() {
         for (local in dao.getUnsynced()) {
             val saved = runCatching {
-                api.addWeightMetric(
-                    BodyMetricCreate(date = local.date, weight = local.weight, bodyfat = local.bodyfat),
-                )
+                api.addWeightMetric(local.toCreate())
             }.getOrNull() ?: continue // still offline — keep it pending
             promote(local.id, saved)
         }
@@ -61,6 +54,23 @@ class MetricRepository @Inject constructor(
 
     private fun BodyMetricOut.toEntity() = BodyMetricEntity(
         id = id, userId = userId, date = date, weight = weight, bodyfat = bodyfat,
+        neck = neck, chest = chest, waist = waist, hips = hips, arm = arm, thigh = thigh,
         serverId = id, syncPending = false,
+    )
+
+    private fun BodyMetricCreate.toEntity(
+        id: String,
+        userId: String,
+        serverId: String?,
+        syncPending: Boolean,
+    ) = BodyMetricEntity(
+        id = id, userId = userId, date = date, weight = weight, bodyfat = bodyfat,
+        neck = neck, chest = chest, waist = waist, hips = hips, arm = arm, thigh = thigh,
+        serverId = serverId, syncPending = syncPending,
+    )
+
+    private fun BodyMetricEntity.toCreate() = BodyMetricCreate(
+        date = date, weight = weight, bodyfat = bodyfat,
+        neck = neck, chest = chest, waist = waist, hips = hips, arm = arm, thigh = thigh,
     )
 }

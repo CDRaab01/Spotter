@@ -69,6 +69,25 @@ class MetricRepositoryTest {
     }
 
     @Test
+    fun `addMetric carries tape measurements through to Room and the push`() = runTest {
+        whenever(api.addWeightMetric(any())).thenThrow(RuntimeException("offline"))
+
+        repo.addMetric(
+            BodyMetricCreate(
+                date = "2026-07-15", weight = 80.0, bodyfat = 15.0,
+                neck = 38.0, chest = 102.0, waist = 84.0, hips = 98.0, arm = 36.0, thigh = 58.0,
+            ),
+        )
+
+        val row = dao.observeAll().first().single()
+        assertEquals(38.0, row.neck)
+        assertEquals(84.0, row.waist)
+        assertEquals(58.0, row.thigh)
+        // The queued row must reconstruct the same measurements for the drain retry.
+        assertEquals(102.0, dao.getUnsynced().single().chest)
+    }
+
+    @Test
     fun `sync drains a queued offline weigh-in without duplicating it`() = runTest {
         val saved = BodyMetricOut(id = "srv-1", userId = "u", date = "2026-07-15", weight = 80.0)
         // First push (during addMetric) fails; the drain retry succeeds.

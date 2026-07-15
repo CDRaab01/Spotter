@@ -29,6 +29,10 @@ fun WeightUnit.formatWeightFieldLabel(): String =
 fun WeightUnit.formatWeightLabel(): String =
     if (this == WeightUnit.KG) "kg" else "lb"
 
+/** Tape measurements pair with the weight system: metric → cm, imperial → in. */
+fun WeightUnit.measurementLabel(): String =
+    if (this == WeightUnit.KG) "cm" else "in"
+
 fun WeightUnit.formatVolume(totalLb: Int): String =
     if (this == WeightUnit.KG) "%,d kg".format((totalLb * 0.453592).toInt())
     else "%,d lb".format(totalLb)
