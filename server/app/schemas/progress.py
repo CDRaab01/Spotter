@@ -13,6 +13,9 @@ class ExerciseProgressPoint(BaseModel):
     date: datetime.date
     max_weight: float | None = None
     max_reps: int
+    # Best estimated 1RM among that session's completed sets (per-set Epley, not
+    # max_weight x max_reps taken independently). None when the exercise is bodyweight.
+    est_1rm: float | None = None
 
 
 class PersonalRecord(BaseModel):

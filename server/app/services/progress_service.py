@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exercise import Exercise
@@ -31,11 +31,21 @@ async def get_tracked_exercises(
 async def get_exercise_progress(
     db: AsyncSession, user_id: uuid.UUID, exercise_id: uuid.UUID
 ) -> list[ExerciseProgressPoint]:
+    # Per-set Epley (weight * (1 + reps/30), or the weight itself for a single rep) so the
+    # est-1RM trend reflects the best actual set each day — not max_weight x max_reps taken from
+    # different sets. Mirrors estimate_1rm(); NULL (bodyweight) sets fall out of the max.
+    est_1rm_expr = func.max(
+        case(
+            (SetLog.reps <= 1, SetLog.weight),
+            else_=SetLog.weight * (1 + SetLog.reps / 30.0),
+        )
+    )
     result = await db.execute(
         select(
             WorkoutSession.date,
             func.max(SetLog.weight).label("max_weight"),
             func.max(SetLog.reps).label("max_reps"),
+            est_1rm_expr.label("est_1rm"),
         )
         .join(WorkoutSession, SetLog.session_id == WorkoutSession.id)
         .where(
@@ -47,7 +57,12 @@ async def get_exercise_progress(
         .order_by(WorkoutSession.date)
     )
     return [
-        ExerciseProgressPoint(date=row[0], max_weight=row[1], max_reps=row[2])
+        ExerciseProgressPoint(
+            date=row[0],
+            max_weight=row[1],
+            max_reps=row[2],
+            est_1rm=round(row[3], 1) if row[3] is not None else None,
+        )
         for row in result
     ]
 

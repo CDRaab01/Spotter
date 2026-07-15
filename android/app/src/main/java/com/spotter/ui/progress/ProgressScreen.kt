@@ -236,6 +236,40 @@ private fun RangeSelector(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StrengthMetricToggle(
+    selected: StrengthMetric,
+    onSelect: (StrengthMetric) -> Unit,
+) {
+    val channel = SpotterTheme.pulse.strength
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SpotterTheme.spacing.lg, vertical = SpotterTheme.spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.sm),
+    ) {
+        StrengthMetric.entries.forEach { metric ->
+            FilterChip(
+                selected = selected == metric,
+                onClick = { onSelect(metric) },
+                label = { Text(metric.label) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = channel.copy(alpha = 0.16f),
+                    selectedLabelColor = channel,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = selected == metric,
+                    borderColor = SpotterTheme.pulse.hairline,
+                    selectedBorderColor = channel.copy(alpha = 0.4f),
+                    selectedBorderWidth = 1.dp,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 private fun BodyWeightTab(
     metrics: UiState<List<BodyMetricEntity>>,
@@ -378,6 +412,12 @@ private fun MeasurementCell(trend: MeasurementTrend, unit: String, modifier: Mod
     }
 }
 
+/** Which series the Strength chart plots: the day's top weight, or the day's best estimated 1RM. */
+private enum class StrengthMetric(val label: String) {
+    WEIGHT("Weight"),
+    EST_1RM("Est. 1RM"),
+}
+
 @Composable
 private fun StrengthTab(
     trackedExercises: UiState<List<TrackedExercise>>,
@@ -389,6 +429,7 @@ private fun StrengthTab(
 ) {
     val weightUnit = LocalWeightUnit.current
     val pulse = SpotterTheme.pulse
+    var strengthMetric by remember { mutableStateOf(StrengthMetric.WEIGHT) }
     Column(modifier = Modifier.fillMaxSize()) {
         when (trackedExercises) {
             is UiState.Loading -> Box(
@@ -459,13 +500,26 @@ private fun StrengthTab(
                         subtitle = "Try a wider window to see your progress.",
                     )
                 } else {
+                    // Est. 1RM only makes sense for weighted work; hide the toggle (and force
+                    // Weight) for a purely bodyweight exercise that has no estimated 1RM.
+                    val hasEst1rm = data.any { it.est1rm != null }
+                    val metric = if (hasEst1rm) strengthMetric else StrengthMetric.WEIGHT
                     Column {
+                        if (hasEst1rm) {
+                            StrengthMetricToggle(
+                                selected = strengthMetric,
+                                onSelect = { strengthMetric = it },
+                            )
+                        }
                         RangeSelector(
                             selected = chartRange,
                             onSelect = onRangeSelect,
                             channel = pulse.strength,
                         )
-                        val points = data.mapNotNull { it.maxWeight?.toFloat() }
+                        val points = when (metric) {
+                            StrengthMetric.WEIGHT -> data.mapNotNull { it.maxWeight?.toFloat() }
+                            StrengthMetric.EST_1RM -> data.mapNotNull { it.est1rm?.toFloat() }
+                        }
                         if (points.size >= 2) {
                             ChartCard {
                                 LineChart(
@@ -490,9 +544,15 @@ private fun StrengthTab(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(point.date, style = MaterialTheme.typography.bodyMedium)
-                                    val wt = weightUnit.formatWeightNullable(point.maxWeight)
+                                    val valueText = when (metric) {
+                                        StrengthMetric.WEIGHT ->
+                                            "${point.maxReps} reps · " +
+                                                weightUnit.formatWeightNullable(point.maxWeight)
+                                        StrengthMetric.EST_1RM ->
+                                            "1RM · " + weightUnit.formatWeightNullable(point.est1rm)
+                                    }
                                     DataText(
-                                        text = "${point.maxReps} reps · $wt",
+                                        text = valueText,
                                         style = SpotterTheme.dataType.numeral,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )

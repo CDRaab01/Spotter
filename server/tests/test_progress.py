@@ -72,6 +72,37 @@ async def test_records_computes_weight_1rm_and_volume(auth_client, exercise):
     assert rec["achieved_on"] == str(datetime.date.today())
 
 
+async def test_exercise_progress_est_1rm_is_best_per_set(auth_client, exercise):
+    """The est-1RM trend point is the best per-set Epley of the day — NOT max_weight combined
+    with max_reps from different sets (which would over-report)."""
+    routine_id = await _routine_with_exercise(auth_client, exercise)
+    session_resp = await auth_client.post(
+        "/sessions",
+        json={"routine_id": routine_id, "date": str(datetime.date.today())},
+    )
+    session = session_resp.json()
+    session_id = session["id"]
+    set_ids = [sl["id"] for sl in session["set_logs"]]
+
+    # 135x8 → e1rm 171.0 (best); 145x5 → 169.2 (heaviest weight); 125x10 → 166.7 (most reps).
+    plan = [(135.0, 8), (145.0, 5), (125.0, 10)]
+    for set_id, (w, r) in zip(set_ids, plan):
+        await auth_client.patch(
+            f"/sessions/{session_id}/sets/{set_id}",
+            json={"weight": w, "reps": r, "completed": True},
+        )
+
+    resp = await auth_client.get(f"/progress/exercises/{exercise.id}")
+    assert resp.status_code == 200
+    points = resp.json()
+    assert len(points) == 1
+    point = points[0]
+    assert point["max_weight"] == 145.0
+    assert point["max_reps"] == 10
+    # Best per-set Epley is 171.0; the naive max_weight(145) x max_reps(10) would be 193.3.
+    assert point["est_1rm"] == 171.0
+
+
 async def test_records_ignore_incomplete_sets(auth_client, exercise):
     """A heavier but uncompleted set does not count toward records."""
     routine_id = await _routine_with_exercise(auth_client, exercise)

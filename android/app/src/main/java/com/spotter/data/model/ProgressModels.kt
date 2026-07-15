@@ -14,6 +14,8 @@ data class ExerciseProgressPoint(
     val date: String,
     @SerialName("max_weight") val maxWeight: Double? = null,
     @SerialName("max_reps") val maxReps: Int,
+    // Best estimated 1RM among that day's sets (per-set Epley); null for bodyweight exercises.
+    @SerialName("est_1rm") val est1rm: Double? = null,
 )
 
 @Serializable
