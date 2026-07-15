@@ -44,9 +44,14 @@ class WorkoutTimerController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val time: TimeProvider,
     @ApplicationScope private val scope: CoroutineScope,
+    private val restStore: RestTimerStore,
 ) {
     private val _restState = MutableStateFlow<RestState?>(null)
     val restState: StateFlow<RestState?> = _restState.asStateFlow()
+
+    init {
+        restorePendingRest()
+    }
 
     @Volatile private var countdownJob: Job? = null
     private val wakeLock = WakeLockHolder(context, WAKE_LOCK_TAG, MAX_WAKELOCK_MS)
@@ -74,22 +79,50 @@ class WorkoutTimerController @Inject constructor(
      */
     fun startRest(durationSec: Int) {
         if (durationSec <= 0) return
+        // Persist the wall-clock end so the countdown can be resumed after process death/reboot.
+        restStore.save(endEpochMs = time.nowMs() + durationSec * 1000L, durationSec = durationSec)
+        // A foreground start (user tapped through a set), so the service may be (re)started here.
+        beginRest(remainingSec = durationSec, displayDurationSec = durationSec, ensureService = true)
+    }
+
+    /**
+     * Resume a rest that was in flight when the process was killed. Reconstructs the remaining time
+     * from the persisted wall-clock end, so reopening the app mid-rest picks up exactly where it left
+     * off. Never starts the foreground service here (this runs during construction, possibly with the
+     * app in the background); the normal in-progress-edge notifier owns the service.
+     */
+    private fun restorePendingRest() {
+        val pending = restStore.read() ?: return
+        val remaining = remainingSec(pending.endEpochMs, time.nowMs())
+        if (remaining <= 0) {
+            restStore.clear() // The rest elapsed while we were gone — the cue moment has passed.
+            return
+        }
+        beginRest(remaining, pending.durationSec, ensureService = false)
+    }
+
+    /**
+     * Drive a [durationSec]-display rest with [remainingSec] left. Shared by a fresh [startRest] and
+     * a [restorePendingRest] resume. Idempotent/re-entrant: any prior countdown is superseded and
+     * cancelled, and the wake-lock is (re)acquired without double-holding.
+     */
+    private fun beginRest(remainingSec: Int, displayDurationSec: Int, ensureService: Boolean) {
+        if (remainingSec <= 0) return
         val gen = ++generation
         countdownJob?.cancel()
-        val endRealtime = time.elapsedRealtimeMs() + durationSec * 1000L
-        _restState.value = RestState(durationSec, durationSec)
+        val endRealtime = time.elapsedRealtimeMs() + remainingSec * 1000L
+        _restState.value = RestState(remainingSec, displayDurationSec)
         wakeLock.acquire()
         // Ensure the foreground notification service is up so the process is protected for the whole
-        // rest (normally already started on the in-progress edge; idempotent insurance after a
-        // process restart mid-workout). Called from a foreground action, so no background-start issue.
-        WorkoutSessionService.start(context)
+        // rest (normally already started on the in-progress edge; idempotent insurance).
+        if (ensureService) WorkoutSessionService.start(context)
         countdownJob = scope.launch {
             while (isActive && generation == gen) {
                 val remaining = remainingSec(endRealtime, time.elapsedRealtimeMs())
                 if (remaining <= 0) break
                 // MutableStateFlow dedups equal values, so collectors (ring + notification) only see
                 // one update per whole second despite the finer poll cadence.
-                _restState.value = RestState(remaining, durationSec)
+                _restState.value = RestState(remaining, displayDurationSec)
                 delay(POLL_MS)
             }
             if (generation == gen) finishRest(vibrateCue = true)
@@ -105,6 +138,7 @@ class WorkoutTimerController @Inject constructor(
     }
 
     private fun finishRest(vibrateCue: Boolean) {
+        restStore.clear() // No pending rest to restore once one ends or is skipped.
         workingSinceRealtime = time.elapsedRealtimeMs()
         _restState.value = null
         wakeLock.release()

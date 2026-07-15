@@ -61,7 +61,8 @@ class WorkoutViewModelTest {
         repository = mock()
         context = mock()
         time = FakeTimeProvider(testDispatcher.scheduler)
-        val timer = WorkoutTimerController(context, time, CoroutineScope(testDispatcher))
+        // read() returns null by default → no pending rest to resume in tests.
+        val timer = WorkoutTimerController(context, time, CoroutineScope(testDispatcher), mock())
         viewModel = WorkoutViewModel(repository, timer, time)
     }
 
