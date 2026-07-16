@@ -2,7 +2,17 @@
 
 A personal fitness app. An Android client connects to a self-hosted FastAPI server that exposes workout planning, an AI chat assistant, and progress tracking.
 
-See [CLAUDE.md](./CLAUDE.md) for full architecture and conventions.
+See [CLAUDE.md](./CLAUDE.md) for full architecture and conventions, [ARCHITECTURE.md](./ARCHITECTURE.md) for the system-level overview, and [ROADMAP.md](./ROADMAP.md) for what's next.
+
+## Features
+
+- **AI coach** — conversational plan/program setup via a local LLM (proxied through the server, never exposed to the client). Session-aware mid-workout: proposes user-approved adjustment cards (swap / adjust / remove / add). The AI only proposes — the user commits.
+- **Workout mode** — per-set tap-to-complete logging with per-set weight/reps, supersets (paired A/B rows with shared rest), plate calculator, warm-up ramp, notes, and a drift-free background rest timer that survives backgrounding and process death. Fully offline.
+- **Programs & routines** — multi-day programs (named days incl. rest days) with a "next day" suggestion that auto-skips rest days, plus curated preset programs (StrongLifts, PPL, Upper/Lower, Full Body, Dumbbell/Bodyweight, and constraint-aware presets). Offline-editable.
+- **Cardio** — Couch-to-5K and Free Run guided runs with an interval timer, scheduled into Home/Calendar, plus after-the-fact **manual walk/run entry** (type + duration + optional distance).
+- **Progress** — bodyweight + body measurements (neck/chest/waist/hips/arm/thigh), per-exercise history with a Weight / Est. 1RM chart toggle, PRs, streaks, and active-minutes. Offline-capable writes.
+- **Home surfaces** — a home-screen Glance widget (today's workout / set progress), static launcher shortcuts (Start workout / Log weight / Coach), and an opt-in workout-morning reminder that respects quiet hours.
+- **Suite integration** — "Sign in with Dragonfly" SSO and a read-only cross-app `/workouts` status endpoint consumed by the sister app Plate.
 
 ## Quick Start
 

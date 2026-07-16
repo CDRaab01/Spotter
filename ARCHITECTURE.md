@@ -73,8 +73,8 @@ input (422); the extraction layer clamps bad model output. Both source from `app
 
 ### Migrations & tests
 
-Alembic (10 revisions), auto-applied on container boot (`docker-entrypoint.sh`). 26 pytest files
-(~190 tests) cover routers, the guardrail/extraction layer (LLM mocked), bounds, and cross-app
+Alembic (12 revisions), auto-applied on container boot (`docker-entrypoint.sh`). 27 pytest files
+(~220 tests) cover routers, the guardrail/extraction layer (LLM mocked), bounds, and cross-app
 auth. Local run: throwaway DB + `DATABASE_URL` on **127.0.0.1** + `DB_NULLPOOL=1` (see CLAUDE.md
 "Local pytest recipe"). Known flake: `CardioScheduleTest` (Android) is timezone-sensitive.
 
@@ -86,15 +86,24 @@ auth. Local run: throwaway DB + `DATABASE_URL` on **127.0.0.1** + `DB_NULLPOOL=1
 `data/repository/` → Room (`data/local/`: dao/entity) + Retrofit (`data/remote/`). Hilt in `di/`.
 Repositories decide local-vs-remote and own sync.
 
-### Offline model (the app's defining constraint — and its biggest gap)
+### Offline model (the app's defining constraint)
 
-**Workout mode is fully offline**: sessions/sets write to Room with `syncPending`, and
-`NetworkSyncObserver` (connectivity callback registered in `SpotterApp.onCreate`) pushes pending
-work on reconnect; `SessionRepository` reconciles server + unsynced-local rows (and does a
-wholesale reconciliation after AI adjustments, because swaps/removes delete server rows).
-Cardio writes are local-first with best-effort push, dedupe-safe. **Everything else** (metrics,
-routines, programs, calendar) throws when offline — the standing architectural gap
-(ROADMAP debt #1). Room is a server mirror: destructive migration is acceptable and configured.
+**Writes are offline-capable across the app** via a shared write-through + drain-queue pattern:
+each repository writes to Room with `syncPending` first, then `NetworkSyncObserver` (connectivity
+callback registered in `SpotterApp.onCreate`) drains the pending work on reconnect.
+- **Workout mode** (sessions/sets): `SessionRepository` reconciles server + unsynced-local rows
+  (and does a wholesale reconciliation after AI adjustments, because swaps/removes delete server
+  rows).
+- **Bodyweight metrics, routines, and programs** are offline-editable through the same
+  write-through queue (`MetricRepository`, `RoutineRepository`, `ProgramRepository`); the sync
+  step translates offline-created routine ids to server ids on push so program-day references
+  reconcile without duplicating.
+- **Calendar** serves the last-known projection on an offline read instead of throwing.
+- **Cardio** writes are local-first with best-effort push, dedupe-safe.
+
+Room is a server mirror: destructive migration is acceptable and configured. (Remaining offline
+gap: an offline-finished workout still shows no muscle-group breakdown — `muscle_group` isn't
+cached locally; ROADMAP follow-up.)
 
 ### Timers (unified Sprint 8 model — keep it)
 
@@ -102,15 +111,20 @@ All timers are drift-free and background-correct: monotonic `elapsedRealtime` an
 counters. `util/TimeProvider.kt` is the injectable clock seam. `WorkoutTimerController`
 (@Singleton) owns rest countdown + work count-up (generation-guarded, holds its own wake-lock,
 app-scoped coroutine so cues fire while backgrounded); the session elapsed clock recomputes from
-the persisted `startedAtMs` anchor. `CardioRunController` is the cardio equivalent and was the
-original gold standard. One foreground service per feature (`WorkoutSessionService`,
+the persisted `startedAtMs` anchor. The rest countdown also **survives process death**:
+`WorkoutTimerController` persists the wall-clock rest end-anchor via `RestTimerStore` (DataStore)
+and restores it on init, so reopening mid-rest resumes exactly (and a rest that elapsed while the
+app was gone is cleared, its cue moment passed). `CardioRunController` is the cardio equivalent
+and was the original gold standard. One foreground service per feature (`WorkoutSessionService`,
 `CardioRunService`) sharing `util/ForegroundServiceSupport.kt`. Do not reintroduce `delay(1000)`
 counters.
 
 ### Feature packages worth knowing
 
 - `ui/workout/` — the core product surface (set logging, rest panel, edit mode, resume strip via
-  `util/ActiveWorkoutStore`).
+  `util/ActiveWorkoutStore`). Supersets render as visually paired rows under a "SUPERSET A/B"
+  header driven by the routine's `supersetGroup` (shared rest); the server derives the grouping,
+  the client only displays it.
 - `ui/ai/` — coach chat + the three suggestion cards (plan / program / live adjustment).
 - `ui/program/ProgramPresets.kt` — client-side preset programs (incl. special-case presets);
   applying one reuses `POST /ai/programs/accept`. A guardrail test pins preset names to the
@@ -125,6 +139,17 @@ counters.
 - `data/remote/SuiteAuthManager.kt` + `util/SuiteConfigReader` — suite SSO + hub config broker.
 - `ui/theme/SpotterTheme.kt` — Pulse channel semantics (Spotter leads blue; effort/strength/
   streak/recovery channels). Components come from the Pulse library — never re-inline them.
+- `widget/` — a home-screen **Glance** app widget (`SpotterWidget` + `WidgetContent`,
+  `SpotterWidgetReceiver` in the manifest) showing today's workout / set progress; it reads a
+  `data/local/WidgetSnapshotStore` snapshot (updated via `WidgetUpdater`) so it renders without a
+  network round-trip.
+- `util/ShortcutNav.kt` + `ui/navigation/ShortcutViewModel.kt` — static launcher shortcuts
+  (`res/xml/shortcuts.xml`: Start workout / Log weight / Coach). Each fires a
+  `spotter://shortcut/<target>` VIEW intent parked on a `ShortcutBus`; because the app gates on
+  auth before the main graph, a shortcut is honoured *after* sign-in rather than dropped.
+- `util/nudge/` — an opt-in workout-morning reminder (`WorkoutNudgeScheduler` enqueues a
+  WorkManager `WorkoutNudgeWorker`); it re-checks enabled/permission/quiet-hours/is-today-a-
+  workout-day at fire time so a stale schedule can't nag.
 
 ### Auth plumbing
 

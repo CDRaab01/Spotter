@@ -657,3 +657,54 @@ carries:
   attached to a different loop" (SQLAlchemy pools bind asyncpg connections to the creating
   event loop). Example: create a scratch DB in the spotter-db container (127.0.0.1:5432,
   spotter/spotter), point `DATABASE_URL` at it, run pytest from `server/`.
+
+## Sprint 11 — Offline writes, 1.0 polish, and home surfaces (2026-07-14 → 16)
+The push that closed out Spotter's "Road to 1.0" feature gaps. Server picked up migration `0011`
+(body measurements) + `0012` (cardio manual entry) — Alembic is now **12 revisions**; the pytest
+suite is **27 files / ~220 tests**. Android verified per-commit by `:app:testDebugUnitTest` +
+`:app:compileDebugKotlin`/`assembleDebug` (the emulator path needs a KVM host, so UI was verified
+by build + unit tests, not interactive drive — the on-device pass is the last 1.0 item).
+
+- **Offline writes beyond workout mode (retires the standing architectural gap).** Bodyweight
+  metrics, routines, and programs are now offline-editable via a **write-through + drain-queue**
+  pattern (write to Room with `syncPending`, `NetworkSyncObserver` drains on reconnect); the sync
+  step **translates offline-created routine ids → server ids** on push so program-day references
+  reconcile without duplicating. Calendar **serves its last-known projection** on an offline read
+  instead of throwing. New coverage: offline bodyweight/routine/program queue-and-drain tests.
+  (Remaining offline gap: an offline-finished workout still shows no muscle-group breakdown —
+  `muscle_group` isn't cached locally.)
+- **Rest countdown survives process death.** `WorkoutTimerController` persists the wall-clock rest
+  end-anchor via `RestTimerStore` (DataStore) and restores it on init (rest-restore runs *after*
+  the wake-lock is initialized — `07c7a1b`), so reopening mid-rest resumes exactly; a rest that
+  elapsed while the app was gone is cleared (its cue moment passed).
+- **Body measurements beyond weight** (neck/chest/waist/hips/arm/thigh) — server migration `0011`
+  + offline write-through; a log-dialog expander logs them alongside the weigh-in, with a
+  Measurements trend panel in the Body Weight tab.
+- **Est-1RM trend done right** — `GET /progress/exercises/{id}` returns `est_1rm` = the best
+  per-set Epley of each day (not independent `max(weight)`/`max(reps)`); the Strength tab gained a
+  Weight / Est. 1RM chart toggle. (Progression-engine PR-celebration polish shipped in the same
+  round.)
+- **Home-screen Glance widget** (`widget/`, `SpotterWidgetReceiver`) — today's workout / set
+  progress off a local `WidgetSnapshotStore` snapshot (updated by `WidgetUpdater`), so it renders
+  without a network round-trip. Test: `WidgetContentTest`.
+- **Static launcher shortcuts** (`res/xml/shortcuts.xml`: Start workout / Log weight / Coach) —
+  each fires a `spotter://shortcut/<target>` VIEW intent parked on a `ShortcutBus`; because the
+  app gates on auth before the main graph, a shortcut is honoured *after* sign-in, not dropped
+  (`util/ShortcutNav.kt` + `ui/navigation/ShortcutViewModel.kt`).
+- **Workout-morning nudge** (Tier W2b) — an **opt-in local** reminder (`util/nudge/`,
+  WorkManager `WorkoutNudgeWorker`), *not* via the suite push pipeline; re-checks
+  enabled/permission/quiet-hours/is-today-a-workout-day at fire time so a stale schedule can't
+  nag. Tests: `WorkoutNudgeTest`, `WorkoutNudgeSchedulerTest`.
+- **Supersets in the UI** — `WorkoutScreen` renders grouped exercises under a "SUPERSET A/B"
+  header driven by the routine's existing `supersetGroup` (shared rest); the server derives the
+  grouping, the client only displays it (no schema change).
+- **Rest-day fix** — the program projection + `get_next_day` now **auto-skip / auto-consume rest
+  days** (`program_service.py`), so a program no longer gets "stuck on a rest day"; the next-day
+  suggestion is the next actual workout, and rest days are consumed as their dates pass.
+- **Manual cardio entry** — log a walk/run after the fact (activity type + duration + optional
+  distance + date): a *completed* session that counts toward the Home streak + active-minutes like
+  a guided run. Server: `POST /cardio/sessions/manual` (201) + `activity_type` (`walk`|`run`) /
+  `distance_meters` columns (migration `0012`, both nullable — null on existing guided/free runs);
+  `program_id="manual"` sentinel. Client: `ManualCardioScreen` (`CardioRepository.logManualSession`),
+  distance entered in the user's unit and converted to canonical meters at the edge; completed
+  cardio (manual/guided/free) now counts alongside completed strength in `HomeViewModel.loadStats`.

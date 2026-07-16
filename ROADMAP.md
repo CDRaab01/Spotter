@@ -12,15 +12,18 @@ parity, defined offline behavior, no dead settings, an on-device pass, gating sc
 baselines, icon quality, truthful docs. **Spotter is the suite's polish reference** (`States.kt`,
 `ui/onboarding/`, `Motion.kt`, confetti — Tier P of the host roadmap promotes these into Pulse
 for the siblings), so its remaining 1.0 items were structural, not cosmetic. **All of Spotter's
-solo 1.0 polish is now done (2026-07-15)** — only the cross-app Tier-W items (#7) remain, and
-those are gated on the suite push pipeline built in the Dragonfly repo, not on Spotter.
+solo 1.0 polish is now done (2026-07-15)**, and the Tier-W home-surface items (#7 — Glance widget
++ workout-morning nudge) shipped 2026-07-15/16. What genuinely remains toward 1.0 is the **on-device
+pass** — interactive verification on real hardware (the emulator path needs a KVM host, so recent
+UI work was verified by build + unit tests, not by driving the app). No feature gaps remain; the
+1.0 declaration is passing the bar audit on-device.
 
 1. ✓ **Offline-writes design** — DONE. Write-through + drain queue for bodyweight, routines, and
    programs; calendar serves last-known on offline read; body measurements (below) inherited it
    from day one. Debt #1.
 2. ✓ **Rest countdown across process death** — DONE. `WorkoutTimerController` persists the rest
-   end-anchor via `RestStore` and restores it on init, so reopening mid-rest resumes exactly.
-   Debt #3.
+   end-anchor via `RestTimerStore` (DataStore) and restores it on init, so reopening mid-rest
+   resumes exactly. Debt #3.
 3. ✓ **Progression-engine presentation polish** — DONE. PR celebration moments (Summary
    `CelebrationPulse`/`ConfettiHost` + `newPrCount` pill, plus a per-set PR flag mid-workout) and
    the est-1RM trend chart done right (per-set Epley over time + a Weight / Est. 1RM toggle;
@@ -38,9 +41,14 @@ bar audit.
 6. ✓ **Body measurements beyond weight** (neck/chest/waist/hips/arm/thigh) — SHIPPED 2026-07-15.
    Server migration `0011` + offline write-through; log dialog expander + a Measurements trend
    panel in the Body Weight tab.
-7. **Today's-workout / rest-timer widget** (host Tier W4 Pulse widget family) and a workout-day
-   morning nudge via the suite push pipeline (host Tier W2b, opt-in). **The one remaining item** —
-   cross-app, gated on the suite push pipeline (Dragonfly repo), not Spotter-solo.
+7. ✓ **Today's-workout widget + workout-morning nudge** — SHIPPED 2026-07-15/16. A home-screen
+   **Glance widget** (`widget/`, `SpotterWidgetReceiver`, 07-15) shows today's workout / set
+   progress off a local `WidgetSnapshotStore` snapshot. The **morning nudge** (host Tier W2b,
+   07-16) shipped as an
+   opt-in *local* reminder (`util/nudge/`, WorkManager) that respects quiet hours and only fires on
+   a workout day — no dependency on the suite push pipeline. Also shipped alongside: static
+   **launcher shortcuts** (Start workout / Log weight / Coach, `util/ShortcutNav.kt`), routed
+   through the auth gate so they resolve after sign-in.
 
 ## Debt to retire first
 
@@ -76,7 +84,11 @@ bar audit.
    trust model). Remaining work is presentation (Road to 1.0 #3 above), not the engine.
 2. **Cardio phase 2:** GPS distance/pace for outdoor runs, and the deliberately-stubbed
    **AI post-run coaching note** (sessions are already stored for it). Audio cues over music
-   (ducking) before any music integration.
+   (ducking) before any music integration. (✓ **Manual cardio entry** landed 2026-07-16 as a first
+   slice — log a walk/run after the fact: activity type + duration + optional distance + date, a
+   completed session that counts toward the Home streak + active-minutes like a guided run. Server
+   `POST /cardio/sessions/manual` + `activity_type`/`distance_meters`, migration `0012`; client
+   `ManualCardioScreen`. GPS/pace + coaching note still open.)
 3. **Health Connect integration** — bodyweight in from a smart scale, workouts out to the
    Android health ecosystem. Standard API, high leverage, and it feeds Plate's targets too.
 4. ✓ **Est-1RM trend** done right — SHIPPED 2026-07-15. `GET /progress/exercises/{id}` now returns
