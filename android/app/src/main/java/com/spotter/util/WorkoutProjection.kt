@@ -118,13 +118,27 @@ object WorkoutProjection {
         }
 
         val startIndex = anchor?.routineId?.let { rid -> days.indexOfFirst { it.routineId == rid } } ?: -1
+        val hasRestDays = days.any { it.routineId == null }
 
         return (0 until count).map { k ->
-            // ((startIndex + 1 + k) % n + n) % n stays valid when startIndex == -1.
-            val dayIndex = ((startIndex + 1 + k) % n + n) % n
+            val date = firstDate.plusDays(step * k)
+            // A program with explicit rest days is calendar-structured (step == 1), so each slot's
+            // position is derived from its DATE — the same anchor→offset arithmetic restDayDatesInRange
+            // uses. This auto-consumes a rest day once its date has passed, instead of the position
+            // freezing at anchor+1 and leaving "next up" stuck on a rest day forever (rest days can
+            // never be "completed", so a completion-only anchor never advanced past them). Cadence
+            // programs (no rest days) keep the per-workout stepping: the next workout is always next,
+            // whenever the user gets to it.
+            val dayIndex = if (anchor != null && hasRestDays) {
+                val offset = ChronoUnit.DAYS.between(anchor.date, date)
+                (((startIndex.toLong() + offset) % n + n) % n).toInt()
+            } else {
+                // ((startIndex + 1 + k) % n + n) % n stays valid when startIndex == -1.
+                ((startIndex + 1 + k) % n + n) % n
+            }
             val day = days[dayIndex]
             ProjectedSlot(
-                date = firstDate.plusDays(step * k),
+                date = date,
                 routineId = day.routineId,
                 label = day.label,
                 routineName = day.routineName,

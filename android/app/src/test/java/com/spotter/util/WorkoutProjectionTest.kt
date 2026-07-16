@@ -115,6 +115,36 @@ class WorkoutProjectionTest {
     }
 
     @Test
+    fun `rest days are auto-consumed as time passes instead of freezing next up`() {
+        // Push(0), Pull(1), Rest(2), Legs(3). User completed Pull three days ago and did nothing
+        // since (the rest day and Legs elapsed). Before the fix, "next up" stayed frozen on the
+        // rest day (index anchor+1 = 2) forever; now the position marches with the calendar.
+        val days = listOf(day("Push"), day("Pull"), restDay(), day("Legs"))
+        val anchor = SessionAnchor(date = today.minusDays(3), routineId = "Pull", status = "completed")
+        val slots = WorkoutProjection.project(today, cadenceDays = 5, anchor = anchor, days = days, count = 2)
+
+        // Pull(1) three days on -> Rest(2), Legs(3), Push(0): today's position is Push, not the rest day.
+        assertEquals(today, slots[0].date)
+        assertEquals("Push", slots[0].routineId)
+        // And it is emphatically not stuck on a rest day.
+        assertTrue(slots[0].routineId != null)
+    }
+
+    @Test
+    fun `rest day today shows as rest then advances to the workout tomorrow`() {
+        // Completed Pull yesterday; today is the scheduled rest day, tomorrow is Legs. The rest day
+        // shows correctly today (it IS a rest day) but does not freeze — tomorrow advances.
+        val days = listOf(day("Push"), day("Pull"), restDay(), day("Legs"))
+        val anchor = SessionAnchor(date = today.minusDays(1), routineId = "Pull", status = "completed")
+        val slots = WorkoutProjection.project(today, cadenceDays = 5, anchor = anchor, days = days, count = 2)
+
+        assertEquals(today, slots[0].date)
+        assertEquals(null, slots[0].routineId) // today is the rest day
+        assertEquals(today.plusDays(1), slots[1].date)
+        assertEquals("Legs", slots[1].routineId) // tomorrow advances to the workout
+    }
+
+    @Test
     fun `effectiveCadence returns 1 when rest days present`() {
         val withRest = listOf(day("A"), restDay())
         assertEquals(1, WorkoutProjection.effectiveCadence(2, withRest))
