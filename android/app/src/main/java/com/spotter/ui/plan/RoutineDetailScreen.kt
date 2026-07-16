@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -46,6 +47,9 @@ import com.spotter.data.model.RoutineExerciseOut
 import design.pulse.ui.components.DataText
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SupersetContainer
+import com.spotter.ui.components.SupersetGrouping
+import com.spotter.ui.components.SupersetPositionTag
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import com.spotter.ui.theme.SpotterTheme
@@ -226,8 +230,22 @@ fun RoutineDetailScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        itemsIndexed(routine.exercises, key = { _, ex -> ex.id }) { _, ex ->
-                            ExerciseViewRow(exercise = ex)
+                        val blocks = SupersetGrouping.group(routine.exercises) { it.supersetGroup }
+                        items(blocks, key = { it.items.first().id }) { block ->
+                            when (block) {
+                                is SupersetGrouping.Single ->
+                                    ExerciseViewRow(exercise = block.item, positionLabel = null)
+                                is SupersetGrouping.Superset -> SupersetContainer(
+                                    groupLabel = SupersetGrouping.groupLabel(block.group),
+                                ) {
+                                    block.items.forEachIndexed { idx, ex ->
+                                        ExerciseViewRow(
+                                            exercise = ex,
+                                            positionLabel = SupersetGrouping.positionLabel(block.group, idx),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
@@ -248,7 +266,7 @@ fun RoutineDetailScreen(
 }
 
 @Composable
-private fun ExerciseViewRow(exercise: RoutineExerciseOut) {
+private fun ExerciseViewRow(exercise: RoutineExerciseOut, positionLabel: String? = null) {
     val weightUnit = LocalWeightUnit.current
     PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
         Row(
@@ -258,6 +276,9 @@ private fun ExerciseViewRow(exercise: RoutineExerciseOut) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
+                if (positionLabel != null) {
+                    SupersetPositionTag(positionLabel)
+                }
                 Text(
                     exercise.exerciseName ?: exercise.exerciseId,
                     style = MaterialTheme.typography.titleSmall,
@@ -273,13 +294,6 @@ private fun ExerciseViewRow(exercise: RoutineExerciseOut) {
                     style = SpotterTheme.dataType.numeral,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                exercise.supersetGroup?.let { group ->
-                    Text(
-                        "Superset ${('A' + group - 1).uppercaseChar()}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SpotterTheme.pulse.strength,
-                    )
-                }
             }
         }
     }

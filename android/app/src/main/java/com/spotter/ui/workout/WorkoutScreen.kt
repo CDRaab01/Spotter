@@ -60,6 +60,9 @@ import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SetLogOut
 import design.pulse.ui.components.DataText
 import com.spotter.ui.components.LoadingState
+import com.spotter.ui.components.SupersetContainer
+import com.spotter.ui.components.SupersetGrouping
+import com.spotter.ui.components.SupersetPositionTag
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.ProgressRing
 import design.pulse.ui.components.PulseButton
@@ -242,6 +245,11 @@ fun WorkoutScreen(
 
                 is UiState.Success -> {
                     val grouped = state.data.setLogs.groupBy { it.exerciseId }
+                    // Fold consecutive exercises that share a superset group into one bracketed block
+                    // (A1/A2 with shared rest); everything else stays a standalone card.
+                    val blocks = SupersetGrouping.group(grouped.entries.toList()) {
+                        it.value.firstOrNull()?.supersetGroup
+                    }
                     if (grouped.isEmpty()) {
                         Box(
                             Modifier.fillMaxSize(),
@@ -258,20 +266,43 @@ fun WorkoutScreen(
                             contentPadding = PaddingValues(SpotterTheme.spacing.lg),
                             verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.md),
                         ) {
-                            items(grouped.entries.toList(), key = { it.key }) { (exerciseId, sets) ->
-                                ExerciseCard(
-                                    sets = sets,
-                                    note = exerciseNotes[exerciseId] ?: "",
-                                    priorBest = priorBests[exerciseId],
-                                    onCommitValues = { setLog, reps, weight ->
-                                        viewModel.editSet(sessionId, setLog, reps, weight)
-                                    },
-                                    onToggleComplete = { setLog, reps, weight ->
-                                        viewModel.toggleComplete(sessionId, setLog, reps, weight)
-                                    },
-                                    onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
-                                    onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
-                                )
+                            items(blocks, key = { it.items.first().key }) { block ->
+                                @Composable
+                                fun card(exerciseId: String, sets: List<SetLogOut>, positionLabel: String?) {
+                                    ExerciseCard(
+                                        sets = sets,
+                                        note = exerciseNotes[exerciseId] ?: "",
+                                        priorBest = priorBests[exerciseId],
+                                        positionLabel = positionLabel,
+                                        onCommitValues = { setLog, reps, weight ->
+                                            viewModel.editSet(sessionId, setLog, reps, weight)
+                                        },
+                                        onToggleComplete = { setLog, reps, weight ->
+                                            viewModel.toggleComplete(sessionId, setLog, reps, weight)
+                                        },
+                                        onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
+                                        onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
+                                    )
+                                }
+                                when (block) {
+                                    is SupersetGrouping.Single -> {
+                                        val (exerciseId, sets) = block.item
+                                        card(exerciseId, sets, positionLabel = null)
+                                    }
+                                    is SupersetGrouping.Superset -> {
+                                        SupersetContainer(
+                                            groupLabel = SupersetGrouping.groupLabel(block.group),
+                                        ) {
+                                            block.items.forEachIndexed { idx, (exerciseId, sets) ->
+                                                card(
+                                                    exerciseId,
+                                                    sets,
+                                                    SupersetGrouping.positionLabel(block.group, idx),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -383,6 +414,7 @@ private fun ExerciseCard(
     sets: List<SetLogOut>,
     note: String,
     priorBest: ExercisePrior?,
+    positionLabel: String? = null,
     onCommitValues: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onToggleComplete: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
@@ -394,7 +426,6 @@ private fun ExerciseCard(
     val name = first.exerciseName ?: first.exerciseId
     val targetHeader = buildTargetHeader(first, weightUnit)
     val done = sets.count { it.completed }
-    val supersetGroup = first.supersetGroup
     var showNote by remember { mutableStateOf(note.isNotEmpty()) }
     var noteText by remember(note) { mutableStateOf(note) }
     val focusManager = LocalFocusManager.current
@@ -417,13 +448,8 @@ private fun ExerciseCard(
     }
 
     PanelCard(modifier = Modifier.fillMaxWidth()) {
-        if (supersetGroup != null) {
-            Text(
-                text = "SUPERSET ${('A' + supersetGroup - 1).uppercaseChar()}",
-                style = MaterialTheme.typography.labelSmall,
-                color = pulse.strength,
-                modifier = Modifier.padding(bottom = SpotterTheme.spacing.xs),
-            )
+        if (positionLabel != null) {
+            SupersetPositionTag(positionLabel)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
