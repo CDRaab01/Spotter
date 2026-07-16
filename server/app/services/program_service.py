@@ -170,8 +170,9 @@ async def get_next_day(
     last_session = last_session_result.scalar_one_or_none()
 
     days = sorted(program.days, key=lambda d: d.order)
+    n = len(days)
     if not last_session or not last_session.routine_id:
-        next_day = days[0]
+        start = 0
     else:
         # Find the last day whose routine matches. When multiple days share a routine
         # (e.g. two "Full Body" days) we pick the last matching occurrence so the
@@ -182,10 +183,18 @@ async def get_next_day(
         for i, d in enumerate(days):
             if d.routine_id == last_session.routine_id:
                 matching_index = i
-        if matching_index is None:
-            next_day = days[0]
-        else:
-            next_day = days[(matching_index + 1) % len(days)]
+        start = 0 if matching_index is None else (matching_index + 1) % n
+
+    # Auto-skip rest days: the "next day" suggestion is the next actual workout. A rest day has no
+    # routine, so it can never be "completed" — if it were returned here it would sit as an
+    # unadvanceable "next up" and the program would appear stuck on it. Walk forward from `start`
+    # to the first day that has a routine; if the whole program is rest days, keep `start`.
+    next_day = days[start]
+    for step in range(n):
+        candidate = days[(start + step) % n]
+        if candidate.routine_id is not None:
+            next_day = candidate
+            break
 
     routine_name: str | None = None
     if next_day.routine:

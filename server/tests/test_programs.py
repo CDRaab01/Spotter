@@ -162,23 +162,24 @@ async def test_get_next_day_with_no_prior_session_returns_first_day(auth_client,
 
 
 async def test_get_next_day_cycles_after_completed_session(auth_client, exercise):
-    routine_id = await _make_routine(auth_client, str(exercise.id))
+    routine_a = await _make_routine(auth_client, str(exercise.id))
+    routine_b = await _make_routine(auth_client, str(exercise.id))
     create = await auth_client.post(
         "/programs",
         json={
             "name": "AB",
             "days": [
-                {"routine_id": routine_id, "label": "Day A", "order": 0},
-                {"label": "Day B", "order": 1},
+                {"routine_id": routine_a, "label": "Day A", "order": 0},
+                {"routine_id": routine_b, "label": "Day B", "order": 1},
             ],
         },
     )
     prog_id = create.json()["id"]
     await auth_client.patch(f"/programs/{prog_id}", json={"is_active": True})
 
-    # Create and complete a session from the routine
+    # Create and complete a session from routine A
     sess = await auth_client.post(
-        "/sessions", json={"routine_id": routine_id, "date": str(datetime.date.today())}
+        "/sessions", json={"routine_id": routine_a, "date": str(datetime.date.today())}
     )
     sess_id = sess.json()["id"]
     await auth_client.patch(
@@ -189,6 +190,39 @@ async def test_get_next_day_cycles_after_completed_session(auth_client, exercise
     assert resp.status_code == 200
     # Day A matched the last session → next is Day B
     assert resp.json()["label"] == "Day B"
+
+
+async def test_get_next_day_skips_rest_day(auth_client, exercise):
+    # A workout followed by a rest day (no routine). After the workout, the next *day* would be the
+    # rest day — but a rest day has no routine and can never be completed, so it must be auto-skipped
+    # to the next actual workout (here, the workout itself again) rather than stall "next up" on it.
+    routine_id = await _make_routine(auth_client, str(exercise.id))
+    create = await auth_client.post(
+        "/programs",
+        json={
+            "name": "Workout + Rest",
+            "days": [
+                {"routine_id": routine_id, "label": "Workout", "order": 0},
+                {"routine_id": None, "label": "Rest", "order": 1},
+            ],
+        },
+    )
+    prog_id = create.json()["id"]
+    await auth_client.patch(f"/programs/{prog_id}", json={"is_active": True})
+
+    sess = await auth_client.post(
+        "/sessions", json={"routine_id": routine_id, "date": str(datetime.date.today())}
+    )
+    sess_id = sess.json()["id"]
+    await auth_client.patch(
+        f"/sessions/{sess_id}", json={"status": "completed", "duration_seconds": 1800}
+    )
+
+    resp = await auth_client.get("/programs/active/next")
+    assert resp.status_code == 200
+    # The rest day at order 1 is skipped; the next workout is the Workout day again.
+    assert resp.json()["label"] == "Workout"
+    assert resp.json()["routine_id"] == routine_id
 
 
 # ── Access control ────────────────────────────────────────────────────────────
