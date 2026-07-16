@@ -129,6 +129,11 @@ dependencies {
     // PULSE design system as a shared library (composite build; see settings.gradle.kts).
     implementation(libs.pulse.ui)
 
+    // Glance: the home-screen "today's workout" widget (com.spotter.widget). Reads a DataStore
+    // snapshot the app persists — no network of its own.
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

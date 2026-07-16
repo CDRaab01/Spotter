@@ -57,5 +57,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="workout_session" />
         </service>
+
+        <!-- Home-screen "today's workout" glance (next/today workout or live set progress),
+             reads the last-known snapshot the app persists — no network of its own. -->
+        <receiver
+            android:name=".widget.SpotterWidgetReceiver"
+            android:exported="true"
+            android:label="Today's workout">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/spotter_widget_info" />
+        </receiver>
     </application>
 </manifest>
