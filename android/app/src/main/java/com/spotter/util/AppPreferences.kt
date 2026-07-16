@@ -45,6 +45,13 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         /** Default workout cadence (train every N days) when the user hasn't set one. */
         const val DEFAULT_CADENCE_DAYS = 2
 
+        /** Hour of day (local) the workout-morning nudge fires. */
+        const val NUDGE_HOUR = 8
+
+        /** Default quiet-hours window (nudge is suppressed if its fire time falls inside). */
+        const val DEFAULT_QUIET_START_HOUR = 21
+        const val DEFAULT_QUIET_END_HOUR = 7
+
         private val DARK_MODE = stringPreferencesKey("pref_dark_mode")
         private val WEIGHT_UNIT = stringPreferencesKey("pref_weight_unit")
         private val DISTANCE_UNIT = stringPreferencesKey("pref_distance_unit")
@@ -57,6 +64,27 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val PROFILE_LIMITATIONS = stringPreferencesKey("pref_limitations")
         private val SERVER_URL = stringPreferencesKey("pref_server_url")
         private val ACTIVE_CARDIO_PROGRAM = stringPreferencesKey("pref_active_cardio_program_id")
+        private val WORKOUT_NUDGE_ENABLED = booleanPreferencesKey("pref_workout_nudge_enabled")
+        private val QUIET_START_HOUR = intPreferencesKey("pref_quiet_start_hour")
+        private val QUIET_END_HOUR = intPreferencesKey("pref_quiet_end_hour")
+    }
+
+    /**
+     * Opt-in (default OFF): fire a local morning notification on days the active program schedules a
+     * workout. See [com.spotter.util.nudge.WorkoutNudgeWorker]. Client-side only; never nags on rest
+     * days or when a session is already logged/underway today.
+     */
+    val workoutNudgeEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[WORKOUT_NUDGE_ENABLED] ?: false
+    }
+
+    /** Quiet-hours window (local hours); the nudge is suppressed when its fire time falls inside. */
+    val quietStartHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        (prefs[QUIET_START_HOUR] ?: DEFAULT_QUIET_START_HOUR).coerceIn(0, 23)
+    }
+
+    val quietEndHour: Flow<Int> = context.dataStore.data.map { prefs ->
+        (prefs[QUIET_END_HOUR] ?: DEFAULT_QUIET_END_HOUR).coerceIn(0, 23)
     }
 
     /** Base URL of the Spotter server. Defaults to the build-time value when unset. */
@@ -126,6 +154,17 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
 
     suspend fun setServerUrl(value: String) {
         context.dataStore.edit { it[SERVER_URL] = value }
+    }
+
+    suspend fun setWorkoutNudgeEnabled(value: Boolean) {
+        context.dataStore.edit { it[WORKOUT_NUDGE_ENABLED] = value }
+    }
+
+    suspend fun setQuietHours(startHour: Int, endHour: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[QUIET_START_HOUR] = startHour.coerceIn(0, 23)
+            prefs[QUIET_END_HOUR] = endHour.coerceIn(0, 23)
+        }
     }
 
     /** Adds (non-null id) or removes (null) the active cardio program from the schedule. */

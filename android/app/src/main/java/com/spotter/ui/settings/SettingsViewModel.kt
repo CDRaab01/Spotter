@@ -78,6 +78,24 @@ class SettingsViewModel @Inject constructor(
     val serverUrl: StateFlow<String> = appPreferences.serverUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
+    /** Opt-in workout-morning nudge toggle + quiet-hours window (Settings → Reminders). */
+    val workoutNudgeEnabled: StateFlow<Boolean> = appPreferences.workoutNudgeEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val quietStartHour: StateFlow<Int> = appPreferences.quietStartHour
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            AppPreferences.DEFAULT_QUIET_START_HOUR,
+        )
+
+    val quietEndHour: StateFlow<Int> = appPreferences.quietEndHour
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            AppPreferences.DEFAULT_QUIET_END_HOUR,
+        )
+
     private val _serverUrlMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val serverUrlMessage: SharedFlow<String> = _serverUrlMessage.asSharedFlow()
 
@@ -130,6 +148,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setWorkoutCadenceDays(value: Int) {
         viewModelScope.launch { appPreferences.setWorkoutCadenceDays(value) }
+    }
+
+    /**
+     * Toggles the workout-morning nudge. The actual WorkManager (re)schedule is driven by
+     * [com.spotter.SpotterApp], which observes this preference — so flipping it here is enough.
+     */
+    fun setWorkoutNudgeEnabled(value: Boolean) {
+        viewModelScope.launch { appPreferences.setWorkoutNudgeEnabled(value) }
+    }
+
+    fun setQuietHours(startHour: Int, endHour: Int) {
+        viewModelScope.launch { appPreferences.setQuietHours(startHour, endHour) }
     }
 
     /**

@@ -25,6 +25,18 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Spotter"
         android:usesCleartextTraffic="true">
+        <!-- WorkManager is initialized on-demand via SpotterApp's Configuration.Provider (so
+             @HiltWorker workers get their injected deps); remove the default startup initializer. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"

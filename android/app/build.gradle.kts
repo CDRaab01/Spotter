@@ -144,6 +144,11 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    // WorkManager + Hilt worker injection (the workout-morning nudge; com.spotter.util.nudge)
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
     // Retrofit + OkHttp + Serialization
     implementation(libs.retrofit)
     implementation(libs.okhttp)
@@ -167,6 +172,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockito.kotlin)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.work.testing)
     testImplementation(kotlin("test"))
 
     // JVM screenshot tests (Robolectric + Roborazzi) — no device/KVM required.

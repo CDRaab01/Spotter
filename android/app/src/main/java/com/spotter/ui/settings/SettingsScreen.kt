@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -76,6 +77,9 @@ fun SettingsScreen(
     val weightUnit by viewModel.weightUnit.collectAsState()
     val distanceUnit by viewModel.distanceUnit.collectAsState()
     val cadenceDays by viewModel.workoutCadenceDays.collectAsState()
+    val nudgeEnabled by viewModel.workoutNudgeEnabled.collectAsState()
+    val quietStartHour by viewModel.quietStartHour.collectAsState()
+    val quietEndHour by viewModel.quietEndHour.collectAsState()
     val serverUrl by viewModel.serverUrl.collectAsState()
     val programs by viewModel.programs.collectAsState()
     val resetting by viewModel.resetting.collectAsState()
@@ -217,6 +221,57 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            SettingsSection("Reminders") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Workout-morning nudge", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "A ${formatHour(com.spotter.util.AppPreferences.NUDGE_HOUR)} reminder on " +
+                                "days your program schedules a workout. Never on rest days.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = nudgeEnabled,
+                        onCheckedChange = { viewModel.setWorkoutNudgeEnabled(it) },
+                    )
+                }
+                if (nudgeEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Quiet hours",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HourStepper(
+                            hour = quietStartHour,
+                            onChange = { viewModel.setQuietHours(it, quietEndHour) },
+                        )
+                        Text(
+                            "  to  ",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        HourStepper(
+                            hour = quietEndHour,
+                            onChange = { viewModel.setQuietHours(quietStartHour, it) },
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "The nudge is skipped if it would land inside this window.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             SettingsSection("Programs") {
@@ -480,6 +535,32 @@ private fun CadenceStepper(
             enabled = cadenceDays < maxDays,
         ) { Text("+") }
     }
+}
+
+/** A 24h-wrapping hour stepper (0..23), rendered as a 12h clock label like "9 PM". */
+@Composable
+private fun HourStepper(hour: Int, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = { onChange((hour + 23) % 24) }) { Text("−") }
+        Text(
+            text = formatHour(hour),
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(72.dp),
+        )
+        OutlinedButton(onClick = { onChange((hour + 1) % 24) }) { Text("+") }
+    }
+}
+
+/** Formats a 0..23 hour as a 12h clock label, e.g. 0 -> "12 AM", 8 -> "8 AM", 21 -> "9 PM". */
+private fun formatHour(hour: Int): String {
+    val h = ((hour % 24) + 24) % 24
+    val suffix = if (h < 12) "AM" else "PM"
+    val twelve = when (h % 12) {
+        0 -> 12
+        else -> h % 12
+    }
+    return "$twelve $suffix"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
