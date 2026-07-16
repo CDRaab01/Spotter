@@ -6,10 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.cardio import CardioSessionCreate, CardioSessionOut, CardioSessionUpdate
+from app.schemas.cardio import (
+    CardioManualCreate,
+    CardioSessionCreate,
+    CardioSessionOut,
+    CardioSessionUpdate,
+)
 from app.security import get_current_user
 from app.services.cardio_service import (
     create_cardio_session,
+    create_manual_cardio_session,
     list_cardio_sessions,
     update_cardio_session,
 )
@@ -37,6 +43,16 @@ async def start_session_endpoint(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await create_cardio_session(db, current_user.id, req)
+
+
+@router.post("/sessions/manual", response_model=CardioSessionOut, status_code=201)
+async def create_manual_session_endpoint(
+    req: CardioManualCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Log a walk/run after the fact — creates a completed session directly (no live timer)."""
+    return await create_manual_cardio_session(db, current_user.id, req)
 
 
 @router.patch("/sessions/{session_id}", response_model=CardioSessionOut)

@@ -6,7 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cardio_session import CardioSession
-from app.schemas.cardio import CardioSessionCreate, CardioSessionOut, CardioSessionUpdate
+from app.schemas.cardio import (
+    CardioManualCreate,
+    CardioSessionCreate,
+    CardioSessionOut,
+    CardioSessionUpdate,
+)
+
+# Sentinel program id for after-the-fact manual entries (not a guided/free live run).
+MANUAL_PROGRAM_ID = "manual"
 
 
 def _utcnow() -> datetime.datetime:
@@ -23,6 +31,40 @@ async def create_cardio_session(
         day_number=req.day_number,
         status="in_progress",
         total_elapsed_sec=0,
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return CardioSessionOut.model_validate(session)
+
+
+async def create_manual_cardio_session(
+    db: AsyncSession, user_id: uuid.UUID, req: CardioManualCreate
+) -> CardioSessionOut:
+    """Create a *completed* manual cardio session (a walk/run logged after the fact).
+
+    Unlike a live run this skips the in_progress lifecycle entirely: it lands as ``completed``
+    with ``completed_at`` anchored to the given date (noon UTC, so it buckets onto the intended
+    calendar day regardless of the viewer's timezone) so it counts toward history/streak/stats
+    exactly like a completed guided/free run.
+    """
+    day = req.date or _utcnow().date()
+    # Anchor at noon UTC so day-boundary conversions (client display, cross-app /workouts
+    # bucketing) resolve to the intended calendar day rather than drifting a day either way.
+    completed_at = datetime.datetime(
+        day.year, day.month, day.day, 12, 0, 0, tzinfo=datetime.timezone.utc
+    )
+    session = CardioSession(
+        user_id=user_id,
+        program_id=MANUAL_PROGRAM_ID,
+        week_number=None,
+        day_number=None,
+        started_at=completed_at,
+        completed_at=completed_at,
+        status="completed",
+        total_elapsed_sec=req.duration_sec,
+        activity_type=req.activity_type,
+        distance_meters=req.distance_meters,
     )
     db.add(session)
     await db.commit()

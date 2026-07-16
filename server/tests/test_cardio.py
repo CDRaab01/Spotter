@@ -104,6 +104,93 @@ async def test_cardio_session_requires_auth(client):
 
 
 @pytest.mark.asyncio
+async def test_manual_entry_creates_completed_session(auth_client):
+    resp = await auth_client.post(
+        "/cardio/sessions/manual",
+        json={
+            "activity_type": "run",
+            "duration_sec": 1800,
+            "distance_meters": 5000,
+            "date": "2026-07-10",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["program_id"] == "manual"
+    assert body["status"] == "completed"
+    assert body["total_elapsed_sec"] == 1800
+    assert body["activity_type"] == "run"
+    assert body["distance_meters"] == 5000
+    assert body["week_number"] is None
+    assert body["day_number"] is None
+    # completed_at is anchored on the given date (noon UTC) so it buckets onto that day.
+    assert body["completed_at"].startswith("2026-07-10")
+    # And it shows up in history like any other completed session.
+    listed = (await auth_client.get("/cardio/sessions")).json()
+    assert any(s["id"] == body["id"] and s["status"] == "completed" for s in listed)
+
+
+@pytest.mark.asyncio
+async def test_manual_walk_without_distance_is_allowed(auth_client):
+    resp = await auth_client.post(
+        "/cardio/sessions/manual",
+        json={"activity_type": "walk", "duration_sec": 1200},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["activity_type"] == "walk"
+    assert body["distance_meters"] is None
+    assert body["status"] == "completed"
+    # Defaults completed_at to today when no date is supplied.
+    assert body["completed_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_manual_entry_rejects_bad_activity_type(auth_client):
+    resp = await auth_client.post(
+        "/cardio/sessions/manual",
+        json={"activity_type": "swim", "duration_sec": 600},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_entry_rejects_nonpositive_duration(auth_client):
+    resp = await auth_client.post(
+        "/cardio/sessions/manual",
+        json={"activity_type": "run", "duration_sec": 0},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_entry_rejects_out_of_bounds_duration(auth_client):
+    resp = await auth_client.post(
+        "/cardio/sessions/manual",
+        json={"activity_type": "run", "duration_sec": 6 * 60 * 60 + 1},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_entry_rejects_negative_distance(auth_client):
+    resp = await auth_client.post(
+        "/cardio/sessions/manual",
+        json={"activity_type": "run", "duration_sec": 600, "distance_meters": -1},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_manual_entry_requires_auth(client):
+    resp = await client.post(
+        "/cardio/sessions/manual",
+        json={"activity_type": "run", "duration_sec": 600},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_cannot_update_another_users_session(client):
     # User A starts a session.
     import uuid

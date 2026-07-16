@@ -36,5 +36,10 @@ class CardioSession(Base):
     )
     status: Mapped[str] = mapped_column(String(20), default="in_progress")
     total_elapsed_sec: Mapped[int] = mapped_column(Integer, default=0)
+    # Free-form manual-entry fields. Null for guided/free live runs (which don't distinguish
+    # walk vs run and don't capture distance); set for after-the-fact manual log entries.
+    activity_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Canonical distance in whole meters; null when not provided (a walk may be time-only).
+    distance_meters: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     user = relationship("User", back_populates="cardio_sessions", lazy="raise")
