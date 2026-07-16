@@ -30,6 +30,8 @@ import com.spotter.util.DarkModePreference
 import com.spotter.util.DeepLinkBus
 import com.spotter.util.DistanceUnit
 import com.spotter.util.NotificationNav
+import com.spotter.util.ShortcutBus
+import com.spotter.util.ShortcutNav
 import com.spotter.util.TokenStore
 import com.spotter.util.WeightUnit
 import dagger.hilt.android.AndroidEntryPoint
@@ -43,10 +45,15 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var appPreferences: AppPreferences
     @Inject lateinit var tokenStore: TokenStore
     @Inject lateinit var deepLinkBus: DeepLinkBus
+    @Inject lateinit var shortcutBus: ShortcutBus
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // A static launcher shortcut (long-press the app icon) may have opened us. Hold the target
+        // in the app-scoped bus; the nav graph / Home honour it once past the auth gate.
+        shortcutBus.set(ShortcutNav.parse(intent))
 
         // Determine start destination synchronously on startup (one-time read, no disk IO overhead)
         val startDestination = runBlocking {
@@ -101,6 +108,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         NotificationNav.parse(intent)?.let { deepLinkBus.emit(it) }
+        shortcutBus.set(ShortcutNav.parse(intent))
     }
 }
 

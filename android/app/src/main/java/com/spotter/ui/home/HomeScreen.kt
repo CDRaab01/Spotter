@@ -70,10 +70,12 @@ import com.spotter.ui.components.PulsingDots
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.StatTile
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.navigation.ShortcutViewModel
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightFieldLabel
+import com.spotter.util.ShortcutNav
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
 import java.time.LocalDate
@@ -113,6 +115,23 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         viewModel.navigateToWorkout.collect { sessionId ->
             navController.navigate(Screen.Workout.createRoute(sessionId))
+        }
+    }
+
+    // Home-owned launcher shortcuts (routed here by AppNavGraph once past the auth gate):
+    // Start-workout resumes/starts today's session; Log-weight opens the bodyweight dialog.
+    val shortcutViewModel: ShortcutViewModel = hiltViewModel()
+    val pendingShortcut by shortcutViewModel.pending.collectAsState()
+    LaunchedEffect(pendingShortcut) {
+        when (pendingShortcut) {
+            ShortcutNav.TARGET_START_WORKOUT -> {
+                viewModel.startTodaysWorkout()
+                shortcutViewModel.consume(ShortcutNav.TARGET_START_WORKOUT)
+            }
+            ShortcutNav.TARGET_LOG_WEIGHT -> {
+                showBodyweightDialog = true
+                shortcutViewModel.consume(ShortcutNav.TARGET_LOG_WEIGHT)
+            }
         }
     }
 

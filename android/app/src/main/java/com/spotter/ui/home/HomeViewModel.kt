@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -395,6 +396,35 @@ class HomeViewModel @Inject constructor(
                 return@launch
             }
             _startState.value = UiState.Idle
+        }
+    }
+
+    /**
+     * "Start workout" launcher shortcut: resume today's in-progress session if there is one,
+     * otherwise start the soonest scheduled routine. Emits onto [navigateToWorkout] (resume) or
+     * defers to [startSession] (which emits after the session is created). Surfaces a hint when
+     * nothing is scheduled rather than starting an arbitrary workout.
+     */
+    fun startTodaysWorkout() {
+        viewModelScope.launch {
+            val today = LocalDate.now().toString()
+            val active = sessionDao.getAll()
+                .firstOrNull { it.status == "in_progress" && it.date == today }
+            if (active != null) {
+                _navigateToWorkout.emit(active.id)
+                return@launch
+            }
+            // Wait for the upcoming projection to resolve (it always emits a Success, even empty).
+            val slots = upcoming
+                .filterIsInstance<UiState.Success<List<UpcomingWorkout>>>()
+                .first()
+                .data
+            val routineId = slots.firstOrNull { it.routineId != null }?.routineId
+            if (routineId != null) {
+                startSession(routineId)
+            } else {
+                _actionError.value = "No workout scheduled yet — ask your Coach to build one."
+            }
         }
     }
 

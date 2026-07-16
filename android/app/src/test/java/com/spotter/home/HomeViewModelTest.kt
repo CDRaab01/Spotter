@@ -29,8 +29,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -158,6 +160,44 @@ class HomeViewModelTest {
         advanceTimeBy(200)
 
         verify(metricRepository).addMetric(any<BodyMetricCreate>())
+    }
+
+    @Test
+    fun `startTodaysWorkout resumes an in-progress session dated today`() = runTest(testDispatcher) {
+        val today = LocalDate.now().toString()
+        whenever(sessionDao.getAll()).thenReturn(
+            listOf(
+                WorkoutSessionEntity(
+                    id = "live", userId = "u1", routineId = "r",
+                    date = today, status = "in_progress", durationSeconds = null, note = null,
+                )
+            )
+        )
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val emitted = mutableListOf<String>()
+        val job = launch { viewModel.navigateToWorkout.collect { emitted.add(it) } }
+        viewModel.startTodaysWorkout()
+        advanceUntilIdle()
+        job.cancel()
+
+        assertEquals(listOf("live"), emitted)
+    }
+
+    @Test
+    fun `startTodaysWorkout surfaces a hint when nothing is scheduled`() = runTest(testDispatcher) {
+        whenever(programDao.getActive()).thenReturn(null)
+        whenever(sessionDao.getAll()).thenReturn(emptyList())
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.startTodaysWorkout()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.actionError.value?.contains("No workout scheduled") == true)
     }
 
     @Test

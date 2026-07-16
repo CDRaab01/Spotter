@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher shortcuts (long-press the app icon). Each opens MainActivity with a
+     spotter://shortcut/<target> URI that the activity captures and the nav graph honours once
+     the user has reached the authenticated graph (see MainActivity + AppNavGraph/HomeScreen). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_workout"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_start_workout_short"
+        android:shortcutLongLabel="@string/shortcut_start_workout_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.spotter"
+            android:targetClass="com.spotter.MainActivity"
+            android:data="spotter://shortcut/start_workout" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="log_weight"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_log_weight_short"
+        android:shortcutLongLabel="@string/shortcut_log_weight_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.spotter"
+            android:targetClass="com.spotter.MainActivity"
+            android:data="spotter://shortcut/log_weight" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="coach"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_coach_short"
+        android:shortcutLongLabel="@string/shortcut_coach_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.spotter"
+            android:targetClass="com.spotter.MainActivity"
+            android:data="spotter://shortcut/coach" />
+    </shortcut>
+</shortcuts>

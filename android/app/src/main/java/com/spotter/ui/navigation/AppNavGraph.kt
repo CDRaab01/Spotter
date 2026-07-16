@@ -43,6 +43,16 @@ import com.spotter.ui.workout.WorkoutScreen
 import com.spotter.ui.workout.WorkoutSummaryScreen
 import com.spotter.ui.workout.WorkoutSummaryStore
 import com.spotter.util.DeepLinkTarget
+import com.spotter.util.ShortcutNav
+
+/** Auth/onboarding routes: a pending launcher shortcut waits until the user is past these. */
+private val preAuthRoutes = setOf(
+    Screen.Login.route,
+    Screen.Register.route,
+    Screen.ForgotPassword.route,
+    Screen.ResetPassword.route,
+    Screen.Onboarding.route,
+)
 
 /** Routes where the shell chrome (bottom bar + resume strip) must stay out of the way. */
 private val noChromeRoutes = setOf(
@@ -66,6 +76,7 @@ fun AppNavGraph(
     val navController = rememberNavController()
     val authViewModel: AuthViewModel = hiltViewModel()
     val shellViewModel: AppShellViewModel = hiltViewModel()
+    val shortcutViewModel: ShortcutViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
         authViewModel.logoutEvents.collect {
             navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
@@ -92,6 +103,32 @@ fun AppNavGraph(
     }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+
+    // Static launcher shortcuts: honour a pending target only once the user is past the auth gate.
+    // Coach is a pure tab switch handled here; Start-workout / Log-weight are Home-owned, so we
+    // just make sure Home is the current tab and let HomeScreen consume + act (dialog / session).
+    val pendingShortcut by shortcutViewModel.pending.collectAsState()
+    LaunchedEffect(pendingShortcut, currentRoute) {
+        val target = pendingShortcut ?: return@LaunchedEffect
+        if (currentRoute == null || currentRoute in preAuthRoutes) return@LaunchedEffect
+        fun selectTab(route: String) {
+            navController.navigate(route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+        when (target) {
+            ShortcutNav.TARGET_COACH -> {
+                selectTab(TopLevelDestination.COACH.navRoute)
+                shortcutViewModel.consume(target)
+            }
+            ShortcutNav.TARGET_START_WORKOUT, ShortcutNav.TARGET_LOG_WEIGHT ->
+                if (currentRoute != Screen.Home.route) selectTab(Screen.Home.route)
+            else -> shortcutViewModel.consume(target)
+        }
+    }
+
     val showBottomBar = currentRoute in bottomBarRoutes
     val activeBar by shellViewModel.activeBar.collectAsState()
     val showResumeBar = activeBar != null && currentRoute != null && currentRoute !in noChromeRoutes

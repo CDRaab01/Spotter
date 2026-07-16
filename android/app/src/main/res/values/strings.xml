@@ -2,4 +2,12 @@
 <resources>
     <string name="app_name">Spotter</string>
     <string name="widget_description">Today\'s workout at a glance</string>
+
+    <!-- Static launcher shortcuts (long-press the app icon). -->
+    <string name="shortcut_start_workout_short">Start workout</string>
+    <string name="shortcut_start_workout_long">Start today\'s workout</string>
+    <string name="shortcut_log_weight_short">Log weight</string>
+    <string name="shortcut_log_weight_long">Log bodyweight</string>
+    <string name="shortcut_coach_short">Coach</string>
+    <string name="shortcut_coach_long">Ask the AI coach</string>
 </resources>

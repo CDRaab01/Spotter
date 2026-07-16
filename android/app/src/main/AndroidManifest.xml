@@ -28,11 +28,17 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Spotter">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Static launcher shortcuts (long-press the app icon): Start workout / Log weight /
+                 Coach. Each fires a spotter://shortcut/<target> VIEW intent handled in code. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         <!-- AppAuth (BROKER.md Phase 2c) themes its AuthorizationManagementActivity as AppCompat but
              leaves RedirectUriReceiverActivity to inherit the app theme, which isn't AppCompat →
