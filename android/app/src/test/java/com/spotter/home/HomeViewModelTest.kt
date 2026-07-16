@@ -8,6 +8,7 @@ import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.RoutineOut
@@ -92,6 +93,7 @@ class HomeViewModelTest {
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(appPreferences.activeCardioProgramId).thenReturn(flowOf(null))
         whenever(cardioSessionDao.observeByProgram(any())).thenReturn(flowOf(emptyList()))
+        whenever(cardioSessionDao.observeAll()).thenReturn(flowOf(emptyList()))
         whenever(metricRepository.metrics).thenReturn(emptyFlow())
         wheneverBlocking { apiService.getMe() }.thenReturn(
             UserOut(id = "user-1", name = "Sonic Hedgehog", email = "sonic@spotter.com"),
@@ -317,6 +319,48 @@ class HomeViewModelTest {
         // Two completed sessions today → 3000s = 50 min; in-progress ignored.
         assertEquals(50, viewModel.weeklyActiveMinutes.value)
         // Two completed sessions on the same day count once.
+        assertEquals(1, viewModel.streak.value)
+    }
+
+    @Test
+    fun `completed cardio counts toward active minutes and streak`() = runTest(testDispatcher) {
+        // No strength sessions at all — only a completed manual cardio entry today.
+        whenever(sessionRepository.listSessions()).thenReturn(emptyList())
+        val todayNoonUtc = LocalDate.now().toString() + "T12:00:00Z"
+        whenever(cardioSessionDao.observeAll()).thenReturn(
+            flowOf(
+                listOf(
+                    CardioSessionEntity(
+                        id = "c1",
+                        serverId = "c1",
+                        programId = "manual",
+                        startedAt = todayNoonUtc,
+                        completedAt = todayNoonUtc,
+                        status = "completed",
+                        totalElapsedSec = 1800, // 30 min
+                        activityType = "run",
+                        distanceMeters = 5000,
+                    ),
+                    // An in-progress cardio session must NOT count.
+                    CardioSessionEntity(
+                        id = "c2",
+                        serverId = "c2",
+                        programId = "free_run",
+                        startedAt = todayNoonUtc,
+                        completedAt = null,
+                        status = "in_progress",
+                        totalElapsedSec = 9999,
+                    ),
+                )
+            )
+        )
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        // 30 min from the completed cardio session; in-progress ignored.
+        assertEquals(30, viewModel.weeklyActiveMinutes.value)
+        // A completed cardio day counts toward the streak like a strength day.
         assertEquals(1, viewModel.streak.value)
     }
 

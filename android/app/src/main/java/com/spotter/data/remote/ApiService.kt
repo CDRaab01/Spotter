@@ -5,6 +5,7 @@ import com.spotter.data.model.ApplyAdjustmentRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.model.CalendarEntry
+import com.spotter.data.model.CardioManualCreate
 import com.spotter.data.model.CardioSessionCreate
 import com.spotter.data.model.CardioSessionOut
 import com.spotter.data.model.CardioSessionUpdate
@@ -201,6 +202,9 @@ interface ApiService {
 
     @POST("cardio/sessions")
     suspend fun createCardioSession(@Body req: CardioSessionCreate): CardioSessionOut
+
+    @POST("cardio/sessions/manual")
+    suspend fun createManualCardioSession(@Body req: CardioManualCreate): CardioSessionOut
 
     @PATCH("cardio/sessions/{id}")
     suspend fun updateCardioSession(

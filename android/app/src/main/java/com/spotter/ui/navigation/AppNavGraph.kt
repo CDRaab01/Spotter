@@ -28,6 +28,7 @@ import com.spotter.ui.cardio.CardioHomeScreen
 import com.spotter.ui.cardio.CardioOverviewScreen
 import com.spotter.ui.cardio.CardioRunScreen
 import com.spotter.ui.cardio.FreeRunConfigScreen
+import com.spotter.ui.cardio.ManualCardioScreen
 import com.spotter.ui.exercise.ExerciseLibraryScreen
 import com.spotter.ui.history.SessionHistoryScreen
 import com.spotter.ui.home.HomeScreen
@@ -305,6 +306,9 @@ fun AppNavGraph(
             }
             composable(Screen.FreeRunConfig.route) {
                 FreeRunConfigScreen(navController = navController)
+            }
+            composable(Screen.ManualCardio.route) {
+                ManualCardioScreen(navController = navController)
             }
             composable(Screen.CardioRun.route) {
                 CardioRunScreen(navController = navController)

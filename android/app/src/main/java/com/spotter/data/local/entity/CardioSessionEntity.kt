@@ -18,5 +18,7 @@ data class CardioSessionEntity(
     val completedAt: String? = null,      // ISO-8601
     val status: String,                   // in_progress | completed | abandoned
     val totalElapsedSec: Int = 0,
+    val activityType: String? = null,     // walk | run for manual entries; null for guided/free
+    val distanceMeters: Int? = null,      // optional canonical distance (meters)
     val syncPending: Boolean = false,     // created/updated offline, not yet pushed
 )

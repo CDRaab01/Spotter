@@ -2,6 +2,8 @@ package com.spotter.data.repository
 
 import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.entity.CardioSessionEntity
+import com.spotter.data.model.CardioActivityType
+import com.spotter.data.model.CardioManualCreate
 import com.spotter.data.model.CardioSessionCreate
 import com.spotter.data.model.CardioSessionOut
 import com.spotter.data.model.CardioSessionUpdate
@@ -61,6 +63,60 @@ class CardioRepository @Inject constructor(
         return synced
     }
 
+    /**
+     * Log a walk/run after the fact — creates a *completed* session (no live timer). Local-first
+     * (so it shows in history + counts toward stats immediately, even offline) then pushed to the
+     * server via the dedicated manual-create endpoint; [sync] carries it up later if offline.
+     *
+     * @param date ISO date (yyyy-MM-dd) the activity happened.
+     * @param distanceMeters optional canonical distance in meters (null for a time-only walk).
+     */
+    suspend fun logManualSession(
+        activityType: String,
+        durationSec: Int,
+        distanceMeters: Int?,
+        date: String,
+    ): CardioSessionEntity {
+        // Anchor completedAt at noon UTC on the chosen day so it buckets onto the intended
+        // calendar date everywhere (matches the server's manual-create anchoring).
+        val completedAt = "${date}T12:00:00Z"
+        val local = CardioSessionEntity(
+            id = UUID.randomUUID().toString(),
+            serverId = null,
+            programId = MANUAL_PROGRAM_ID,
+            weekNumber = null,
+            dayNumber = null,
+            startedAt = completedAt,
+            completedAt = completedAt,
+            status = CardioStatus.COMPLETED,
+            totalElapsedSec = durationSec,
+            activityType = activityType,
+            distanceMeters = distanceMeters,
+            syncPending = true,
+        )
+        dao.upsert(local)
+        val synced = try {
+            val remote = api.createManualCardioSession(
+                CardioManualCreate(
+                    activityType = activityType,
+                    durationSec = durationSec,
+                    distanceMeters = distanceMeters,
+                    date = date,
+                )
+            )
+            local.copy(
+                serverId = remote.id,
+                startedAt = remote.startedAt,
+                completedAt = remote.completedAt,
+                syncPending = false,
+            )
+        } catch (_: Exception) {
+            local // offline — stays syncPending, picked up by sync()
+        }
+        dao.upsert(synced)
+        return synced
+    }
+
     /** Persist progress mid-run (best-effort server PATCH; always updates Room). */
     suspend fun updateProgress(id: String, elapsedSec: Int) {
         val current = dao.getById(id) ?: return
@@ -106,7 +162,26 @@ class CardioRepository @Inject constructor(
         // 1. Push pending local sessions first so we don't clobber them with the pull.
         for (pending in dao.getSyncPending()) {
             try {
-                if (pending.serverId == null) {
+                if (pending.serverId == null && pending.programId == MANUAL_PROGRAM_ID) {
+                    // Manual entries have their own create endpoint (a completed session with
+                    // activity_type/distance) — don't run them through the live-run create path,
+                    // which would drop those fields.
+                    val remote = api.createManualCardioSession(
+                        CardioManualCreate(
+                            activityType = pending.activityType ?: CardioActivityType.RUN,
+                            durationSec = pending.totalElapsedSec,
+                            distanceMeters = pending.distanceMeters,
+                            date = pending.completedAt?.substringBefore('T'),
+                        )
+                    )
+                    dao.upsert(
+                        pending.copy(
+                            serverId = remote.id,
+                            completedAt = remote.completedAt,
+                            syncPending = false,
+                        )
+                    )
+                } else if (pending.serverId == null) {
                     val remote = api.createCardioSession(
                         CardioSessionCreate(
                             programId = pending.programId,
@@ -151,6 +226,9 @@ class CardioRepository @Inject constructor(
     }
 }
 
+/** Sentinel program id for after-the-fact manual entries (mirrors the server's constant). */
+private const val MANUAL_PROGRAM_ID = "manual"
+
 private fun CardioSessionOut.toEntity() = CardioSessionEntity(
     id = id,
     serverId = id,
@@ -161,5 +239,7 @@ private fun CardioSessionOut.toEntity() = CardioSessionEntity(
     completedAt = completedAt,
     status = status,
     totalElapsedSec = totalElapsedSec,
+    activityType = activityType,
+    distanceMeters = distanceMeters,
     syncPending = false,
 )

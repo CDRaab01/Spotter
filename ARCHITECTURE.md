@@ -37,7 +37,7 @@ e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `config.py
 | Routines (the user-facing "plans") | `routines.py` | `routine_service` | `WorkoutRoutine`, `RoutineExercise` |
 | Programs (multi-day) | `programs.py` | `program_service` | `WorkoutProgram`, `ProgramDay` |
 | Sessions + sets | `sessions.py` | `session_service` (+ `progression.py` for `/prior-bests`) | `WorkoutSession`, `SetLog` |
-| Cardio | `cardio.py` | `cardio_service` | `CardioSession` |
+| Cardio | `cardio.py` | `cardio_service` | `CardioSession` (guided/free live runs **+** `POST /cardio/sessions/manual` after-the-fact walk/run entries: `program_id="manual"`, completed, optional `activity_type`/`distance_meters`) |
 | Metrics/progress/calendar | `metrics.py`, `progress.py`, `calendar.py` | matching services | `BodyMetric` + reads over sessions |
 | Exercise catalog | `exercises.py` | — (seeded reads) | `Exercise` |
 | AI | `ai.py` | `services/ai/` (see below) | writes via other services only |
@@ -117,6 +117,11 @@ counters.
   seeded catalog.
 - `ui/cardio/` — C25K/free-run screens + `CardioSchedule.kt` (shared next-run math for Home/
   Calendar/overview); the "active cardio program" flag is client-side DataStore, not server.
+  `ManualCardioScreen` logs a walk/run after the fact (`CardioRepository.logManualSession`);
+  distance is entered in the user's unit and converted to canonical meters at the edge
+  (`ui/theme/AppLocals.kt` distance helpers). Completed cardio (manual, guided, or free) counts
+  toward the Home streak + active-minutes stats alongside completed strength sessions
+  (`HomeViewModel.loadStats`).
 - `data/remote/SuiteAuthManager.kt` + `util/SuiteConfigReader` — suite SSO + hub config broker.
 - `ui/theme/SpotterTheme.kt` — Pulse channel semantics (Spotter leads blue; effort/strength/
   streak/recovery channels). Components come from the Pulse library — never re-inline them.

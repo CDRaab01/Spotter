@@ -24,6 +24,7 @@ import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
+import com.spotter.ui.cardio.CardioFormat
 import com.spotter.ui.cardio.CardioPrograms
 import com.spotter.ui.cardio.CardioSchedule
 import com.spotter.util.AppPreferences
@@ -162,9 +163,21 @@ class HomeViewModel @Inject constructor(
             try {
                 val sessions = sessionRepository.listSessions()
                 val completed = sessions.filter { it.status == "completed" }
-                val completedDates = completed
-                    .mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() }
-                    .toSet()
+                // Completed cardio counts exactly like a completed strength session: a manual walk/
+                // run, a guided C25K day, and a Free Run all feed the streak + active-minutes stats.
+                // Each cardio (date, durationSec) pair joins the strength ones below.
+                val cardioCompleted = runCatching {
+                    cardioSessionDao.observeAll().first()
+                        .filter { it.status == "completed" }
+                        .mapNotNull { s ->
+                            CardioFormat.parseDate(s.completedAt)?.let { it to s.totalElapsedSec }
+                        }
+                }.getOrDefault(emptyList())
+
+                val completedDates = (
+                    completed.mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() } +
+                        cardioCompleted.map { it.first }
+                    ).toSet()
 
                 val today = LocalDate.now()
                 // Rest days are transparent to the streak: they don't increment the count
@@ -189,7 +202,7 @@ class HomeViewModel @Inject constructor(
                 // Active minutes: sum of completed-session durations within the current
                 // week (Monday → today).
                 val weekStart = today.with(DayOfWeek.MONDAY)
-                val thisWeek = completed.mapNotNull { s ->
+                val strengthThisWeek = completed.mapNotNull { s ->
                     val date = runCatching { LocalDate.parse(s.date) }.getOrNull()
                         ?: return@mapNotNull null
                     if (!date.isBefore(weekStart) && !date.isAfter(today)) {
@@ -198,6 +211,11 @@ class HomeViewModel @Inject constructor(
                         null
                     }
                 }
+                // Completed cardio contributes its elapsed time to active minutes too.
+                val cardioThisWeek = cardioCompleted.filter { (date, _) ->
+                    !date.isBefore(weekStart) && !date.isAfter(today)
+                }
+                val thisWeek = strengthThisWeek + cardioThisWeek
                 _weeklyActiveMinutes.value = thisWeek.sumOf { it.second } / 60
                 _weeklyMinutesByDay.value = (0..6).map { offset ->
                     val day = weekStart.plusDays(offset.toLong())

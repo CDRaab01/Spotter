@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +56,41 @@ fun CardioHomeScreen(navController: NavController) {
                                 navController.navigate(Screen.FreeRunConfig.route)
                         }
                     },
+                )
+            }
+            item(key = "log_cardio") {
+                LogCardioCard(onClick = { navController.navigate(Screen.ManualCardio.route) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun LogCardioCard(onClick: () -> Unit) {
+    val pulse = SpotterTheme.pulse
+    val channel = pulse.recovery
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        channel = channel,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                tint = channel,
+                modifier = Modifier.size(28.dp),
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = SpotterTheme.spacing.md),
+            ) {
+                Text("Log cardio", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Add a walk or run you already did",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = channel,
                 )
             }
         }

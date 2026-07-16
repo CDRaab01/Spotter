@@ -35,7 +35,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         ProgramDayEntity::class,
         CardioSessionEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -237,6 +237,14 @@ abstract class SpotterDatabase : RoomDatabase() {
                 for (col in listOf("neck", "chest", "waist", "hips", "arm", "thigh")) {
                     db.execSQL("ALTER TABLE body_metrics ADD COLUMN $col REAL")
                 }
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Manual cardio entries: walk/run type + optional distance (server migration 0012).
+                db.execSQL("ALTER TABLE cardio_sessions ADD COLUMN activityType TEXT")
+                db.execSQL("ALTER TABLE cardio_sessions ADD COLUMN distanceMeters INTEGER")
             }
         }
     }

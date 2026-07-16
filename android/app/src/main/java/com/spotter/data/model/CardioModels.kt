@@ -65,6 +65,18 @@ data class CardioSessionUpdate(
     @SerialName("total_elapsed_sec") val totalElapsedSec: Int? = null,
 )
 
+/**
+ * Log a walk/run after the fact — the server creates a *completed* session directly. Distance is
+ * canonical whole meters (converted from the user's unit at the edge); [date] is a plain ISO date.
+ */
+@Serializable
+data class CardioManualCreate(
+    @SerialName("activity_type") val activityType: String,
+    @SerialName("duration_sec") val durationSec: Int,
+    @SerialName("distance_meters") val distanceMeters: Int? = null,
+    val date: String? = null,
+)
+
 @Serializable
 data class CardioSessionOut(
     val id: String,
@@ -75,7 +87,15 @@ data class CardioSessionOut(
     @SerialName("completed_at") val completedAt: String? = null,
     val status: String,
     @SerialName("total_elapsed_sec") val totalElapsedSec: Int = 0,
+    @SerialName("activity_type") val activityType: String? = null,
+    @SerialName("distance_meters") val distanceMeters: Int? = null,
 )
+
+/** Manual-entry activity types, shared as constants so client and server agree. */
+object CardioActivityType {
+    const val WALK = "walk"
+    const val RUN = "run"
+}
 
 /** Lifecycle states, shared as constants so client and server agree. */
 object CardioStatus {
