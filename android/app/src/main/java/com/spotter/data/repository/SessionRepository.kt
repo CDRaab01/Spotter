@@ -1,5 +1,6 @@
 package com.spotter.data.repository
 
+import com.spotter.data.local.dao.ExerciseDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
 import com.spotter.data.local.dao.WorkoutRoutineDao
@@ -20,8 +21,18 @@ import com.spotter.data.remote.ApiService
 import com.spotter.util.TokenStore
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
+
+/**
+ * A session listing plus provenance: [fromCache] is true when the server was unreachable and the
+ * summaries were rebuilt from the Room mirror — the signal behind the History stale banner.
+ */
+data class SessionListing(
+    val sessions: List<SessionSummary>,
+    val fromCache: Boolean,
+)
 
 class SessionRepository @Inject constructor(
     private val api: ApiService,
@@ -29,6 +40,7 @@ class SessionRepository @Inject constructor(
     private val setLogDao: SetLogDao,
     private val routineExerciseDao: RoutineExerciseDao,
     private val routineDao: WorkoutRoutineDao,
+    private val exerciseDao: ExerciseDao,
     private val tokenStore: TokenStore,
 ) {
     /**
@@ -161,7 +173,14 @@ class SessionRepository @Inject constructor(
 
     private suspend fun fallbackToLocal(session: WorkoutSessionEntity, id: String): SessionOut {
         val sets = setLogDao.getBySession(id)
-        return session.toSessionOut(sets)
+        // The server-computed muscle_groups are unavailable offline; recompute from the exercise
+        // mirror so an offline-finished workout still gets its summary breakdown. Exercises the
+        // mirror doesn't know simply drop out (degrades to the old empty state, never a crash).
+        val muscleGroupById = exerciseDao.getByIds(sets.map { it.exerciseId }.distinct())
+            .associate { it.id to it.muscleGroup }
+        return session.toSessionOut(sets).copy(
+            muscleGroups = OfflineMuscleGroups.summarize(sets, muscleGroupById),
+        )
     }
 
     /**
@@ -313,12 +332,17 @@ class SessionRepository @Inject constructor(
 
     // ── Session listing ───────────────────────────────────────────────────────
 
-    suspend fun listSessions(): List<SessionSummary> {
+    /**
+     * Sessions with provenance. Only a connectivity failure ([IOException]) degrades to the Room
+     * mirror; an HTTP error (`retrofit2.HttpException`) deliberately propagates — the server
+     * answered, so erroring is the honest state.
+     */
+    suspend fun listSessionsWithFreshness(): SessionListing {
         return try {
-            api.listSessions()
-        } catch (_: Exception) {
+            SessionListing(api.listSessions(), fromCache = false)
+        } catch (_: IOException) {
             // Offline fallback: build summaries from Room
-            sessionDao.getAll().map { s ->
+            val local = sessionDao.getAll().map { s ->
                 val sets = setLogDao.getBySession(s.id)
                 SessionSummary(
                     id = s.id, date = s.date, routineName = null,
@@ -327,8 +351,11 @@ class SessionRepository @Inject constructor(
                     completedSets = sets.count { it.completed },
                 )
             }
+            SessionListing(local, fromCache = true)
         }
     }
+
+    suspend fun listSessions(): List<SessionSummary> = listSessionsWithFreshness().sessions
 
     suspend fun deleteSession(sessionId: String) {
         val session = sessionDao.getById(sessionId)

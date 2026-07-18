@@ -18,6 +18,7 @@ import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
+import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
@@ -47,6 +48,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.mockito.kotlin.wheneverBlocking
+import java.io.IOException
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -62,6 +64,7 @@ class HomeViewModelTest {
     private lateinit var metricRepository: MetricRepository
     private lateinit var aiRepository: AiRepository
     private lateinit var programRepository: ProgramRepository
+    private lateinit var exerciseRepository: ExerciseRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var programDao: WorkoutProgramDao
@@ -79,6 +82,7 @@ class HomeViewModelTest {
         metricRepository = mock()
         aiRepository = mock()
         programRepository = mock()
+        exerciseRepository = mock()
         appPreferences = mock()
         sessionDao = mock()
         programDao = mock()
@@ -107,6 +111,7 @@ class HomeViewModelTest {
         metricRepository,
         aiRepository,
         programRepository,
+        exerciseRepository,
         appPreferences,
         apiService,
         sessionDao,
@@ -444,6 +449,39 @@ class HomeViewModelTest {
         advanceTimeBy(500)
 
         assertEquals(1, viewModel.streak.value)
+    }
+
+    @Test
+    fun `sync stamps the freshness marker and clears staleness on success`() = runTest(testDispatcher) {
+        viewModel.sync()
+        advanceTimeBy(200)
+
+        // sync() also runs from init; at least one round succeeded with the default mocks.
+        verify(appPreferences, atLeast(1)).setLastSuccessfulSyncMs(any())
+        assertNull(viewModel.staleAsOfMs.value)
+    }
+
+    @Test
+    fun `sync surfaces staleAsOfMs when the server is unreachable`() = runTest(testDispatcher) {
+        wheneverBlocking { routineRepository.sync() }.thenAnswer { throw IOException("offline") }
+        whenever(appPreferences.lastSuccessfulSyncMs).thenReturn(flowOf(1234L))
+
+        viewModel.sync()
+        advanceTimeBy(200)
+
+        assertEquals(1234L, viewModel.staleAsOfMs.value)
+    }
+
+    @Test
+    fun `sync does not flag staleness on an HTTP-style error`() = runTest(testDispatcher) {
+        // Any non-IOException (e.g. retrofit2.HttpException) means the server answered:
+        // that's an error state, not "offline stale".
+        wheneverBlocking { routineRepository.sync() }.thenAnswer { throw RuntimeException("500") }
+
+        viewModel.sync()
+        advanceTimeBy(200)
+
+        assertNull(viewModel.staleAsOfMs.value)
     }
 
     @Test

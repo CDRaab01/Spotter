@@ -46,7 +46,10 @@ class ProgramPresetsViewModel @Inject constructor(
         viewModelScope.launch {
             _applyingId.value = preset.id
             try {
-                val byName = exerciseRepository.search("")
+                // listAll() is mirror-backed: offline it resolves against the cached exercise
+                // catalog, so name→id resolution works without connectivity (the accept call
+                // below still needs the server and errors normally when it's unreachable).
+                val byName = exerciseRepository.listAll()
                     .associateBy { it.name.trim().lowercase() }
 
                 val days = preset.days.mapIndexed { i, day ->

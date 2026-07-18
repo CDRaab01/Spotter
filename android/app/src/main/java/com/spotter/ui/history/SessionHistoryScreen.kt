@@ -46,6 +46,7 @@ import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
 import design.pulse.ui.components.DataText
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.StaleBanner
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
@@ -60,6 +61,7 @@ fun SessionHistoryScreen(
     viewModel: SessionHistoryViewModel = hiltViewModel(),
 ) {
     val sessionsState by viewModel.sessions.collectAsState()
+    val staleAsOfMs by viewModel.staleAsOfMs.collectAsState()
 
     Scaffold(
         topBar = {
@@ -82,29 +84,38 @@ fun SessionHistoryScreen(
             )
 
             is UiState.Success -> {
-                if (state.data.isEmpty()) {
-                    EmptyState(
-                        icon = Icons.Default.History,
-                        title = "No history yet",
-                        subtitle = "Your completed workouts will show up here.",
-                        modifier = Modifier.padding(padding),
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(padding),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(state.data, key = { it.id }) { session ->
-                            SessionCard(
-                                session = session,
-                                onTap = {
-                                    if (session.status == "in_progress") {
-                                        navController.navigate(Screen.Workout.createRoute(session.id))
-                                    }
-                                },
-                                onDelete = { viewModel.deleteSession(session.id) },
-                            )
+                Column(Modifier.fillMaxSize().padding(padding)) {
+                    // Offline honesty: this list came from the Room mirror — date it.
+                    staleAsOfMs?.let { asOf ->
+                        StaleBanner(
+                            asOfMs = asOf,
+                            channel = SpotterTheme.pulse.streak,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                        )
+                    }
+                    if (state.data.isEmpty()) {
+                        EmptyState(
+                            icon = Icons.Default.History,
+                            title = "No history yet",
+                            subtitle = "Your completed workouts will show up here.",
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(state.data, key = { it.id }) { session ->
+                                SessionCard(
+                                    session = session,
+                                    onTap = {
+                                        if (session.status == "in_progress") {
+                                            navController.navigate(Screen.Workout.createRoute(session.id))
+                                        }
+                                    },
+                                    onDelete = { viewModel.deleteSession(session.id) },
+                                )
+                            }
                         }
                     }
                 }

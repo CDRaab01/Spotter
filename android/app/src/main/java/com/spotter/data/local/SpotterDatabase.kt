@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.spotter.data.local.dao.BodyMetricDao
 import com.spotter.data.local.dao.CardioSessionDao
 import com.spotter.data.local.dao.ChatMessageDao
+import com.spotter.data.local.dao.ExerciseDao
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.dao.SetLogDao
@@ -16,6 +17,7 @@ import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.local.entity.ChatMessageEntity
+import com.spotter.data.local.entity.ExerciseEntity
 import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.SetLogEntity
@@ -34,8 +36,9 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         WorkoutProgramEntity::class,
         ProgramDayEntity::class,
         CardioSessionEntity::class,
+        ExerciseEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -48,6 +51,7 @@ abstract class SpotterDatabase : RoomDatabase() {
     abstract fun workoutProgramDao(): WorkoutProgramDao
     abstract fun programDayDao(): ProgramDayDao
     abstract fun cardioSessionDao(): CardioSessionDao
+    abstract fun exerciseDao(): ExerciseDao
 
     companion object {
         val MIGRATION_2_3 = object : Migration(2, 3) {
@@ -245,6 +249,21 @@ abstract class SpotterDatabase : RoomDatabase() {
                 // Manual cardio entries: walk/run type + optional distance (server migration 0012).
                 db.execSQL("ALTER TABLE cardio_sessions ADD COLUMN activityType TEXT")
                 db.execSQL("ALTER TABLE cardio_sessions ADD COLUMN distanceMeters INTEGER")
+            }
+        }
+
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Exercise-catalog mirror: offline library search, preset name→id resolution, and
+                // the offline muscle-group summary. Purely additive; seeded on the next sync.
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS exercises (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        muscleGroup TEXT,
+                        equipment TEXT
+                    )
+                """.trimIndent())
             }
         }
     }

@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
+import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.SessionRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,6 +28,8 @@ class NetworkSyncObserver @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessionRepository: SessionRepository,
     private val metricRepository: MetricRepository,
+    private val exerciseRepository: ExerciseRepository,
+    private val appPreferences: AppPreferences,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -46,6 +49,14 @@ class NetworkSyncObserver @Inject constructor(
                         // Drain offline-logged weigh-ins too, so a bodyweight entry made offline
                         // reaches the server on reconnect without waiting for a screen open.
                         try { metricRepository.sync() } catch (_: Exception) {}
+                        // Best-effort exercise-catalog seed (offline search / preset resolution /
+                        // offline muscle-group summary). Reaching the server here also means the
+                        // queues above just drained, so stamp the stale-banner freshness marker.
+                        if (exerciseRepository.refreshCatalog()) {
+                            runCatching {
+                                appPreferences.setLastSuccessfulSyncMs(System.currentTimeMillis())
+                            }
+                        }
                     }
                 }
             })

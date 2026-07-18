@@ -100,10 +100,31 @@ callback registered in `SpotterApp.onCreate`) drains the pending work on reconne
   reconcile without duplicating.
 - **Calendar** serves the last-known projection on an offline read instead of throwing.
 - **Cardio** writes are local-first with best-effort push, dedupe-safe.
+- **Exercise catalog mirror** (`ExerciseEntity`/`ExerciseDao`, Room v13): the seeded server
+  catalog is mirrored locally — seeded opportunistically by the Home sync round and the reconnect
+  observer, and refreshed as a side effect of every online read (`ExerciseRepository`). Offline it
+  backs Exercise Library search (LIKE on name), preset-program name→id resolution
+  (`ProgramPresetsViewModel` → `listAll()`), and the offline muscle-group summary below. The
+  degrade rule everywhere: **`IOException` falls back to the mirror; `retrofit2.HttpException`
+  keeps erroring** — the server answered, so cached rows must not mask its error.
+- **Offline muscle-group breakdown** (closes the old "offline-finished workouts show no
+  muscle-group breakdown" gap — via the catalog mirror, not the once-planned
+  routine-payload/Room-column approach): when a session read/finish serves from Room,
+  `SessionRepository.fallbackToLocal` joins the set logs to `ExerciseDao.getByIds` and
+  `data/repository/OfflineMuscleGroups.kt` (pure, table-tested) reproduces the server's
+  aggregation exactly — completed sets only, volume in **kg** (`reps × lb × 0.453592`, null/zero
+  weight adds sets but no volume), one decimal, alphabetical groups. Exercises the mirror doesn't
+  know drop out (degrades to the old empty state).
+- **Stale banners (offline honesty):** `AppPreferences.lastSuccessfulSyncMs` is stamped whenever
+  a sync round reaches the server (Home's routine-pull probe; the reconnect observer's catalog
+  refresh). When Home's sync probe hits an `IOException`, or History's listing came from the
+  mirror (`SessionRepository.listSessionsWithFreshness().fromCache`), the screen renders Pulse's
+  `StaleBanner` (streak/amber channel) dated by that timestamp; an `HttpException` never shows
+  the banner — it keeps erroring through the normal paths.
 
 Room is a server mirror: destructive migration is acceptable and configured. (Remaining offline
-gap: an offline-finished workout still shows no muscle-group breakdown — `muscle_group` isn't
-cached locally; ROADMAP follow-up.)
+gap, accepted: `getPriorBests` returns empty offline — prior-best/progression hints are
+server-computed and simply absent until reconnect.)
 
 ### Timers (unified Sprint 8 model — keep it)
 

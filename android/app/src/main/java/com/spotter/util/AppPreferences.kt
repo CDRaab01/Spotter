@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.spotter.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -67,6 +68,20 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val WORKOUT_NUDGE_ENABLED = booleanPreferencesKey("pref_workout_nudge_enabled")
         private val QUIET_START_HOUR = intPreferencesKey("pref_quiet_start_hour")
         private val QUIET_END_HOUR = intPreferencesKey("pref_quiet_end_hour")
+        private val LAST_SUCCESSFUL_SYNC_MS = longPreferencesKey("pref_last_successful_sync_ms")
+    }
+
+    /**
+     * Epoch millis of the last sync round that actually reached the server, or null before the
+     * first one. Backs the offline stale banners ("Offline — as of …") on Home and History;
+     * stamped by the Home sync round and the reconnect observer.
+     */
+    val lastSuccessfulSyncMs: Flow<Long?> = context.dataStore.data.map { prefs ->
+        prefs[LAST_SUCCESSFUL_SYNC_MS]
+    }
+
+    suspend fun setLastSuccessfulSyncMs(value: Long) {
+        context.dataStore.edit { it[LAST_SUCCESSFUL_SYNC_MS] = value }
     }
 
     /**
