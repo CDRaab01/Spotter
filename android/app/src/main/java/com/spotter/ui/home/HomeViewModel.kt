@@ -20,6 +20,7 @@ import com.spotter.data.model.SessionCreate
 import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
+import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
@@ -46,6 +47,7 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -58,6 +60,7 @@ class HomeViewModel @Inject constructor(
     private val metricRepository: MetricRepository,
     private val aiRepository: AiRepository,
     private val programRepository: ProgramRepository,
+    private val exerciseRepository: ExerciseRepository,
     private val appPreferences: AppPreferences,
     private val api: ApiService,
     private val sessionDao: WorkoutSessionDao,
@@ -118,6 +121,15 @@ class HomeViewModel @Inject constructor(
     /** Latest logged bodyweight in pounds, or null when none has been recorded. */
     private val _bodyweight = MutableStateFlow<Double?>(null)
     val bodyweight: StateFlow<Double?> = _bodyweight.asStateFlow()
+
+    /**
+     * Non-null when the last sync round couldn't reach the server (connectivity, not an HTTP
+     * error) and the screen is therefore serving cached data: the value is the timestamp of the
+     * last successful sync, rendered by the Home stale banner. Null while fresh — or when the
+     * device has never synced (nothing honest to date the cache with).
+     */
+    private val _staleAsOfMs = MutableStateFlow<Long?>(null)
+    val staleAsOfMs: StateFlow<Long?> = _staleAsOfMs.asStateFlow()
 
     private var autoGenerateTriggered = false
 
@@ -345,10 +357,28 @@ class HomeViewModel @Inject constructor(
 
     fun sync() {
         viewModelScope.launch {
-            try { routineRepository.sync() } catch (_: Exception) {}
+            // The routine pull doubles as the freshness probe: unlike the other repos (which
+            // swallow network failures internally), RoutineRepository.sync() lets the pull's
+            // exception escape, so its outcome distinguishes "synced" from "offline".
+            val probe = runCatching { routineRepository.sync() }
             try { sessionRepository.syncPending() } catch (_: Exception) {}
             try { programRepository.sync() } catch (_: Exception) {}
             try { metricRepository.sync() } catch (_: Exception) {}
+            // Opportunistic exercise-catalog seed so offline library search, preset resolution,
+            // and the offline muscle-group summary have data. Best-effort — failures are silent.
+            exerciseRepository.refreshCatalog()
+            when (probe.exceptionOrNull()) {
+                null -> {
+                    appPreferences.setLastSuccessfulSyncMs(System.currentTimeMillis())
+                    _staleAsOfMs.value = null
+                }
+                // Offline: date the on-screen data by the last successful sync (null before the
+                // first ever sync → no banner, there's nothing honest to date the cache with).
+                is IOException -> _staleAsOfMs.value = appPreferences.lastSuccessfulSyncMs.first()
+                // Anything else (e.g. retrofit2.HttpException): the server was reachable, so the
+                // data isn't "offline stale" — errors keep surfacing through the normal paths.
+                else -> _staleAsOfMs.value = null
+            }
             _nextProgramDay.value = programRepository.getNextProgramDay()
             loadStats()
             loadUpcoming()

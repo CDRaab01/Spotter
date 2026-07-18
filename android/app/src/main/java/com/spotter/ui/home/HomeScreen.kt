@@ -68,6 +68,7 @@ import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import com.spotter.ui.components.PulsingDots
 import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.StaleBanner
 import design.pulse.ui.components.StatTile
 import com.spotter.ui.navigation.Screen
 import com.spotter.ui.navigation.ShortcutViewModel
@@ -100,6 +101,7 @@ fun HomeScreen(
     val programs by viewModel.programs.collectAsState()
     val programDayCounts by viewModel.programDayCounts.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
+    val staleAsOfMs by viewModel.staleAsOfMs.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -213,6 +215,13 @@ fun HomeScreen(
                         contentPadding = PaddingValues(spacing.lg),
                         verticalArrangement = Arrangement.spacedBy(spacing.md),
                     ) {
+                        // Offline honesty: when the last sync round couldn't reach the server,
+                        // date the cached data instead of presenting it as live.
+                        staleAsOfMs?.let { asOf ->
+                            item {
+                                StaleBanner(asOfMs = asOf, channel = SpotterTheme.pulse.streak)
+                            }
+                        }
                         item {
                             GreetingPanel(
                                 greeting = greeting,

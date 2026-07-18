@@ -347,7 +347,8 @@ Fixed and verified: server 144 pytest green + `ruff check app` clean; Android
 - **[LOW][Android] Offline-finished workouts show no muscle-group breakdown** — the summary's
   `muscle_groups` is server-computed and exercises' muscle groups aren't cached locally; a local
   computation needs `muscle_group` added to the routine payload + a Room column. Do alongside the
-  broader offline-writes design.
+  broader offline-writes design. **(FIXED 2026-07-17** — via an exercise-catalog Room mirror +
+  `OfflineMuscleGroups`, not the routine-payload approach; see ARCHITECTURE.md "Offline model".)
 - **[LOW][Infra] Redeploy failure log capture** (dump `docker compose logs` on health-gate
   failure) and a configurable health timeout — nice-to-haves for operability.
 
@@ -671,8 +672,9 @@ by build + unit tests, not interactive drive — the on-device pass is the last 
   step **translates offline-created routine ids → server ids** on push so program-day references
   reconcile without duplicating. Calendar **serves its last-known projection** on an offline read
   instead of throwing. New coverage: offline bodyweight/routine/program queue-and-drain tests.
-  (Remaining offline gap: an offline-finished workout still shows no muscle-group breakdown —
-  `muscle_group` isn't cached locally.)
+  (The then-remaining gap — an offline-finished workout showing no muscle-group breakdown —
+  was closed 2026-07-17 by the exercise-catalog mirror round; see the section at the end of this
+  file.)
 - **Rest countdown survives process death.** `WorkoutTimerController` persists the wall-clock rest
   end-anchor via `RestTimerStore` (DataStore) and restores it on init (rest-restore runs *after*
   the wake-lock is initialized — `07c7a1b`), so reopening mid-rest resumes exactly; a rest that
@@ -708,3 +710,26 @@ by build + unit tests, not interactive drive — the on-device pass is the last 
   `program_id="manual"` sentinel. Client: `ManualCardioScreen` (`CardioRepository.logManualSession`),
   distance entered in the user's unit and converted to canonical meters at the edge; completed
   cardio (manual/guided/free) now counts alongside completed strength in `HomeViewModel.loadStats`.
+
+## Offline gaps round — exercise mirror, offline summary, stale banners (2026-07-17)
+Closes the offline gaps left open after Sprint 11 (Android-only; no server change). Verified by
+unit tests; build/emulator passes are owned by CI.
+- **Exercise-catalog Room mirror** (`ExerciseEntity`/`ExerciseDao`, Room v12→13 `MIGRATION_12_13`,
+  purely additive): `ExerciseRepository` is now mirror-backed — online reads seed Room as a side
+  effect, plus an opportunistic full-catalog refresh in the Home sync round and the reconnect
+  observer (`NetworkSyncObserver`). Offline: Exercise Library search (LIKE on name) and preset
+  name→id resolution (`ProgramPresetsViewModel` now uses `listAll()`) work from the mirror.
+  Degrade rule everywhere: **IOException → mirror; `retrofit2.HttpException` → keep erroring.**
+- **Offline muscle-group breakdown** (retires the 2026-06-10 deferred item): offline session
+  reads/finishes compute `muscle_groups` locally (`data/repository/OfflineMuscleGroups.kt`, pure +
+  table-tested) mirroring the server's semantics — completed sets only, **kg** volume
+  (`reps × lb × 0.453592`; null/zero weight = sets but no volume), one decimal, alphabetical
+  group order. Exercises missing from the mirror degrade out silently (old empty state).
+- **Stale banners on Home + History**: `AppPreferences.lastSuccessfulSyncMs` (stamped whenever a
+  sync round reaches the server) feeds Pulse's `StaleBanner` (streak channel) — shown when Home's
+  sync probe (the routine pull) hits an IOException, or History's list came from the Room mirror
+  (`SessionRepository.listSessionsWithFreshness().fromCache`). HTTP errors never show the banner —
+  they keep erroring through the normal paths.
+- Accepted offline gap: `getPriorBests` stays empty offline (progression hints are
+  server-computed). Tests: new `ExerciseRepositoryTest`, `OfflineMuscleGroupsTest`,
+  `SessionRepositoryTest`; updated Home/History/Presets VM tests.
