@@ -77,6 +77,9 @@ fun AiChatScreen(
     val pendingRoutine by viewModel.pendingRoutine.collectAsState()
     val pendingProgram by viewModel.pendingProgram.collectAsState()
     val pendingAdjustment by viewModel.pendingAdjustment.collectAsState()
+    val pendingProfileUpdate by viewModel.pendingProfileUpdate.collectAsState()
+    val profileUpdateInFlight by viewModel.profileUpdateInFlight.collectAsState()
+    val storedProfile by viewModel.storedProfile.collectAsState()
     var inputText by remember { mutableStateOf("") }
     var overflowExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -120,6 +123,16 @@ fun AiChatScreen(
         viewModel.adjustmentApplied.collect { count ->
             snackbarHostState.showSnackbar(
                 message = "Workout updated — $count change${if (count != 1) "s" else ""} applied.",
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.profileUpdateApplied.collect { acknowledged ->
+            snackbarHostState.showSnackbar(
+                message = if (acknowledged) "Training profile updated."
+                    else "Saved on this device — will sync when you're online.",
                 duration = SnackbarDuration.Short,
             )
         }
@@ -228,6 +241,19 @@ fun AiChatScreen(
                         adjustment = adjustment,
                         onApply = { applyToRoutine -> viewModel.applyAdjustment(applyToRoutine) },
                         onDismiss = { viewModel.dismissAdjustment() },
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = pendingProfileUpdate != null) {
+                pendingProfileUpdate?.let { update ->
+                    SuggestedProfileUpdateCard(
+                        update = update,
+                        stored = storedProfile,
+                        applying = profileUpdateInFlight,
+                        onApply = { viewModel.applyProfileUpdate() },
+                        onDismiss = { viewModel.dismissProfileUpdate() },
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
@@ -415,6 +441,103 @@ private fun SuggestedAdjustmentCard(
             )
             OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                 Text("Dismiss")
+            }
+        }
+    }
+}
+
+/** One proposed field change, rendered as `current → proposed` so nothing changes unseen. */
+private data class ProfileFieldChange(
+    val label: String,
+    val current: String,
+    val proposed: String,
+)
+
+private fun profileFieldChanges(
+    update: com.spotter.data.model.SuggestedProfileUpdate,
+    stored: com.spotter.util.UserProfile,
+): List<ProfileFieldChange> = listOfNotNull(
+    update.equipment?.let { ProfileFieldChange("Equipment", stored.equipment, it) },
+    update.experience?.let { ProfileFieldChange("Experience", stored.experience, it) },
+    update.goal?.let { ProfileFieldChange("Goal", stored.goal, it) },
+    update.ageGroup?.let { ProfileFieldChange("Age group", stored.ageGroup, it) },
+    update.limitations?.let { ProfileFieldChange("Limitations", stored.limitations, it) },
+)
+
+/**
+ * The third suggestion card: the coach proposing a change to the SAVED training profile
+ * (Settings → Training profile) rather than to the workout. Deliberately the strength/violet
+ * channel — the workout cards are all effort/blue, so the two can't be confused when both are on
+ * screen at once. Nothing is written until Apply.
+ */
+@Composable
+private fun SuggestedProfileUpdateCard(
+    update: com.spotter.data.model.SuggestedProfileUpdate,
+    stored: com.spotter.util.UserProfile,
+    applying: Boolean,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val channel = SpotterTheme.pulse.strength
+    PanelCard(
+        modifier = modifier.fillMaxWidth(),
+        channel = channel,
+        contentPadding = 12.dp,
+    ) {
+        Text(
+            text = "Update your training profile",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = "Changes a saved setting, not this workout.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (update.summary.isNotBlank()) {
+            Text(
+                text = update.summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        profileFieldChanges(update, stored).forEach { change ->
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    text = change.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = channel,
+                )
+                Text(
+                    text = change.current.ifBlank { "not set" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "→ ${change.proposed}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            PulseButton(
+                text = "Apply",
+                onClick = onApply,
+                enabled = !applying,
+                compact = true,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !applying,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Not now")
             }
         }
     }

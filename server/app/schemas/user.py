@@ -21,6 +21,18 @@ GOAL_MAX_LEN = 32
 AGE_GROUP_MAX_LEN = 32
 LIMITATIONS_MAX_LEN = 2000
 
+# Field → max length. The write schema below *rejects* an over-long value (422 —
+# it came from our own client), while the AI extraction layer *clamps* one (the
+# model is untrusted and one long string must not drop the whole suggestion).
+# Both read the same numbers from here so they can never drift apart.
+TRAINING_PROFILE_MAX_LENS = {
+    "equipment": EQUIPMENT_MAX_LEN,
+    "experience": EXPERIENCE_MAX_LEN,
+    "goal": GOAL_MAX_LEN,
+    "age_group": AGE_GROUP_MAX_LEN,
+    "limitations": LIMITATIONS_MAX_LEN,
+}
+
 
 class UserOut(BaseModel):
     id: uuid.UUID
