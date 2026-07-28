@@ -25,6 +25,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
@@ -136,7 +137,7 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `resetAccount wipes server and local state then navigates to login`() = runTest(testDispatcher) {
+    fun `resetAccount wipes server and local state then navigates to onboarding`() = runTest(testDispatcher) {
         val user = UserOut(id = "u-1", name = "Alice", email = "alice@example.com")
         whenever(api.getMe()).thenReturn(user)
 
@@ -144,7 +145,7 @@ class SettingsViewModelTest {
         advanceTimeBy(200)
 
         val events = mutableListOf<Unit>()
-        val job = launch { viewModel.navigateToLogin.collect { events.add(it) } }
+        val job = launch { viewModel.navigateToOnboarding.collect { events.add(it) } }
 
         viewModel.resetAccount()
         advanceTimeBy(200)
@@ -153,7 +154,9 @@ class SettingsViewModelTest {
         verify(api).resetAccount()
         verify(database).clearAllTables()
         verify(appPreferences).clearOnboarding()
-        verify(tokenStore).clear()
+        // Deliberately NOT a sign-out: bouncing through login re-set the onboarding flag
+        // before the login screen read it, so the promised questionnaire never showed.
+        verify(tokenStore, never()).clear()
         assertEquals(1, events.size)
         assertEquals(false, viewModel.resetting.value)
         job.cancel()
