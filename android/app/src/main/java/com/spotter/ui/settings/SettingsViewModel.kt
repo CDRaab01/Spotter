@@ -11,6 +11,7 @@ import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
 import com.spotter.data.remote.ApiService
+import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.di.IoDispatcher
 import com.spotter.health.HealthConnectManager
@@ -19,6 +20,7 @@ import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
 import com.spotter.util.TokenStore
 import com.spotter.util.UiState
+import com.spotter.util.UserProfile
 import com.spotter.util.WeightUnit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -43,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val database: SpotterDatabase,
     private val programRepository: ProgramRepository,
+    private val profileRepository: ProfileRepository,
     private val exportRepository: ExportRepository,
     private val healthConnectManager: HealthConnectManager,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
@@ -134,6 +137,26 @@ class SettingsViewModel @Inject constructor(
     private val _exportError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val exportError: SharedFlow<String> = _exportError.asSharedFlow()
 
+    // ── Training profile ──────────────────────────────────────────────────────
+
+    /**
+     * The editable training profile (equipment, experience, goal, age group, limitations) — the
+     * context the AI coach is given. Before this section existed it could only ever be written once,
+     * by the onboarding questionnaire, which most users never see (login marks onboarding done), so
+     * the coach kept asking what equipment the user had.
+     */
+    private val _profileDraft = MutableStateFlow(UserProfile())
+    val profileDraft: StateFlow<UserProfile> = _profileDraft.asStateFlow()
+
+    private val _profileSaving = MutableStateFlow(false)
+    val profileSaving: StateFlow<Boolean> = _profileSaving.asStateFlow()
+
+    private val _profileMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val profileMessage: SharedFlow<String> = _profileMessage.asSharedFlow()
+
+    /** Set once the user edits a field, so a slow refresh can't overwrite what they're typing. */
+    private var profileEdited = false
+
     // ── Health Connect ────────────────────────────────────────────────────────
 
     /** Whether this device can use Health Connect at all — static per install, read once. */
@@ -158,7 +181,56 @@ class SettingsViewModel @Inject constructor(
     init {
         loadUser()
         loadServerVersion()
+        loadProfile()
         viewModelScope.launch { runCatching { programRepository.sync() } }
+    }
+
+    /**
+     * Fills the form from the local mirror immediately (so it is never blank while a pull runs),
+     * then refreshes from the server and re-reads. Offline the refresh is a silent no-op and the
+     * mirror stands.
+     */
+    private fun loadProfile() {
+        viewModelScope.launch {
+            if (!profileEdited) _profileDraft.value = profileRepository.current()
+            runCatching { profileRepository.refresh() }
+            if (!profileEdited) _profileDraft.value = profileRepository.current()
+        }
+    }
+
+    fun setProfileEquipment(value: String) = updateProfileDraft { it.copy(equipment = value) }
+    fun setProfileExperience(value: String) = updateProfileDraft { it.copy(experience = value) }
+    fun setProfileGoal(value: String) = updateProfileDraft { it.copy(goal = value) }
+    fun setProfileAgeGroup(value: String) = updateProfileDraft { it.copy(ageGroup = value) }
+    fun setProfileLimitations(value: String) = updateProfileDraft { it.copy(limitations = value) }
+
+    private fun updateProfileDraft(transform: (UserProfile) -> UserProfile) {
+        profileEdited = true
+        _profileDraft.value = transform(_profileDraft.value)
+    }
+
+    /**
+     * Saves the profile through [ProfileRepository]: the local mirror first (so the coach sees it
+     * on the very next message either way), then the server. An offline save is queued and says so;
+     * an HTTP failure is reported rather than silently claiming success.
+     */
+    fun saveProfile() {
+        if (_profileSaving.value) return
+        viewModelScope.launch {
+            _profileSaving.value = true
+            try {
+                val pushed = profileRepository.save(_profileDraft.value)
+                profileEdited = false
+                _profileMessage.emit(
+                    if (pushed) "Training profile saved"
+                    else "Saved on this device — it'll sync when you're back online.",
+                )
+            } catch (_: Exception) {
+                _profileMessage.emit("Couldn't save your profile. Try again.")
+            } finally {
+                _profileSaving.value = false
+            }
+        }
     }
 
     private fun loadUser() {

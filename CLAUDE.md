@@ -43,7 +43,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
 
 ## Data Model
-- `User` — id, name, settings, password-reset token fields.
+- `User` — id, name, email, password-reset token fields, plus the **training profile** (`equipment`, `experience`, `goal`, `age_group`, `limitations`, `profile_updated_at`; migration `0016`, which also dropped the never-read `settings` column).
 - `Exercise` — id, name, muscle_group, equipment, `instructions` (form cues), `secondary_muscles`.
 - `WorkoutPlan` — id, user_id, name, source (manual | ai), created_at.
 - `PlannedExercise` — plan_id, exercise_id, target_sets, target_reps, target_weight, is_bodyweight, order, superset_group (nullable).
@@ -63,7 +63,7 @@ The AI assists with workout planning only. The server enforces these — never r
 - **Live adjustments:** with a live session in context the model MAY emit a `{"actions": [...]}` block (`swap | adjust_weight | remove | add`), extracted by `client._extract_adjustment` into `SuggestedAdjustment` — resolved against the catalog, restricted to exercises actually in the session (except `add`), clamped to `app/limits.py` bounds, capped at `MAX_ADJUSTMENT_ACTIONS` (6). Persisted ONLY via `POST /ai/sessions/{id}/adjust` on explicit user Apply (`services/ai/adjustment_apply.py`), in one transaction; **only incomplete sets are ever mutated — completed sets are immutable history**. With `apply_to_routine` it also rewrites the session's `RoutineExercise` rows so program days referencing that routine update for the future. The AI still has no autonomous write path; this adds a *suggestion type*, not a write capability.
 - **Input handling:** treat user chat as untrusted. Guard against prompt injection (e.g. "ignore previous instructions") — the system prompt and validation layer take precedence.
 - **Sanity bounds:** the canonical bounds live in `app/limits.py` (sets/reps/weight, plus `BODY_WEIGHT_BOUNDS_LB`/`BODYFAT_BOUNDS` for metrics) and are enforced two ways — Pydantic `Field(ge/le)` constraints on the write schemas (`PlannedExerciseIn`, `SetLogCreate/Update`, `BodyMetricCreate`) reject out-of-range client input (422), and the AI plan-extraction layer (`client._extract_plan`) *clamps* whatever the model returns into bounds rather than dropping the plan.
-- **Trusted context:** `app/services/ai/context_service.build_user_context` derives a short training-history summary from the DB (recent sessions, last weights, current plan, bodyweight trend) and injects it into the system prompt as trusted context. Any client-supplied profile string is appended as stated preferences only — it never overrides the DB-derived data.
+- **Trusted context:** `app/services/ai/context_service.build_user_context` injects two DB-derived blocks into the system prompt as trusted context: the user's saved **training profile** (equipment, experience, goal, age group, limitations — persisted on `users`, editable at Settings → Training profile) followed by a short training-history summary (recent sessions, last weights, current plan, bodyweight trend). Any client-supplied profile string is appended as stated preferences only — it never overrides the DB-derived data. **The profile block must survive an empty history**: it previously early-returned `None` when the user had no logged sessions, which is precisely why saved equipment never reached the coach.
 - **No tool/system access:** the LLM proxy has no file, shell, or DB write access; it only returns text/JSON that the server validates and stores.
 - Keep the prompt + guardrail logic in one module (`app/services/ai/`) so it's auditable in isolation.
 
@@ -80,6 +80,7 @@ The AI assists with workout planning only. The server enforces these — never r
 - `GET/POST /metrics/weight`
 - `GET /calendar?from=&to=`
 - `GET /exercises?search=`, `GET /exercises/{id}` (name, muscle group, equipment, form `instructions`, `secondary_muscles`), `GET /users/me`
+- `GET/PATCH /users/me/profile` — the persisted **training profile** (`equipment`, `experience`, `goal`, `age_group`, `limitations`, `profile_updated_at`). PATCH is partial: an omitted key is unchanged, an explicit `""`/`null` clears it. 30/min. This is what the coach reads as trusted context — see "Trusted context" in AI Guardrails.
 - `GET /export` (full JSON), `GET /export/sets.csv` (flat per-set CSV) — both 5/min, `Content-Disposition` attachment.
 - `DELETE /sessions/{id}/sets/{set_id}` — remove a set from an in-progress session (409 once completed).
 - `GET /progress/exercises`, `GET /progress/exercises/{id}`, `GET /progress/records` (per-exercise PRs: top weight, est. 1RM, best set volume)
@@ -906,3 +907,55 @@ row against the same DB.
 
 **Not done, deliberately:** nothing here estimates recovery timelines, judges readiness, or
 interprets symptoms — that's her doctor's and pelvic floor physio's job, and the app says so.
+
+## Equipment memory fix — persistent training profile (2026-07-28)
+
+**Reported as "the AI keeps forgetting what equipment I have."** It wasn't the model forgetting;
+the equipment was never stored anywhere the coach could trust or the user could edit. Server
+**320 pytest green** + ruff clean; Android **386 unit tests green** + `assembleDebug`.
+
+### Why it happened (three compounding causes)
+1. The training profile (experience/goal/**equipment**/age group/limitations) lived **only** in
+   Android DataStore and reached the model **only** as `ChatRequest.user_context` — a
+   client-supplied string `_merged_context` deliberately treats as "stated preferences", never as
+   trusted context. The server had no idea what equipment existed.
+2. **Onboarding almost never runs.** `AuthViewModel.login()`/`completeSuiteLogin()` mark
+   onboarding done unconditionally (deliberate — a returning user on a fresh install shouldn't be
+   re-onboarded), so only the Register path fills the profile. Everyone else had an empty
+   `UserProfile`, whose `toContextString()` returns `""` → sent as `null`.
+3. **Nothing could edit it after onboarding.** `OnboardingViewModel.finish()` was the only writer
+   in the app, so new equipment could never be recorded.
+   (`users.settings` existed but was dead — only ever assigned `None`.)
+
+### Fixed
+- **Migration `0016`** — `users` gains `equipment`/`experience`/`goal`/`age_group`/`limitations`/
+  `profile_updated_at`; the dead `settings` column is dropped in the same revision.
+- **`GET`/`PATCH /users/me/profile`** (30/min). PATCH is partial via `model_fields_set`: an
+  omitted key is unchanged, an explicit `""`/`null` clears it, and `PATCH {}` is a true no-op so a
+  never-filled profile stays distinguishable from a deliberately cleared one. Account reset clears
+  it.
+- **The actual fix:** `context_service.build_user_context` now leads the trusted DB-derived block
+  with the saved profile, so equipment reaches the model on every chat regardless of what the
+  client attaches. This also fixed a **second instance of the same bug class** — the function
+  early-returned `None` when the user had no training history, so a saved profile would never have
+  reached the model for anyone who hadn't logged a session yet.
+- **[AI prompt change]** the Training profile block is authoritative and persisted: never re-ask
+  its items, program within the listed equipment, and honour an in-chat contradiction ("hotel gym
+  this week") for that conversation without re-interrogating everything else.
+- **Settings → Training profile** — equipment first and multi-line, then experience/goal/age as
+  chip groups mirroring onboarding's values, then limitations. `ProfileRepository` keeps the
+  server authoritative with the DataStore mirror for offline; `refresh()` drains before pulling so
+  a sync can't clobber an offline edit; onboarding now pushes to the server too, and the Home sync
+  round + reconnect observer pull it back (chosen over touching `AuthViewModel`, where a hang
+  would break sign-in).
+
+### Deliberately not done
+The coach cannot write to the profile itself. "I bought a squat rack" mid-chat does **not**
+silently update stored equipment — that would break the "AI proposes, user commits" invariant.
+If that's wanted, it should be a confirm card like every other AI write.
+
+### Still open (unchanged, noted for later)
+`login()`/`completeSuiteLogin()` still mark onboarding done unconditionally, so most users never
+see the questionnaire. Much less harmful now that Settings can edit the profile and the server
+copy repopulates on sign-in, but the root behaviour stands — fixing it means touching the auth
+flow, which is the riskiest possible place for this.

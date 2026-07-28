@@ -7,6 +7,7 @@ import com.spotter.data.export.ExportKind
 import com.spotter.data.export.ExportRepository
 import com.spotter.data.export.ExportedFile
 import com.spotter.data.remote.ApiService
+import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.health.HealthConnectManager
 import com.spotter.ui.settings.SettingsViewModel
@@ -15,6 +16,7 @@ import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
 import com.spotter.util.TokenStore
 import com.spotter.util.UiState
+import com.spotter.util.UserProfile
 import com.spotter.util.WeightUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,13 +30,16 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.wheneverBlocking
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
@@ -45,6 +50,7 @@ class SettingsViewModelTest {
     private lateinit var appPreferences: AppPreferences
     private lateinit var database: SpotterDatabase
     private lateinit var programRepository: ProgramRepository
+    private lateinit var profileRepository: ProfileRepository
     private lateinit var exportRepository: ExportRepository
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var viewModel: SettingsViewModel
@@ -59,6 +65,7 @@ class SettingsViewModelTest {
         appPreferences = mock()
         database = mock()
         programRepository = mock()
+        profileRepository = mock()
         exportRepository = mock()
         healthConnectManager = mock()
         whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
@@ -68,6 +75,7 @@ class SettingsViewModelTest {
         whenever(appPreferences.serverUrl).thenReturn(flowOf("http://10.0.2.2:8000/"))
         whenever(appPreferences.healthConnectEnabled).thenReturn(flowOf(false))
         whenever(programRepository.programs).thenReturn(flowOf(emptyList()))
+        wheneverBlocking { profileRepository.current() }.thenReturn(UserProfile())
         whenever(healthConnectManager.permissions).thenReturn(healthPermissions)
         whenever(healthConnectManager.availability())
             .thenReturn(HealthConnectManager.Availability.AVAILABLE)
@@ -77,7 +85,7 @@ class SettingsViewModelTest {
         VersionOut(name = "Spotter API", version = "0.1.0", commit = "a1b2c3d", builtAt = "2026-06-06T12:00:00Z")
 
     private fun createViewModel() = SettingsViewModel(
-        api, tokenStore, appPreferences, database, programRepository,
+        api, tokenStore, appPreferences, database, programRepository, profileRepository,
         exportRepository, healthConnectManager, testDispatcher,
     )
 
@@ -218,6 +226,125 @@ class SettingsViewModelTest {
         assertEquals(1, errors.size)
         assertEquals(null, viewModel.exporting.value)
         job.cancel()
+    }
+
+    // ── Training profile ──────────────────────────────────────────────────────
+
+    @Test
+    fun `init refreshes the profile and exposes the server values`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        val stored = UserProfile(
+            experience = "BEGINNER", goal = "MUSCLE", equipment = "full gym",
+            ageGroup = "25_34", limitations = "",
+        )
+        wheneverBlocking { profileRepository.current() }.thenReturn(UserProfile(), stored)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        verify(profileRepository).refresh()
+        assertEquals(stored, viewModel.profileDraft.value)
+    }
+
+    @Test
+    fun `an offline refresh leaves the mirrored profile on screen`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        val mirrored = UserProfile(equipment = "dumbbells, bands")
+        wheneverBlocking { profileRepository.current() }.thenReturn(mirrored)
+        wheneverBlocking { profileRepository.refresh() }.thenReturn(false)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        assertEquals(mirrored, viewModel.profileDraft.value)
+    }
+
+    @Test
+    fun `editing the fields and saving pushes the whole profile`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        wheneverBlocking { profileRepository.save(any()) }.thenReturn(true)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val messages = mutableListOf<String>()
+        val job = launch { viewModel.profileMessage.collect { messages.add(it) } }
+
+        viewModel.setProfileEquipment("dumbbells up to 50lb, pull-up bar")
+        viewModel.setProfileExperience("INTERMEDIATE")
+        viewModel.setProfileGoal("STRENGTH")
+        viewModel.setProfileAgeGroup("35_44")
+        viewModel.setProfileLimitations("left shoulder")
+        viewModel.saveProfile()
+        advanceTimeBy(200)
+
+        verify(profileRepository).save(
+            UserProfile(
+                experience = "INTERMEDIATE",
+                goal = "STRENGTH",
+                equipment = "dumbbells up to 50lb, pull-up bar",
+                ageGroup = "35_44",
+                limitations = "left shoulder",
+            ),
+        )
+        assertEquals(listOf("Training profile saved"), messages)
+        assertEquals(false, viewModel.profileSaving.value)
+        job.cancel()
+    }
+
+    @Test
+    fun `an offline save says it is queued rather than claiming it synced`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        wheneverBlocking { profileRepository.save(any()) }.thenReturn(false)
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val messages = mutableListOf<String>()
+        val job = launch { viewModel.profileMessage.collect { messages.add(it) } }
+
+        viewModel.setProfileEquipment("home barbell")
+        viewModel.saveProfile()
+        advanceTimeBy(200)
+
+        assertEquals(1, messages.size)
+        assertTrue(messages.single().contains("sync"), "the user must know it hasn't reached the server")
+        job.cancel()
+    }
+
+    @Test
+    fun `a failed save surfaces the error and never sticks the button`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        wheneverBlocking { profileRepository.save(any()) }.thenThrow(RuntimeException("422"))
+
+        viewModel = createViewModel()
+        advanceTimeBy(200)
+
+        val messages = mutableListOf<String>()
+        val job = launch { viewModel.profileMessage.collect { messages.add(it) } }
+
+        viewModel.setProfileEquipment("home barbell")
+        viewModel.saveProfile()
+        advanceTimeBy(200)
+
+        assertEquals(1, messages.size)
+        assertTrue(messages.single().startsWith("Couldn't save"))
+        assertEquals(false, viewModel.profileSaving.value)
+        job.cancel()
+    }
+
+    @Test
+    fun `a slow refresh never overwrites what the user is typing`() = runTest(testDispatcher) {
+        whenever(api.getMe()).thenReturn(UserOut(id = "u-1", name = "Alice", email = "a@example.com"))
+        wheneverBlocking { profileRepository.current() }
+            .thenReturn(UserProfile(), UserProfile(equipment = "stale server copy"))
+
+        viewModel = createViewModel()
+        // The init read lands, then the user starts editing while the refresh is still in flight.
+        viewModel.setProfileEquipment("what I actually own")
+        advanceTimeBy(200)
+
+        assertEquals("what I actually own", viewModel.profileDraft.value.equipment)
     }
 
     // ── Health Connect ────────────────────────────────────────────────────────

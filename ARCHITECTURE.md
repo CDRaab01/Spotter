@@ -62,9 +62,15 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
   the NEW turn hard-fails (422), while a blocked turn in the resent *history* is silently dropped
   before it reaches the model — rejecting on history permanently poisoned the conversation
   (clients resend the full transcript, so one blocked phrase 422'd every later request).
-- `context_service.py` — trusted context from the DB (training history; live-session summary
-  when `current_session_id` is given). Client-supplied profile text is appended as stated
-  preferences only — it never overrides DB-derived facts.
+- `context_service.py` — trusted context from the DB: the user's persisted **training profile**
+  (equipment/experience/goal/age group/limitations, from `users`) then training history, plus a
+  live-session summary when `current_session_id` is given. Client-supplied profile text is
+  appended as stated preferences only — it never overrides DB-derived facts.
+  **Equipment belongs in the trusted block, not the client string.** It used to live only in
+  Android DataStore, written once by onboarding (which most users never see, since login marks
+  onboarding done) and forwarded as an optional `user_context` string — so the coach genuinely
+  did not know what equipment existed and re-asked every conversation. Anything the coach must
+  never forget belongs on the user row and in this function.
 - `adjustment_apply.py` — the only path an AI suggestion touches the DB, and only via
   `POST /ai/sessions/{id}/adjust` after an explicit user Apply. **Completed sets are immutable**;
   only incomplete sets are ever mutated, in one transaction.
@@ -114,6 +120,12 @@ callback registered in `SpotterApp.onCreate`) drains the pending work on reconne
   reconcile without duplicating.
 - **Calendar** serves the last-known projection on an offline read instead of throwing.
 - **Cardio** writes are local-first with best-effort push, dedupe-safe.
+- **Training profile** (`ProfileRepository`): the server row is the source of truth and
+  `AppPreferences.userProfile` is the offline mirror that existing callers already read. Two
+  ordering rules matter — `refresh()` **drains pending edits before pulling** (otherwise a sync
+  round would pull the stale server copy straight over an edit made offline), and `save()`
+  returns whether the server actually acknowledged, so the UI can say "saved on this device,
+  will sync later" rather than falsely claiming a sync.
 - **Exercise catalog mirror** (`ExerciseEntity`/`ExerciseDao`, Room v13): the seeded server
   catalog is mirrored locally — seeded opportunistically by the Home sync round and the reconnect
   observer, and refreshed as a side effect of every online read (`ExerciseRepository`). Offline it

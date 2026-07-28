@@ -2,6 +2,7 @@ package com.spotter.ui.onboarding
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.repository.ProfileRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,6 +18,7 @@ import javax.inject.Inject
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel() {
 
     val totalSteps = 5
@@ -48,9 +50,17 @@ class OnboardingViewModel @Inject constructor(
     fun setAgeGroup(value: String) = _draft.update { it.copy(ageGroup = value) }
     fun setLimitations(value: String) = _draft.update { it.copy(limitations = value) }
 
+    /**
+     * Persists the questionnaire locally (which also marks onboarding done) and pushes it to the
+     * server so the coach keeps it beyond this install.
+     *
+     * The push is **best-effort and never blocks finishing onboarding**: if it fails the answers
+     * are still saved locally, and [ProfileRepository] has queued them for the next sync round.
+     */
     private fun finish() {
         viewModelScope.launch {
             appPreferences.saveProfile(_draft.value)
+            runCatching { profileRepository.save(_draft.value) }
             _navigateToHome.emit(Unit)
         }
     }
