@@ -9,12 +9,14 @@ import com.spotter.data.model.ProgramOut
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SuggestedAdjustment
 import com.spotter.data.model.SuggestedAdjustmentAction
+import com.spotter.data.model.SuggestedProfileUpdate
 import com.spotter.data.model.SuggestedRoutine
 import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.model.SuggestedProgramDay
 import androidx.lifecycle.SavedStateHandle
 import com.spotter.data.local.dao.WorkoutSessionDao
 import com.spotter.data.repository.AiRepository
+import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
@@ -63,10 +65,20 @@ class AiChatViewModelTest {
     private lateinit var routineRepository: RoutineRepository
     private lateinit var programRepository: ProgramRepository
     private lateinit var sessionRepository: SessionRepository
+    private lateinit var profileRepository: ProfileRepository
     private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var appPreferences: AppPreferences
     private lateinit var fakeChatDao: FakeChatMessageDao
     private lateinit var viewModel: AiChatViewModel
+
+    /** What the user already has saved; the merge must carry these through untouched. */
+    private val storedProfile = UserProfile(
+        experience = "intermediate",
+        goal = "build_muscle",
+        equipment = "dumbbells up to 50lb, pull-up bar",
+        ageGroup = "30_39",
+        limitations = "left shoulder",
+    )
 
     @Before
     fun setup() {
@@ -75,16 +87,18 @@ class AiChatViewModelTest {
         routineRepository = mock()
         programRepository = mock()
         sessionRepository = mock()
+        profileRepository = mock()
         sessionDao = mock()
         appPreferences = mock()
         fakeChatDao = FakeChatMessageDao()
         whenever(appPreferences.userProfile).thenReturn(flowOf(UserProfile()))
+        whenever(profileRepository.profile).thenReturn(flowOf(storedProfile))
         viewModel = buildViewModel(SavedStateHandle())
     }
 
     /** Build a VM; pass a SavedStateHandle with "sessionId" to simulate in-workout chat. */
     private fun buildViewModel(savedStateHandle: SavedStateHandle) = AiChatViewModel(
-        aiRepository, routineRepository, programRepository, sessionRepository,
+        aiRepository, routineRepository, programRepository, sessionRepository, profileRepository,
         fakeChatDao, sessionDao, appPreferences, savedStateHandle,
     )
 
@@ -389,6 +403,143 @@ class AiChatViewModelTest {
 
         assertNull(vm.pendingAdjustment.value)
         org.mockito.kotlin.verifyNoInteractions(sessionRepository)
+    }
+
+    // ── Saved training-profile updates ──────────────────────────────────────
+
+    /** Only equipment changes; every other field must survive the merge untouched. */
+    private val equipmentUpdate = SuggestedProfileUpdate(
+        equipment = "dumbbells up to 50lb, pull-up bar, squat rack",
+        summary = "Add a squat rack to your equipment",
+    )
+
+    private val mergedProfile = storedProfile.copy(
+        equipment = "dumbbells up to 50lb, pull-up bar, squat rack",
+    )
+
+    @Test
+    fun `send surfaces pendingProfileUpdate`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "Nice pickup!", suggestedProfileUpdate = equipmentUpdate)
+        )
+
+        viewModel.send("I bought a squat rack")
+        advanceTimeBy(200)
+
+        assertEquals(equipmentUpdate, viewModel.pendingProfileUpdate.value)
+    }
+
+    @Test
+    fun `send ignores a profile update proposing nothing`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedProfileUpdate = SuggestedProfileUpdate(summary = "no-op"))
+        )
+
+        viewModel.send("hi")
+        advanceTimeBy(200)
+
+        assertNull(viewModel.pendingProfileUpdate.value)
+    }
+
+    @Test
+    fun `profile update arrives alongside a program - both cards show`() = runTest(testDispatcher) {
+        val program = SuggestedProgram(
+            name = "PPL",
+            days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
+        )
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(
+                reply = "Here's a rack-friendly split.",
+                suggestedProgram = program,
+                suggestedProfileUpdate = equipmentUpdate,
+            )
+        )
+
+        viewModel.send("I bought a squat rack, build me a program")
+        advanceTimeBy(200)
+
+        assertNotNull(viewModel.pendingProgram.value)
+        assertNotNull(viewModel.pendingProfileUpdate.value)
+    }
+
+    @Test
+    fun `applyProfileUpdate merges onto stored, saves, clears card`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedProfileUpdate = equipmentUpdate)
+        )
+        whenever(profileRepository.current()).thenReturn(storedProfile)
+        whenever(profileRepository.save(any())).thenReturn(true)
+
+        viewModel.send("squat rack")
+        advanceTimeBy(200)
+
+        val applied = mutableListOf<Boolean>()
+        val job = launch { viewModel.profileUpdateApplied.collect { applied.add(it) } }
+
+        viewModel.applyProfileUpdate()
+        advanceTimeBy(200)
+
+        // Unchanged fields keep their stored values; only equipment moves.
+        org.mockito.kotlin.verify(profileRepository).save(mergedProfile)
+        assertNull(viewModel.pendingProfileUpdate.value)
+        assertEquals(listOf(true), applied)
+        job.cancel()
+    }
+
+    @Test
+    fun `applyProfileUpdate reports a queued offline save`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedProfileUpdate = equipmentUpdate)
+        )
+        whenever(profileRepository.current()).thenReturn(storedProfile)
+        whenever(profileRepository.save(any())).thenReturn(false)
+
+        viewModel.send("squat rack")
+        advanceTimeBy(200)
+
+        val applied = mutableListOf<Boolean>()
+        val job = launch { viewModel.profileUpdateApplied.collect { applied.add(it) } }
+
+        viewModel.applyProfileUpdate()
+        advanceTimeBy(200)
+
+        assertEquals(listOf(false), applied)
+        assertNull(viewModel.pendingProfileUpdate.value)
+        job.cancel()
+    }
+
+    @Test
+    fun `applyProfileUpdate keeps card on failure`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedProfileUpdate = equipmentUpdate)
+        )
+        whenever(profileRepository.current()).thenReturn(storedProfile)
+        whenever(profileRepository.save(any())).thenThrow(RuntimeException("server said no"))
+
+        viewModel.send("squat rack")
+        advanceTimeBy(200)
+        viewModel.applyProfileUpdate()
+        advanceTimeBy(200)
+
+        assertIs<UiState.Error>(viewModel.sendState.value)
+        assertNotNull(viewModel.pendingProfileUpdate.value) // retained for retry
+        assertEquals(false, viewModel.profileUpdateInFlight.value)
+    }
+
+    @Test
+    fun `dismissProfileUpdate clears without saving`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedProfileUpdate = equipmentUpdate)
+        )
+        viewModel.send("squat rack")
+        advanceTimeBy(200)
+        assertNotNull(viewModel.pendingProfileUpdate.value)
+
+        viewModel.dismissProfileUpdate()
+        advanceTimeBy(200)
+
+        assertNull(viewModel.pendingProfileUpdate.value)
+        org.mockito.kotlin.verify(profileRepository, org.mockito.kotlin.never()).save(any())
     }
 
     @Test

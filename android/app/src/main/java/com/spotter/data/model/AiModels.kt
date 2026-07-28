@@ -72,12 +72,42 @@ data class ApplyAdjustmentRequest(
     @SerialName("apply_to_routine") val applyToRoutine: Boolean = true,
 )
 
+/**
+ * An AI-proposed change to the user's **saved training profile** (Settings → Training profile),
+ * e.g. "I bought a squat rack" → add it to the stored equipment.
+ *
+ * Each field is the COMPLETE proposed new value, or null when that field is unchanged; the server
+ * only proposes fields that actually differ from what's stored, and only for durable facts. Same
+ * trust model as every other suggestion: nothing is written until the user taps Apply — see
+ * [com.spotter.ui.ai.AiChatViewModel.applyProfileUpdate].
+ */
+@Serializable
+data class SuggestedProfileUpdate(
+    val equipment: String? = null,
+    val experience: String? = null,
+    val goal: String? = null,
+    @SerialName("age_group") val ageGroup: String? = null,
+    val limitations: String? = null,
+    /** One short sentence describing the change, e.g. "Add a squat rack to your equipment". */
+    val summary: String = "",
+) {
+    /** False when the server proposed nothing at all — there is no card worth showing. */
+    fun hasChanges(): Boolean = equipment != null || experience != null ||
+        goal != null || ageGroup != null || limitations != null
+}
+
 @Serializable
 data class ChatResponse(
     val reply: String,
     @SerialName("suggested_routine") val suggestedRoutine: SuggestedRoutine? = null,
     @SerialName("suggested_program") val suggestedProgram: SuggestedProgram? = null,
     @SerialName("suggested_adjustment") val suggestedAdjustment: SuggestedAdjustment? = null,
+    /**
+     * Independent of the three above — a reply may carry a profile update alongside a program,
+     * or on its own, so it is NOT part of the one-suggestion-per-reply precedence chain.
+     */
+    @SerialName("suggested_profile_update")
+    val suggestedProfileUpdate: SuggestedProfileUpdate? = null,
 )
 
 /**

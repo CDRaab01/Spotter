@@ -11,14 +11,17 @@ import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.RoutineCreate
 import com.spotter.data.model.SuggestedAdjustment
+import com.spotter.data.model.SuggestedProfileUpdate
 import com.spotter.data.model.SuggestedRoutine
 import com.spotter.data.model.SuggestedProgram
 import com.spotter.data.repository.AiRepository
+import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
+import com.spotter.util.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +41,7 @@ class AiChatViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val programRepository: ProgramRepository,
     private val sessionRepository: SessionRepository,
+    private val profileRepository: ProfileRepository,
     private val chatMessageDao: ChatMessageDao,
     private val sessionDao: WorkoutSessionDao,
     private val appPreferences: AppPreferences,
@@ -67,6 +71,18 @@ class AiChatViewModel @Inject constructor(
     private val _pendingAdjustment = MutableStateFlow<SuggestedAdjustment?>(null)
     val pendingAdjustment: StateFlow<SuggestedAdjustment?> = _pendingAdjustment.asStateFlow()
 
+    /** A change to the SAVED training profile the AI proposed, awaiting the user's Apply tap. */
+    private val _pendingProfileUpdate = MutableStateFlow<SuggestedProfileUpdate?>(null)
+    val pendingProfileUpdate: StateFlow<SuggestedProfileUpdate?> = _pendingProfileUpdate.asStateFlow()
+
+    /** True while [applyProfileUpdate] is in flight, so the card can disable its Apply button. */
+    private val _profileUpdateInFlight = MutableStateFlow(false)
+    val profileUpdateInFlight: StateFlow<Boolean> = _profileUpdateInFlight.asStateFlow()
+
+    /** The stored profile, so the card can show each proposed change as `current → proposed`. */
+    val storedProfile: StateFlow<UserProfile> = profileRepository.profile
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UserProfile())
+
     private val _routineSaved = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val routineSaved: SharedFlow<String> = _routineSaved
 
@@ -76,6 +92,13 @@ class AiChatViewModel @Inject constructor(
     /** Emits the number of actions applied, so the screen can confirm via snackbar. */
     private val _adjustmentApplied = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val adjustmentApplied: SharedFlow<Int> = _adjustmentApplied
+
+    /**
+     * Emits once a proposed profile update is committed: true when the server acknowledged it,
+     * false when it was only queued locally (offline) — the screen words the snackbar accordingly.
+     */
+    private val _profileUpdateApplied = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
+    val profileUpdateApplied: SharedFlow<Boolean> = _profileUpdateApplied
 
     fun send(userText: String) {
         if (userText.isBlank() || _sendState.value is UiState.Loading) return
@@ -108,6 +131,12 @@ class AiChatViewModel @Inject constructor(
                     program != null -> _pendingProgram.value = program
                     else -> response.suggestedRoutine?.let { _pendingRoutine.value = it }
                 }
+                // A profile update is INDEPENDENT of that precedence chain — it changes a saved
+                // setting, not the workout, so it can arrive alongside any of the above (or alone)
+                // and must not clobber, or be clobbered by, the card chosen above.
+                response.suggestedProfileUpdate
+                    ?.takeIf { it.hasChanges() }
+                    ?.let { _pendingProfileUpdate.value = it }
                 _sendState.value = UiState.Success(Unit)
             } catch (e: Exception) {
                 _sendState.value = UiState.Error(e.message ?: "Failed to reach Spotter. Try again.")
@@ -187,6 +216,33 @@ class AiChatViewModel @Inject constructor(
         _pendingAdjustment.value = null
     }
 
+    /**
+     * Commit the AI's proposed profile change: merge the proposed (non-null) fields onto the
+     * stored profile and save it. On failure the card is kept so the user can retry (mirrors
+     * [applyAdjustment]); an offline save is still a success — it is queued and drained later.
+     */
+    fun applyProfileUpdate() {
+        val update = _pendingProfileUpdate.value ?: return
+        if (_profileUpdateInFlight.value) return
+        viewModelScope.launch {
+            _profileUpdateInFlight.value = true
+            try {
+                val acknowledged = profileRepository.save(update.mergeOnto(profileRepository.current()))
+                _pendingProfileUpdate.value = null
+                _profileUpdateApplied.emit(acknowledged)
+            } catch (e: Exception) {
+                _sendState.value =
+                    UiState.Error(e.message ?: "Couldn't update your profile. Try again.")
+            } finally {
+                _profileUpdateInFlight.value = false
+            }
+        }
+    }
+
+    fun dismissProfileUpdate() {
+        _pendingProfileUpdate.value = null
+    }
+
     fun clearHistory() {
         viewModelScope.launch {
             chatMessageDao.clearAll()
@@ -197,3 +253,17 @@ class AiChatViewModel @Inject constructor(
         if (_sendState.value is UiState.Error) _sendState.value = UiState.Idle
     }
 }
+
+/**
+ * Applies a proposed profile update onto [stored]: a non-null field is the complete new value,
+ * a null field leaves the stored value untouched. The whole merged profile is what gets saved —
+ * [com.spotter.data.repository.ProfileRepository.save] sends every field, so an unchanged field
+ * must carry its stored value through or it would be cleared.
+ */
+internal fun SuggestedProfileUpdate.mergeOnto(stored: UserProfile) = UserProfile(
+    experience = experience ?: stored.experience,
+    goal = goal ?: stored.goal,
+    equipment = equipment ?: stored.equipment,
+    ageGroup = ageGroup ?: stored.ageGroup,
+    limitations = limitations ?: stored.limitations,
+)
