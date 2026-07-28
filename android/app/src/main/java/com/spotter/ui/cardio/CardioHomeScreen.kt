@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,20 +23,31 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.model.CardioProgram
 import com.spotter.data.model.CardioProgramType
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.SectionHeader
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.LocalDistanceUnit
 import com.spotter.ui.theme.SpotterTheme
+import com.spotter.ui.theme.formatDistance
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CardioHomeScreen(navController: NavController) {
+fun CardioHomeScreen(
+    navController: NavController,
+    viewModel: CardioHomeViewModel = hiltViewModel(),
+) {
+    val recentSessions by viewModel.recentSessions.collectAsState()
     Scaffold(
         topBar = { TopAppBar(title = { Text("Cardio") }) },
     ) { padding ->
@@ -61,8 +74,71 @@ fun CardioHomeScreen(navController: NavController) {
             item(key = "log_cardio") {
                 LogCardioCard(onClick = { navController.navigate(Screen.ManualCardio.route) })
             }
+            if (recentSessions.isNotEmpty()) {
+                item(key = "recent_header") {
+                    SectionHeader(label = "Recent activity", channel = SpotterTheme.pulse.recovery)
+                }
+                item(key = "recent_list") {
+                    PanelCard(modifier = Modifier.fillMaxWidth()) {
+                        recentSessions.forEachIndexed { index, session ->
+                            RecentCardioRow(session)
+                            if (index < recentSessions.lastIndex) {
+                                Spacer(Modifier.height(SpotterTheme.spacing.sm))
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun RecentCardioRow(session: CardioSessionEntity) {
+    val distanceUnit = LocalDistanceUnit.current
+    val date = CardioFormat.parseDate(session.completedAt ?: session.startedAt)
+    val detail = buildList {
+        date?.let { add(CardioFormat.shortDate(it)) }
+        add(CardioFormat.minutesLabel(session.totalElapsedSec))
+        session.distanceMeters?.let { add(distanceUnit.formatDistance(it)) }
+    }.joinToString(" · ")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(recentSessionLabel(session), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.DirectionsRun,
+            contentDescription = null,
+            tint = SpotterTheme.pulse.recovery,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/** "C25K · W2 D1", "Run", "Walk", or the program's name. */
+private fun recentSessionLabel(session: CardioSessionEntity): String {
+    if (session.programId == "manual") {
+        return when (session.activityType) {
+            "run" -> "Run"
+            "walk" -> "Walk"
+            else -> "Cardio"
+        }
+    }
+    val name = CardioPrograms.byId(session.programId)?.name ?: "Cardio"
+    val weekDay = if (session.weekNumber != null && session.dayNumber != null) {
+        " · W${session.weekNumber} D${session.dayNumber}"
+    } else {
+        ""
+    }
+    return name + weekDay
 }
 
 @Composable

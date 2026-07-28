@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,6 +19,10 @@ class SetLog(Base):
     reps: Mapped[int] = mapped_column(Integer)
     weight: Mapped[float | None] = mapped_column(Float, nullable=True)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Optional per-set effort score (RPE 1-10, bounds in app/limits.py).
+    rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # One of app.limits.SET_TYPES; "warmup" sets never count toward volume/progression/PRs.
+    set_type: Mapped[str] = mapped_column(String(16), default="normal", server_default="normal")
     completed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

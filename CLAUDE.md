@@ -35,22 +35,22 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 
 ## Core Features
 1. **AI chat** — conversational workout-plan setup. Can generate either a single plan or a multi-day **program** (named days incl. rest days); the user opts in via a "Save Program" card (`POST /ai/programs/accept`), which creates the plans + program and activates it. When opened from an active workout (`ai_chat?sessionId=`), the chat is session-aware (server injects a trusted "workout in progress" block) and gives **advice plus user-approved adjustment cards** — it may propose swapping/adjusting/removing/adding an exercise ("I can't do bench press" → swap to DB press), which the user applies via a card with a "future workouts too" toggle (`POST /ai/sessions/{id}/adjust`). The AI never edits the log itself — it only proposes; the user taps Apply. See AI Guardrails below.
-2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, and an inline edit mode. Must work offline.
+2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, set **deletion**, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, per-set **type** (normal/warm-up/drop/failure/AMRAP — tap the set number) and optional **RPE**, adding/removing an exercise mid-session, and a rest timer with ±15s, an auto-start toggle and per-exercise overrides. Must work offline. (There is no structural "edit mode" — editing is inline per field plus the add/remove actions.)
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
-5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, plus special-case presets: Knee-Friendly, Prenatal third-trimester, Postpartum Rebuild, Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
-6. **Exercise library** — searchable list of seeded exercises (`/exercises`), browsable from Home.
+5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, plus special-case presets: Knee-Friendly, Prenatal third-trimester, **Postpartum — First Weeks Back** and **Postpartum — Rebuilding Strength** (a staged pair), Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
+6. **Exercise library** — searchable list of seeded exercises (`/exercises`), reachable from **Settings → Library & data** (and from any workout card's exercise name). Each entry opens a detail screen: form instructions, primary/secondary muscles, equipment, a weight/est-1RM history chart and personal records.
 7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
 
 ## Data Model
 - `User` — id, name, settings, password-reset token fields.
-- `Exercise` — id, name, muscle_group, equipment.
+- `Exercise` — id, name, muscle_group, equipment, `instructions` (form cues), `secondary_muscles`.
 - `WorkoutPlan` — id, user_id, name, source (manual | ai), created_at.
 - `PlannedExercise` — plan_id, exercise_id, target_sets, target_reps, target_weight, is_bodyweight, order, superset_group (nullable).
 - `WorkoutSession` — id, user_id, plan_id, date, status, duration_seconds, note, exercise_notes (JSON).
-- `SetLog` — id, session_id, exercise_id, set_number, reps, weight (nullable for bodyweight), completed (bool), completed_at. Each set stores its own reps AND weight — they vary set-to-set (e.g. 7×125, 8×115, 8×115).
+- `SetLog` — id, session_id, exercise_id, set_number, reps, weight (nullable for bodyweight), completed (bool), completed_at, `rpe` (nullable), `set_type` (`normal|warmup|drop|failure|amrap`). Each set stores its own reps AND weight — they vary set-to-set (e.g. 7×125, 8×115, 8×115). **Warm-up sets are excluded from volume, progression, est-1RM and PRs.**
 - `BodyMetric` — id, user_id, date, weight, (optional bodyfat, etc.).
-- `WorkoutProgram` — id, user_id, name, is_active. `ProgramDay` — program_id, plan_id, label, order.
+- `WorkoutProgram` — id, user_id, name, is_active, created_at, source (`manual|ai|preset`), description, `weeks`, `deload_week`, `started_on` (stamped on activation; drives the derived `current_week`/`is_deload_week`). `ProgramDay` — program_id, plan_id, label, order.
 
 ## AI Guardrails (critical)
 The AI assists with workout planning only. The server enforces these — never rely on the client.
@@ -74,9 +74,14 @@ The AI assists with workout planning only. The server enforces these — never r
 - `POST /ai/chat` — proxies to LM Studio, applies guardrails + trusted context, returns reply (+ optional validated `suggested_plan` OR `suggested_program`). Accepts an optional `current_session_id` for in-workout, session-aware advice.
 - `POST /ai/programs/accept` — persists a user-accepted AI `SuggestedProgram` (creates one plan per non-rest day + a program, activates it)
 - `POST /ai/sessions/{id}/adjust` — applies a user-accepted AI `SuggestedAdjustment` to a live in-progress session (swap/adjust/remove/add on incomplete sets only); `apply_to_routine` also rewrites the session's routine. Returns the updated `SessionOut`.
+- `POST /ai/sessions/{id}/debrief` — post-workout coach recap of a **completed** session (409 otherwise): `{debrief}`. Read-only narration; 20/min.
+- `GET /ai/recap/weekly` — the in-app week in review: `{week_start, stats{strength_sessions, cardio_sessions, total_volume_lb, active_minutes, prs, bodyweight_delta_lb}, narrative}`. **Always 200** — the stats are server-computed and `narrative` is null when LM Studio is unreachable. 5/min.
+- `GET /insights` — proactive coaching signals: `{stalled[{exercise_id, exercise_name, sessions_stuck, last_weight}], prs_this_week}`. Reuses the progression engine's stall detection. 30/min.
 - `GET/POST /metrics/weight`
 - `GET /calendar?from=&to=`
-- `GET /exercises?search=`, `GET /users/me`
+- `GET /exercises?search=`, `GET /exercises/{id}` (name, muscle group, equipment, form `instructions`, `secondary_muscles`), `GET /users/me`
+- `GET /export` (full JSON), `GET /export/sets.csv` (flat per-set CSV) — both 5/min, `Content-Disposition` attachment.
+- `DELETE /sessions/{id}/sets/{set_id}` — remove a set from an in-progress session (409 once completed).
 - `GET /progress/exercises`, `GET /progress/exercises/{id}`, `GET /progress/records` (per-exercise PRs: top weight, est. 1RM, best set volume)
 - `GET/POST /programs`, `GET/PATCH/DELETE /programs/{id}`, `PUT /programs/{id}/days`, `GET /programs/active/next`
 - `GET /health` — liveness probe (`{"status":"ok"}`). **Unauthenticated.**
@@ -733,3 +738,171 @@ unit tests; build/emulator passes are owned by CI.
 - Accepted offline gap: `getPriorBests` stays empty offline (progression hints are
   server-computed). Tests: new `ExerciseRepositoryTest`, `OfflineMuscleGroupsTest`,
   `SessionRepositoryTest`; updated Home/History/Presets VM tests.
+
+## Audit Resolution Log — Tier 1 (2026-07-28)
+
+A third full-app audit ran 2026-07-28 (`AUDIT-2026-07.md` — AI coach, program structure,
+layout/flow, premium roadmap). This round fixed its Tier 1 ("make what exists land"): server
+**234 pytest green** + `ruff check app` clean; Android `:app:testDebugUnitTest` green (new
+regression tests noted below). On-device pass still owed, as usual.
+
+### Fixed
+- **[HIGH][Android] Routine edit wiped supersets.** `RoutineDetailViewModel.startEdit`/`saveEdits`
+  dropped `supersetGroup` (create path had it right), so any edit+save destroyed all grouping.
+  Regression test: "edit round-trip preserves superset groups".
+- **[HIGH][Server][AI guardrail change] Chat-history poisoning.** One blocked phrase anywhere in
+  the transcript 422'd every later request forever (client resends full history; guard validated
+  every turn fatally). Now: the NEW turn still hard-fails 422; blocked *historical* turns are
+  silently dropped from what reaches the model. Injection still never reaches the LLM —
+  `test_injection_in_earlier_turn_dropped_not_fatal` pins both properties.
+- **[HIGH][Android] Progression suggestions are now appliable.** The chip gained an **Apply**
+  button: incomplete sets take the suggested weight/reps and the routine's `target_weight`
+  advances (write-back via a client-built `adjust_weight` action on the existing
+  `POST /ai/sessions/{id}/adjust` rails). Presets finally progress instead of pre-filling the
+  starting weight forever. Tests: 4 new `WorkoutViewModelTest` cases.
+- **[MED][Android] Home blank state + routine dead end.** Home now renders a "Your routines"
+  section for routines not linked to any program day (tap → RoutineDetail — previously a saved
+  routine had NO screen that could open it and the programs-empty+routines-non-empty state
+  rendered nothing). Empty state gained "Browse preset programs" (the no-LLM path); Settings'
+  empty Programs section gained a nav row; first-run auto-generate failure now snackbars a
+  pointer at presets instead of dying silently.
+- **[MED][Android] Reset Account now actually re-onboards.** It routed to login, but login
+  unconditionally sets `onboardingDone` (deliberate, for returning users on fresh installs) —
+  the questionnaire never showed and a program was auto-generated from an empty profile. Reset
+  now clears data and navigates straight into Onboarding while still signed in.
+- **[MED][Android] Swallowed errors surfaced.** Home `startSession`, Workout `finishSession` /
+  `deleteSession`, Calendar `startProjectedSession`, and both `logBodyweight` paths now snackbar
+  (finish failure also resets `finishState` so the button recovers); Home's full-screen error
+  and the new screens wire `ErrorState(onRetry)`; Progress→Strength handles its error state
+  (retry chip) and no longer stacks two full-size empty states.
+- **[MED][Android] Completed-session detail.** History cards now navigate: in-progress →
+  Workout (the old `onTap` was dead code — resume-from-history never fired), completed → new
+  `SessionDetailScreen` (per-set reps/weights, notes, muscle groups; offline-capable). The
+  tap-to-expand preview was removed; delete is an explicit icon.
+- **[LOW][Android] Cardio parity, first slice.** Run completion is a real summary (stats +
+  confetti); Cardio home lists "Recent activity" (`CardioHomeViewModel`) so manual/guided/free
+  sessions are visible after the fact. Durations past an hour render `1:15:00` (was `75:00`) in
+  Workout + Summary.
+
+### Deliberately NOT in this round
+Tier 2/3 of `AUDIT-2026-07.md` (exercise media, RPE/set types, manual mid-workout editing,
+Health Connect, export, periodization schema, post-workout AI debrief) and the audit's smaller
+polish list (resume-strip midnight filter, deep-link `launchSingleTop`, cleartext in release,
+dead `nextProgramDay` fetch, stale "four destinations" KDocs).
+
+## Audit Resolution Log — Tiers 2 & 3 (2026-07-28)
+
+The rest of `AUDIT-2026-07.md`: Tier 2 ("table stakes vs Hevy/Strong") and Tier 3 (the
+differentiators). Server **293 pytest green** + `ruff check app` clean (Alembic now **15
+revisions**); Android **369 unit tests green** + `:app:assembleDebug`. On-device pass still owed.
+
+**One new dependency** (per the "ask first" rule, approved for this round):
+`androidx.health.connect:connect-client:1.1.0` — stable, `minSdk 26`, matching Spotter exactly.
+
+### Server
+- **Exercise detail** (migration `0013`) — `instructions` + `secondary_muscles`, backfilled for
+  all **81** seeded movements; `GET /exercises/{id}`.
+- **RPE + set types** (`0014`) — `rpe`, `set_type` (`normal|warmup|drop|failure|amrap`).
+  **Warm-up sets are excluded from volume, progression inputs, est-1RM and PR detection** — that
+  exclusion is the whole point of the concept, so any future computation over sets must filter it
+  too (now ARCHITECTURE.md invariant #6). Plus `DELETE /sessions/{id}/sets/{set_id}`.
+- **Periodization** (`0015`) — programs gain `created_at`/`source`/`description`/`weeks`/
+  `deload_week`/`started_on`; activation stamps `started_on`; `current_week` cycles
+  (`((today - started_on).days // 7) % weeks + 1`) so a mesocycle repeats rather than running off
+  the end. A deload week seeds `ceil(sets × 0.6)` at `weight × 0.9`. The same pure helper feeds
+  both session seeding and the read path, so they can't disagree. `routine_exercises.rest_seconds`
+  lands here too. **[AI prompt change]** the coach may author `weeks`/`deload_week` through the
+  existing extract-and-clamp path — a richer suggestion shape, not a new write power; accept
+  gained `activate`, `source`, `description`.
+- **New endpoints** — `GET /insights` (stalled lifts + PRs this week, reusing
+  `progression.stalled_sessions()` rather than a second stall implementation),
+  `POST /ai/sessions/{id}/debrief`, `GET /ai/recap/weekly`, `GET /export/sets.csv`. The three LM
+  callers now share `client.lm_completion()`, so 502/503/504 mapping is identical everywhere.
+- **A PR requires a prior best to beat** — a new exercise's first session sets a baseline, not a
+  wall of records (invariant #7).
+
+### Android
+- **Workout mode** — set types (tap the set number; badge replaces it), opt-in RPE entry, set
+  deletion, manual add/remove exercise mid-session, rest ±15s, auto-start toggle, and
+  per-exercise rest overrides used verbatim (an explicit prescription gets no failure bump).
+- **Offline set deletion uses a `pendingDelete` tombstone** (Room v14) — a plain local delete
+  would be resurrected by the `getSession` merge, which re-adds server rows missing locally.
+- **Exercise detail** — instructions/muscles from the catalog mirror (offline-capable) plus a
+  server-computed history chart and PR panel loaded independently, so a history failure never
+  takes the instructions down. Reachable from the Library and the workout card's exercise name.
+- **Presets** — preview screen with **add-and-activate or add-without-activating**, and real rest
+  days. Presets define the smallest repeating **cycle** (`A, Rest, B, Rest`), not a 7-day week,
+  because `accept_program` creates one routine per training day and a repeated day would create
+  duplicate routines; `presetCadenceLine` derives the advertised frequency from the day list so
+  the description can't drift from the schedule again. A day whose exercises all fail to resolve
+  is dropped, never sent empty — an empty day now *means* rest.
+- **Periodization display** — "Week N of M" + an amber DELOAD WEEK badge. The client recomputes
+  week/deload from the mirrored `started_on` rather than caching the server's time-derived
+  `current_week` (a cached copy would be stale by definition).
+- **Templates** — "Repeat this workout" and "Save as routine" from a completed session.
+- **AI surfaces** — a post-workout coach debrief on the summary (**omitted entirely on failure**;
+  LM Studio being down is the normal case here, not an error worth showing), a weekly recap
+  screen, and a Home "coach signals" card from `/insights` (best-effort: no card, no error).
+- **Export + Health Connect** — Settings → Export data (JSON/CSV via the share sheet) and
+  opt-in, **write-only**, default-off Health Connect mirroring of sessions + bodyweight.
+
+### Still deferred (deliberate)
+- **Cardio GPS/distance/pace** — needs real device sensors; unverifiable in CI, so not started.
+- **Exercise demo images/video** — no licensed media to ship, and this repo's bar is "delete beats
+  build"; the instructions backfill is the honest version of that feature. Revisit only with a
+  real asset source.
+- Manual editing of a program's periodization after accept (set at accept time only), and the
+  audit's smaller polish list (resume-strip midnight filter, deep-link `launchSingleTop`,
+  cleartext in release).
+
+## Postpartum return-to-training round (2026-07-28)
+
+Made the app genuinely usable by someone coming back to training after giving birth. Server
+**300 pytest green** + `ruff check app` clean; Android **371 unit tests green**.
+
+**The real gap wasn't the presets — it was the coach.** A "Postpartum Rebuild" preset had shipped
+since 2026-06-10, but `prompts.py` contained **zero** postpartum, pregnancy, or pelvic-floor
+content. Ask the coach "I just had a baby, build me a program" and it treated her as a generic
+beginner: 5–6 exercises, 30–60 minutes, crunches and heavy compounds on the table. The preset was
+safe; the app's flagship surface — and the most likely first touchpoint — was not.
+
+- **[AI guardrail/prompt change] New "Pregnancy and Postpartum — Treat as a Primary Constraint"
+  section** in `prompts.py`. It stays inside the app's non-medical scope (exercise selection +
+  referral, never diagnosis):
+  - **Clearance is the clinician's to give, never the model's** — no healing-timeline estimates,
+    no "you're ready", no second-guessing a doctor or midwife.
+  - **Stop-and-refer symptoms** (leaking, pelvic heaviness/bulging, abdominal doming or coning,
+    pain incl. around a C-section incision, renewed bleeding) → stop that movement and see a
+    doctor or **pelvic floor physiotherapist**, named explicitly because most people don't know
+    that referral exists. The model must not program around them or explain what they mean.
+  - **C-section is abdominal surgery** — extra conservatism, surgeon's guidance wins.
+  - **Early exercise selection**: prefer hips/glutes, supported pulling, controlled range and
+    split stance; avoid spinal-flexion/rotation core work, long anti-extension holds, Valsalva-
+    heavy and maximal lifting, and impact until well re-established and symptom-free.
+  - **Session sizing explicitly overrides the 5–6 exercise / 30–60 minute rule** → 3–4 exercises,
+    20–30 minutes, 2–3×/week, and never guilt-trip a short or missed session.
+  - The same posture is wired into **live in-workout adjustments**: a postpartum symptom is never
+    answered with a lighter load — it's a removal plus a referral.
+- **Presets restructured into two stages** (coming back is progressive; one flat program either
+  starts too hard or stays too easy): **"Postpartum — First Weeks Back"** (2×/week, ~20 min,
+  mostly bodyweight, hips + supported pulling) → **"Postpartum — Rebuilding Strength"** (3×/week,
+  light loaded, hinge reintroduced). Both descriptions defer to her clinician and name the pelvic
+  floor physio referral.
+- **Dropped the plank from the early preset.** It sat in a program advertising itself as
+  "core- and pelvic-floor-friendly, no crunches" — a long high-load anti-extension hold is
+  exactly what that stage is not for. (It was also encoded `3 × 1`, rendering as a 1-rep set.)
+- **New guardrail tests.** `ProgramPresetsTest` now asserts the pregnancy/postpartum presets
+  contain none of a contraindicated-movement list and that every postpartum description defers to
+  a clinician and names the physio referral — so nobody can later "helpfully" add a crunch back.
+  `tests/test_ai_postpartum.py` pins the prompt content, the session-size override, the
+  live-adjustment referral rule, and — importantly — that messages like "I'm postpartum and
+  leaking a bit when I squat" are **not** blocked as out-of-scope, which would silently make the
+  coach useless for exactly this user.
+
+**Test-hygiene fix (unrelated, found while verifying):** `tests/test_suite_auth.py` used fixed
+emails with `assert count == 0`, so the suite only passed against a virgin database and reported
+two false failures on any re-run. Now uses a unique address per run; the suite passes twice in a
+row against the same DB.
+
+**Not done, deliberately:** nothing here estimates recovery timelines, judges readiness, or
+interprets symptoms — that's her doctor's and pelvic floor physio's job, and the app says so.

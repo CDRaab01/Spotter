@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.entity.RoutineExerciseEntity
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.model.ProgramDayIn
 import com.spotter.data.model.ProgramDaysUpdate
@@ -36,6 +37,10 @@ class ProgramDetailViewModel @Inject constructor(
     private val _programName = MutableStateFlow("Program")
     val programName: StateFlow<String> = _programName
 
+    /** The mirrored program row, for the periodization header (null until [load] resolves it). */
+    private val _program = MutableStateFlow<WorkoutProgramEntity?>(null)
+    val program: StateFlow<WorkoutProgramEntity?> = _program
+
     private val _days = MutableStateFlow<List<DraftDay>>(emptyList())
     val days: StateFlow<List<DraftDay>> = _days
 
@@ -61,7 +66,9 @@ class ProgramDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try { programRepository.sync() } catch (_: Exception) {}
             try { routineRepository.sync() } catch (_: Exception) {}
-            _programName.value = programRepository.programName(id) ?: "Program"
+            val program = programRepository.program(id)
+            _program.value = program
+            _programName.value = program?.name ?: "Program"
             val days = programRepository.daysFor(id)
             _days.value = days.map {
                 DraftDay(routineId = it.routineId, routineName = it.routineName, label = it.label)

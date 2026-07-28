@@ -69,6 +69,43 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val QUIET_START_HOUR = intPreferencesKey("pref_quiet_start_hour")
         private val QUIET_END_HOUR = intPreferencesKey("pref_quiet_end_hour")
         private val LAST_SUCCESSFUL_SYNC_MS = longPreferencesKey("pref_last_successful_sync_ms")
+        private val TRACK_RPE = booleanPreferencesKey("pref_track_rpe")
+        private val AUTO_START_REST = booleanPreferencesKey("pref_auto_start_rest")
+        private val HEALTH_CONNECT_ENABLED = booleanPreferencesKey("pref_health_connect_enabled")
+    }
+
+    /**
+     * Opt-in (default OFF): mirror finished workouts and weigh-ins into Health Connect. Write-only —
+     * Spotter never reads back. See [com.spotter.health.HealthSync]; the toggle alone isn't enough,
+     * the write path also re-checks the granted permissions each time.
+     */
+    val healthConnectEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[HEALTH_CONNECT_ENABLED] ?: false
+    }
+
+    suspend fun setHealthConnectEnabled(value: Boolean) {
+        context.dataStore.edit { it[HEALTH_CONNECT_ENABLED] = value }
+    }
+
+    /** Opt-in (default OFF): completed set rows show a compact RPE (1–10) entry in workout mode. */
+    val trackRpe: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[TRACK_RPE] ?: false
+    }
+
+    suspend fun setTrackRpe(value: Boolean) {
+        context.dataStore.edit { it[TRACK_RPE] = value }
+    }
+
+    /**
+     * Default ON: completing a set starts the rest countdown automatically. When off, the rest
+     * panel offers a "Start rest" button instead — for lifters who rest by feel.
+     */
+    val autoStartRest: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[AUTO_START_REST] ?: true
+    }
+
+    suspend fun setAutoStartRest(value: Boolean) {
+        context.dataStore.edit { it[AUTO_START_REST] = value }
     }
 
     /**

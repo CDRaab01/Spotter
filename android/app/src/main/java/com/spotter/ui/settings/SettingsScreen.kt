@@ -21,9 +21,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,9 +56,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import android.content.Context
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.export.ExportKind
+import com.spotter.data.export.ExportedFile
+import com.spotter.health.HealthConnectManager
 import com.spotter.ui.components.PulsingDots
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.PanelCard
@@ -77,6 +87,8 @@ fun SettingsScreen(
     val weightUnit by viewModel.weightUnit.collectAsState()
     val distanceUnit by viewModel.distanceUnit.collectAsState()
     val cadenceDays by viewModel.workoutCadenceDays.collectAsState()
+    val trackRpe by viewModel.trackRpe.collectAsState()
+    val autoStartRest by viewModel.autoStartRest.collectAsState()
     val nudgeEnabled by viewModel.workoutNudgeEnabled.collectAsState()
     val quietStartHour by viewModel.quietStartHour.collectAsState()
     val quietEndHour by viewModel.quietEndHour.collectAsState()
@@ -84,8 +96,39 @@ fun SettingsScreen(
     val programs by viewModel.programs.collectAsState()
     val resetting by viewModel.resetting.collectAsState()
     val serverVersion by viewModel.serverVersion.collectAsState()
+    val exporting by viewModel.exporting.collectAsState()
+    val healthConnectEnabled by viewModel.healthConnectEnabled.collectAsState()
     val context = LocalContext.current
     var showResetDialog by remember { mutableStateOf(false) }
+
+    // Health Connect asks for its write permissions through its own contract (it needs an
+    // Activity, so the VM only signals *when* to ask and consumes the result).
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        contract = remember { viewModel.healthPermissionContract() },
+        onResult = { granted -> viewModel.onHealthPermissionsResult(granted) },
+    )
+
+    LaunchedEffect(Unit) {
+        viewModel.requestHealthPermissions.collect { permissions ->
+            healthPermissionLauncher.launch(permissions)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.healthMessage.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.exportReady.collect { exported -> shareExport(context, exported) }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.exportError.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToLogin.collect {
@@ -105,6 +148,12 @@ fun SettingsScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.navigateToOnboarding.collect {
+            navController.navigate(Screen.Onboarding.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { if (!resetting) showResetDialog = false },
@@ -113,7 +162,7 @@ fun SettingsScreen(
                 Text(
                     "This permanently deletes all your workouts, sessions, progress, " +
                         "programs, and chat history. Your account and login are kept. " +
-                        "You'll be signed out and asked to set up again.",
+                        "You'll be asked to set up again.",
                 )
             },
             confirmButton = {
@@ -210,6 +259,23 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSection("Workout") {
+                SwitchSettingRow(
+                    title = "Track RPE",
+                    subtitle = "Completed sets show a 1–10 effort entry (one decimal).",
+                    checked = trackRpe,
+                    onCheckedChange = { viewModel.setTrackRpe(it) },
+                )
+                Spacer(Modifier.height(8.dp))
+                SwitchSettingRow(
+                    title = "Auto-start rest timer",
+                    subtitle = "Completing a set starts the rest countdown. Off = a Start rest " +
+                        "button appears instead.",
+                    checked = autoStartRest,
+                    onCheckedChange = { viewModel.setAutoStartRest(it) },
+                )
+            }
+
             SettingsSection("Schedule") {
                 CadenceStepper(
                     cadenceDays = cadenceDays,
@@ -277,11 +343,29 @@ fun SettingsScreen(
             SettingsSection("Programs") {
                 if (programs.isEmpty()) {
                     Text(
-                        "No programs yet. Ask the AI coach for a multi-day program, or build one " +
-                            "from the Programs menu.",
+                        "No programs yet. Ask the AI coach for a multi-day program, or start " +
+                            "from a preset.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { navController.navigate(Screen.Programs.route) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Browse programs & presets",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 } else {
                     programs.forEach { program ->
                         Row(
@@ -327,6 +411,61 @@ fun SettingsScreen(
                     label = "Workout history",
                     onClick = { navController.navigate(Screen.SessionHistory.route) },
                 )
+            }
+
+            SettingsSection("Export data") {
+                Text(
+                    "Download your own copy. Files are handed straight to the share sheet — " +
+                        "save them, mail them, drop them in a spreadsheet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                ExportRow(
+                    icon = Icons.Default.Description,
+                    label = "Workout data (JSON)",
+                    busy = exporting == ExportKind.JSON,
+                    enabled = exporting == null,
+                    onClick = { viewModel.export(ExportKind.JSON) },
+                )
+                ExportRow(
+                    icon = Icons.Default.TableChart,
+                    label = "Sets (CSV)",
+                    busy = exporting == ExportKind.CSV,
+                    enabled = exporting == null,
+                    onClick = { viewModel.export(ExportKind.CSV) },
+                )
+            }
+
+            SettingsSection("Health Connect") {
+                val available =
+                    viewModel.healthConnectAvailability == HealthConnectManager.Availability.AVAILABLE
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sync to Health Connect", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            when (viewModel.healthConnectAvailability) {
+                                HealthConnectManager.Availability.AVAILABLE ->
+                                    "Finished workouts and weigh-ins are copied to Health Connect. " +
+                                        "Spotter only writes — it never reads your health data."
+                                HealthConnectManager.Availability.UPDATE_REQUIRED ->
+                                    "Update Health Connect on this device to turn this on."
+                                HealthConnectManager.Availability.UNAVAILABLE ->
+                                    "Health Connect isn't available on this device."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = healthConnectEnabled && available,
+                        enabled = available,
+                        onCheckedChange = { viewModel.setHealthConnectEnabled(it) },
+                    )
+                }
             }
 
             SettingsSection("Server") {
@@ -413,6 +552,72 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * Hands a finished export to the Android share sheet via the app's FileProvider — the only way a
+ * cache file can leave the app sandbox. The read grant is scoped to the receiving app.
+ */
+private fun shareExport(context: Context, exported: ExportedFile) {
+    val uri = runCatching {
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", exported.file)
+    }.getOrNull() ?: run {
+        Toast.makeText(context, "Couldn't open the export file.", Toast.LENGTH_LONG).show()
+        return
+    }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = exported.mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TITLE, exported.file.name)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "Share ${exported.file.name}"))
+}
+
+/** An export row: icon + label, swapping the chevron for a spinner while the download runs. */
+@Composable
+private fun ExportRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    busy: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (enabled || busy) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled || busy) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            modifier = Modifier.weight(1f),
+        )
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = SpotterTheme.pulse.effort,
+            )
+        } else {
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /** A label + value row for the About section (e.g. "Server  0.1.0 · a1b2c3d"). */
 @Composable
 private fun VersionRow(label: String, value: String) {
@@ -470,6 +675,30 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
         SectionHeader(title)
         Spacer(Modifier.height(8.dp))
         content()
+    }
+}
+
+/** A title + subtitle row with a trailing switch (the Reminders-toggle layout, reusable). */
+@Composable
+private fun SwitchSettingRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

@@ -44,3 +44,41 @@ async def test_export_includes_body_metric(auth_client):
 
 async def test_export_requires_auth(client):
     assert (await client.get("/export")).status_code == 401
+
+
+# ── GET /export/sets.csv ───────────────────────────────────────────────────
+
+
+async def test_sets_csv_header_and_logged_set(auth_client, exercise):
+    session = await auth_client.post("/sessions", json={"date": str(datetime.date.today())})
+    session_id = session.json()["id"]
+    add = await auth_client.post(
+        f"/sessions/{session_id}/sets",
+        json={
+            "exercise_id": str(exercise.id),
+            "set_number": 1,
+            "reps": 8,
+            "weight": 135.0,
+            "rpe": 8.0,
+            "completed": True,
+        },
+    )
+    assert add.status_code == 201
+
+    r = await auth_client.get("/export/sets.csv")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("text/csv")
+    assert "attachment" in r.headers.get("content-disposition", "")
+    assert r.headers["content-disposition"].endswith('.csv"')
+
+    lines = r.text.strip().splitlines()
+    assert lines[0] == "date,exercise,set_number,set_type,reps,weight,rpe,completed"
+    row = next((line for line in lines[1:] if exercise.name in line), None)
+    assert row is not None
+    assert row == (
+        f"{datetime.date.today().isoformat()},{exercise.name},1,normal,8,135.0,8.0,true"
+    )
+
+
+async def test_sets_csv_requires_auth(client):
+    assert (await client.get("/export/sets.csv")).status_code == 401

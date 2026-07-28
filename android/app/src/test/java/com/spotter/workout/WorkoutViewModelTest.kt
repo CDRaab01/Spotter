@@ -1,16 +1,22 @@
 package com.spotter.workout
 
 import android.content.Context
+import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
+import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
+import com.spotter.data.model.SuggestedAdjustmentAction
+import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.workout.WorkoutTimerController
 import com.spotter.ui.workout.WorkoutViewModel
+import com.spotter.util.AppPreferences
 import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -25,11 +31,13 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.wheneverBlocking
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -40,6 +48,8 @@ class WorkoutViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var repository: SessionRepository
+    private lateinit var exerciseRepository: ExerciseRepository
+    private lateinit var appPreferences: AppPreferences
     private lateinit var context: Context
     private lateinit var time: FakeTimeProvider
     private lateinit var viewModel: WorkoutViewModel
@@ -59,11 +69,21 @@ class WorkoutViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mock()
+        exerciseRepository = mock()
+        appPreferences = mock()
         context = mock()
         time = FakeTimeProvider(testDispatcher.scheduler)
+        whenever(appPreferences.trackRpe).thenReturn(flowOf(false))
+        whenever(appPreferences.autoStartRest).thenReturn(flowOf(true))
+        // Suspend mocks default to null (not an empty map) — stub the override lookup globally.
+        wheneverBlocking { repository.getRestSeconds(any()) }.thenReturn(emptyMap())
+        viewModel = createViewModel()
+    }
+
+    private fun createViewModel(): WorkoutViewModel {
         // read() returns null by default → no pending rest to resume in tests.
         val timer = WorkoutTimerController(context, time, CoroutineScope(testDispatcher), mock())
-        viewModel = WorkoutViewModel(repository, timer, time)
+        return WorkoutViewModel(repository, exerciseRepository, timer, time, appPreferences)
     }
 
     @After
@@ -346,6 +366,251 @@ class WorkoutViewModelTest {
         val captor = argumentCaptor<SessionUpdate>()
         verify(repository).updateSession(eq(session.id), captor.capture())
         assertEquals(5, captor.firstValue.durationSeconds)
+    }
+
+    @Test
+    fun `finishSession failure surfaces actionError and resets finishState`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSession(any(), any())).thenThrow(RuntimeException("network down"))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.finishSession(session.id)
+        advanceTimeBy(200)
+
+        // Previously the error was parked in finishState (read only for Loading) — invisible.
+        assertNotNull(viewModel.actionError.value)
+        assertIs<UiState.Idle>(viewModel.finishState.value)
+    }
+
+    @Test
+    fun `applyProgression sends adjust_weight with routine write-back`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.applyAdjustment(any(), any(), any())).thenReturn(session)
+        val prior = ExercisePrior(
+            exerciseId = "exercise-1",
+            exerciseName = "Squat",
+            reps = 8,
+            weight = 135.0,
+            date = "2026-05-01",
+            suggestedWeight = 140.0,
+            suggestedReps = 8,
+            suggestedReason = "All sets at 8+ reps — add weight",
+            action = "add_weight",
+        )
+
+        viewModel.applyProgression(session.id, prior)
+        advanceTimeBy(200)
+
+        val actions = argumentCaptor<List<SuggestedAdjustmentAction>>()
+        val toRoutine = argumentCaptor<Boolean>()
+        verify(repository).applyAdjustment(eq(session.id), actions.capture(), toRoutine.capture())
+        val action = actions.firstValue.single()
+        assertEquals("adjust_weight", action.type)
+        assertEquals("exercise-1", action.exerciseId)
+        assertEquals(140.0, action.weight)
+        assertEquals(8, action.reps)
+        // The write-back is the point: next session pre-fills at the new load.
+        assertEquals(true, toRoutine.firstValue)
+    }
+
+    @Test
+    fun `applyProgression without a suggested weight is a no-op`() = runTest(testDispatcher) {
+        val prior = ExercisePrior(
+            exerciseId = "exercise-1",
+            reps = 8,
+            date = "2026-05-01",
+            suggestedReason = "add reps",
+            action = "add_reps",
+        )
+
+        viewModel.applyProgression("session-1", prior)
+        advanceTimeBy(200)
+
+        verify(repository, org.mockito.kotlin.never()).applyAdjustment(any(), any(), any())
+    }
+
+    @Test
+    fun `applyProgression failure surfaces actionError`() = runTest(testDispatcher) {
+        whenever(repository.applyAdjustment(any(), any(), any()))
+            .thenThrow(RuntimeException("offline"))
+        val prior = ExercisePrior(
+            exerciseId = "exercise-1",
+            exerciseName = "Squat",
+            reps = 8,
+            date = "2026-05-01",
+            suggestedWeight = 140.0,
+            action = "add_weight",
+        )
+
+        viewModel.applyProgression("session-1", prior)
+        advanceTimeBy(200)
+
+        assertNotNull(viewModel.actionError.value)
+        viewModel.clearActionError()
+        assertNull(viewModel.actionError.value)
+    }
+
+    // ── Set types / RPE / deletion ─────────────────────────────────────────────
+
+    @Test
+    fun `setSetType patches state and sends the payload`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        val setLog = session.setLogs.first()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(setType = "warmup"))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.setSetType(session.id, setLog, "warmup")
+        advanceTimeBy(200)
+
+        verify(repository).updateSet(session.id, setLog.id, SetLogUpdate(setType = "warmup"))
+        val patched = (viewModel.session.value as UiState.Success).data.setLogs.first()
+        assertEquals("warmup", patched.setType)
+    }
+
+    @Test
+    fun `setRpe clamps into bounds and sends the payload`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        val setLog = session.setLogs.first()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(rpe = 10.0))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.setRpe(session.id, setLog, 12.0) // over the top → clamped to 10
+        advanceTimeBy(200)
+
+        verify(repository).updateSet(session.id, setLog.id, SetLogUpdate(rpe = 10.0))
+        val patched = (viewModel.session.value as UiState.Success).data.setLogs.first()
+        assertEquals(10.0, patched.rpe)
+    }
+
+    @Test
+    fun `deleteSet delegates to the repository and reloads`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        val setLog = session.setLogs.first()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.deleteSet(session.id, setLog)
+        advanceTimeBy(200)
+
+        verify(repository).deleteSet(session.id, setLog.id)
+        // Reload after deletion (initial load + the post-delete one).
+        verify(repository, org.mockito.kotlin.times(2)).getSession(session.id)
+        assertNull(viewModel.actionError.value)
+    }
+
+    @Test
+    fun `deleteSet failure surfaces actionError`() = runTest(testDispatcher) {
+        val setLog = fakeSetLog()
+        whenever(repository.deleteSet(any(), any())).thenThrow(RuntimeException("409"))
+
+        viewModel.deleteSet("session-1", setLog)
+        advanceTimeBy(200)
+
+        assertNotNull(viewModel.actionError.value)
+    }
+
+    // ── Manual exercise management ─────────────────────────────────────────────
+
+    @Test
+    fun `addExercise logs three fresh sets carrying the display name`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.logSet(any(), any(), anyOrNull())).thenReturn(fakeSetLog())
+        val exercise = ExerciseOut(id = "ex-9", name = "Face Pull", muscleGroup = "rear delts")
+
+        viewModel.addExercise(session.id, exercise)
+        advanceTimeBy(200)
+
+        val creates = argumentCaptor<SetLogCreate>()
+        verify(repository, org.mockito.kotlin.times(3))
+            .logSet(eq(session.id), creates.capture(), eq("Face Pull"))
+        assertEquals(listOf(1, 2, 3), creates.allValues.map { it.setNumber })
+        creates.allValues.forEach {
+            assertEquals("ex-9", it.exerciseId)
+            assertEquals(false, it.completed)
+            assertNull(it.weight) // no invented load — the user logs the real one
+        }
+    }
+
+    @Test
+    fun `removeExercise deletes only the incomplete sets`() = runTest(testDispatcher) {
+        val done = fakeSetLog(id = "set-done", completed = true)
+        val todo1 = fakeSetLog(id = "set-todo1")
+        val todo2 = fakeSetLog(id = "set-todo2")
+        val other = fakeSetLog(id = "set-other").copy(exerciseId = "exercise-2")
+        val session = fakeSession().copy(setLogs = listOf(done, todo1, todo2, other))
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.removeExercise(session.id, "exercise-1")
+        advanceTimeBy(200)
+
+        verify(repository).deleteSet(session.id, "set-todo1")
+        verify(repository).deleteSet(session.id, "set-todo2")
+        // Completed sets are immutable history; other exercises are untouched.
+        verify(repository, org.mockito.kotlin.never()).deleteSet(session.id, "set-done")
+        verify(repository, org.mockito.kotlin.never()).deleteSet(session.id, "set-other")
+    }
+
+    // ── Auto-start gating + per-exercise rest override ─────────────────────────
+
+    @Test
+    fun `auto-start off queues the rest instead of starting it`() = runTest(testDispatcher) {
+        whenever(appPreferences.autoStartRest).thenReturn(flowOf(false))
+        viewModel = createViewModel()
+        val session = fakeSession() // targetReps 8 → 90s heuristic
+        val setLog = session.setLogs.first()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(completed = true))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.toggleComplete(session.id, setLog, reps = 8, weightLbs = 135.0)
+        advanceTimeBy(200)
+
+        assertNull(viewModel.restTimerSeconds.value)
+        assertEquals(90, viewModel.pendingRestDuration.value)
+
+        viewModel.startPendingRest()
+        advanceTimeBy(200)
+
+        assertEquals(90, viewModel.restTimerSeconds.value)
+        assertNull(viewModel.pendingRestDuration.value)
+    }
+
+    @Test
+    fun `routine rest override replaces the rep-range heuristic`() = runTest(testDispatcher) {
+        val session = fakeSession() // heuristic would be 90s (8 reps)
+        val setLog = session.setLogs.first()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.getRestSeconds(session.id)).thenReturn(mapOf("exercise-1" to 45))
+        whenever(repository.updateSet(any(), any(), any())).thenReturn(setLog.copy(completed = true))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.toggleComplete(session.id, setLog, reps = 5, weightLbs = 135.0)
+        advanceTimeBy(200)
+
+        // The prescription is exact: no heuristic, no failure bump (5 < 8 would have added 60s).
+        assertEquals(45, viewModel.restTimerSeconds.value)
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

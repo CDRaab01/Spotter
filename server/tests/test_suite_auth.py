@@ -73,7 +73,9 @@ async def test_disabled_by_default_returns_404(client):
 
 
 async def test_new_email_creates_and_links(client, suite_enabled):
-    email = "brandnew@example.com"
+    # Unique per run: these assert on "this email does not exist yet", so a fixed address
+    # only passes against a virgin database and reports a false failure on any re-run.
+    email = f"brandnew-{uuid.uuid4().hex[:12]}@example.com"
     assert await _count_users(email) == 0
     r = await client.post("/auth/suite", json={"suite_token": _suite_token(email)})
     assert r.status_code == 200, r.text
@@ -86,7 +88,7 @@ async def test_new_email_creates_and_links(client, suite_enabled):
 
 
 async def test_links_to_existing_password_account(client, suite_enabled):
-    email = "existing@example.com"
+    email = f"existing-{uuid.uuid4().hex[:12]}@example.com"
     reg = await client.post(
         "/auth/register",
         json={"name": "Existing", "email": email, "password": "Password123!"},

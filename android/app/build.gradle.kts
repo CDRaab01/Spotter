@@ -168,6 +168,11 @@ dependencies {
     // Suite SSO (BROKER.md Phase 2c): OpenID Connect authorization-code + PKCE via AppAuth.
     implementation(libs.appauth)
 
+    // Health Connect (com.spotter.health) — write-only mirroring of finished workouts and
+    // weigh-ins, opt-in behind a Settings toggle. All time/type/unit logic lives in the pure
+    // HealthMapper so it stays unit-testable without the SDK.
+    implementation(libs.health.connect.client)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockito.kotlin)

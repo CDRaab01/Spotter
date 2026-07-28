@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,6 +35,7 @@ import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
 import design.pulse.ui.components.PanelCard
+import com.spotter.ui.navigation.Screen
 import com.spotter.util.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,7 +87,14 @@ fun ExerciseLibraryScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(state.data, key = { it.id }) { exercise ->
-                                ExerciseRow(exercise)
+                                ExerciseRow(
+                                    exercise = exercise,
+                                    onOpen = {
+                                        navController.navigate(
+                                            Screen.ExerciseDetail.createRoute(exercise.id)
+                                        )
+                                    },
+                                )
                             }
                         }
                     }
@@ -96,17 +106,27 @@ fun ExerciseLibraryScreen(
     }
 }
 
+/** Cards navigate: tapping a row opens the exercise's how-to + history. */
 @Composable
-private fun ExerciseRow(exercise: ExerciseOut) {
-    PanelCard(modifier = Modifier.fillMaxWidth()) {
-        Text(exercise.name, style = MaterialTheme.typography.titleMedium)
-        val subtitle = listOfNotNull(exercise.muscleGroup, exercise.equipment)
-            .joinToString(" · ")
-        if (subtitle.isNotEmpty()) {
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun ExerciseRow(exercise: ExerciseOut, onOpen: () -> Unit) {
+    PanelCard(modifier = Modifier.fillMaxWidth(), onClick = onOpen) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(exercise.name, style = MaterialTheme.typography.titleMedium)
+                val subtitle = listOfNotNull(exercise.muscleGroup, exercise.equipment)
+                    .joinToString(" · ")
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

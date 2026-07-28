@@ -37,6 +37,7 @@ def _routine_to_out(routine: WorkoutRoutine) -> RoutineOut:
             is_bodyweight=re.is_bodyweight,
             order=re.order,
             superset_group=re.superset_group,
+            rest_seconds=re.rest_seconds,
             exercise_name=re.exercise.name if re.exercise else None,
         )
         for re in routine.routine_exercises

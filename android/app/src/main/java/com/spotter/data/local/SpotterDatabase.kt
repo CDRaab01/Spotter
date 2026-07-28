@@ -38,7 +38,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         CardioSessionEntity::class,
         ExerciseEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -264,6 +264,28 @@ abstract class SpotterDatabase : RoomDatabase() {
                         equipment TEXT
                     )
                 """.trimIndent())
+            }
+        }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 2026-07 feature round, purely additive:
+                // exercise detail content (mirror of ExerciseOut.instructions/secondary_muscles),
+                db.execSQL("ALTER TABLE exercises ADD COLUMN instructions TEXT")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN secondaryMuscles TEXT")
+                // RPE + set types on set logs, plus the offline-deletion tombstone (the
+                // routine/program pendingDelete precedent — see SetLogEntity),
+                db.execSQL("ALTER TABLE set_logs ADD COLUMN rpe REAL")
+                db.execSQL("ALTER TABLE set_logs ADD COLUMN setType TEXT NOT NULL DEFAULT 'normal'")
+                db.execSQL("ALTER TABLE set_logs ADD COLUMN pendingDelete INTEGER NOT NULL DEFAULT 0")
+                // per-exercise rest override,
+                db.execSQL("ALTER TABLE routine_exercises ADD COLUMN restSeconds INTEGER")
+                // and program structure (source/description/weeks/deload/started_on).
+                db.execSQL("ALTER TABLE workout_programs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+                db.execSQL("ALTER TABLE workout_programs ADD COLUMN description TEXT")
+                db.execSQL("ALTER TABLE workout_programs ADD COLUMN weeks INTEGER")
+                db.execSQL("ALTER TABLE workout_programs ADD COLUMN deloadWeek INTEGER")
+                db.execSQL("ALTER TABLE workout_programs ADD COLUMN startedOn TEXT")
             }
         }
     }

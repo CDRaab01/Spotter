@@ -11,7 +11,9 @@ import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
 import com.spotter.data.model.BodyMetricCreate
+import com.spotter.data.model.InsightsOut
 import com.spotter.data.model.RoutineOut
+import com.spotter.data.model.StalledExercise
 import com.spotter.data.model.SessionSummary
 import com.spotter.data.model.RoutineUpdate
 import com.spotter.data.model.ProgramDayOut
@@ -482,6 +484,72 @@ class HomeViewModelTest {
         advanceTimeBy(200)
 
         assertNull(viewModel.staleAsOfMs.value)
+    }
+
+    @Test
+    fun `insights populate the coach-signals data when the round succeeds`() = runTest(testDispatcher) {
+        wheneverBlocking { aiRepository.insights() }.thenReturn(
+            InsightsOut(
+                stalled = listOf(
+                    StalledExercise(
+                        exerciseId = "ex-1",
+                        exerciseName = "Bench Press",
+                        sessionsStuck = 3,
+                        lastWeight = 135.0,
+                    ),
+                ),
+                prsThisWeek = 2,
+            )
+        )
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        val insights = viewModel.insights.value
+        assertEquals(1, insights?.stalled?.size)
+        assertEquals("Bench Press", insights?.stalled?.first()?.exerciseName)
+        assertEquals(2, insights?.prsThisWeek)
+    }
+
+    @Test
+    fun `a failed insights round leaves no card and does not disturb Home`() = runTest(testDispatcher) {
+        // /insights is additive polish: a failure must be invisible — no card, no snackbar, and
+        // the rest of Home (stats, upcoming) unchanged.
+        wheneverBlocking { aiRepository.insights() }.thenAnswer { throw IOException("offline") }
+        val today = LocalDate.now().toString()
+        whenever(sessionRepository.listSessions()).thenReturn(
+            listOf(
+                SessionSummary(id = "a", date = today, status = "completed", durationSeconds = 1800, totalSets = 5, completedSets = 5),
+            )
+        )
+        whenever(programDao.getActive()).thenReturn(null)
+
+        viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertNull(viewModel.insights.value)
+        assertNull(viewModel.actionError.value)
+        assertEquals(30, viewModel.weeklyActiveMinutes.value)
+        assertEquals(1, viewModel.streak.value)
+        val upcoming = viewModel.upcoming.value
+        assertIs<UiState.Success<List<*>>>(upcoming)
+        assertTrue(upcoming.data.isEmpty())
+    }
+
+    @Test
+    fun `a failed refresh keeps the last good insights`() = runTest(testDispatcher) {
+        // Consecutive stubbing: the init round lands, the refresh round fails.
+        wheneverBlocking { aiRepository.insights() }
+            .thenReturn(InsightsOut(prsThisWeek = 1))
+            .thenAnswer { throw IOException("offline") }
+        viewModel = createViewModel()
+        advanceUntilIdle()
+        assertEquals(1, viewModel.insights.value?.prsThisWeek)
+
+        viewModel.refresh()
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.insights.value?.prsThisWeek)
     }
 
     @Test

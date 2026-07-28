@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,6 +39,7 @@ import androidx.navigation.NavController
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
+import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.SpotterTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,8 +52,8 @@ fun ProgramPresetsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
-        viewModel.applied.collect { name ->
-            snackbarHostState.showSnackbar("\"$name\" added & activated")
+        viewModel.applied.collect { result ->
+            snackbarHostState.showSnackbar(presetAppliedMessage(result))
             navController.popBackStack()
         }
     }
@@ -86,7 +87,10 @@ fun ProgramPresetsScreen(
                     preset = preset,
                     isApplying = applyingId == preset.id,
                     enabled = applyingId == null,
-                    onApply = { viewModel.applyPreset(preset) },
+                    onOpen = {
+                        navController.navigate(Screen.ProgramPresetDetail.createRoute(preset.id))
+                    },
+                    onApply = { viewModel.applyPreset(preset, activate = true) },
                 )
             }
         }
@@ -98,11 +102,24 @@ private fun PresetCard(
     preset: PresetProgram,
     isApplying: Boolean,
     enabled: Boolean,
+    onOpen: () -> Unit,
     onApply: () -> Unit,
 ) {
-    PanelCard(modifier = Modifier.fillMaxWidth()) {
+    // Cards navigate, buttons act: tapping the card opens the day-by-day preview.
+    PanelCard(modifier = Modifier.fillMaxWidth(), onClick = onOpen) {
         Column {
-            Text(preset.displayName, style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    preset.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 preset.description,
@@ -110,9 +127,16 @@ private fun PresetCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(8.dp))
+            Text(
+                presetCadenceLine(preset),
+                style = MaterialTheme.typography.labelSmall,
+                color = SpotterTheme.pulse.effort,
+            )
+            Spacer(Modifier.height(4.dp))
             preset.days.forEach { day ->
                 Text(
-                    "${day.label}: ${day.exercises.joinToString(", ") { it.name }}",
+                    if (day.isRest) "${day.label}: —"
+                    else "${day.label}: ${day.exercises.joinToString(", ") { it.name }}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -132,7 +156,7 @@ private fun PresetCard(
                     Spacer(Modifier.width(12.dp))
                 }
                 PulseButton(
-                    text = "Use program",
+                    text = "Add & activate",
                     onClick = onApply,
                     enabled = enabled,
                     tonal = true,

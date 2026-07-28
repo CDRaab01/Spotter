@@ -15,6 +15,24 @@ BODY_WEIGHT_BOUNDS_LB = (50.0, 1500.0)  # bodyweight metric (lbs)
 BODYFAT_BOUNDS = (1.0, 70.0)  # body fat percentage
 MEASUREMENT_BOUNDS = (1.0, 500.0)  # tape measurements, generous enough for both in and cm
 
+# RPE (rate of perceived exertion) — optional per-set effort score.
+RPE_BOUNDS = (1.0, 10.0)
+
+# Allowed set types. "warmup" sets are excluded from volume, progression, and PR
+# detection — they are ramp-up work, not working sets.
+SET_TYPES = ("normal", "warmup", "drop", "failure", "amrap")
+
+# Program periodization (mesocycle length + scheduled deload week).
+PROGRAM_WEEKS_BOUNDS = (1, 52)
+
+# Per-exercise rest between sets (seconds).
+REST_SECONDS_BOUNDS = (15, 600)
+
+# Scheduled-deload seeding: a deload-week session starts with fewer sets at a
+# lighter load (weight * DELOAD_WEIGHT_FACTOR, ceil(sets * DELOAD_SET_FACTOR)).
+DELOAD_WEIGHT_FACTOR = 0.9
+DELOAD_SET_FACTOR = 0.6
+
 # Cap on actions in one AI live-workout adjustment (extraction truncates, apply rejects).
 MAX_ADJUSTMENT_ACTIONS = 6
 

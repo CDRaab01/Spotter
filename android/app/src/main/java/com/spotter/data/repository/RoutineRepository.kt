@@ -41,6 +41,15 @@ class RoutineRepository @Inject constructor(
         pullFromServer()
     }
 
+    /**
+     * The stable local (Room PK) id for a routine referenced by either id. A server-served payload
+     * (e.g. `SessionOut.routineId`) carries the server id; everything local keys off the Room PK.
+     * Falls back to the input when the routine isn't mirrored, so callers never get a null.
+     */
+    suspend fun localRoutineId(routineId: String): String =
+        if (dao.getById(routineId) != null) routineId
+        else dao.getByServerId(routineId)?.id ?: routineId
+
     suspend fun getRoutine(id: String): RoutineOut {
         // Prefer the server copy when we have a server id and connectivity; fall back to local.
         val local = dao.getById(id)
@@ -199,23 +208,26 @@ class RoutineRepository @Inject constructor(
         routineId = routineId, exerciseId = exerciseId, exerciseName = exerciseName,
         targetSets = targetSets, targetReps = targetReps, targetWeight = targetWeight,
         isBodyweight = isBodyweight, order = order, supersetGroup = supersetGroup,
+        restSeconds = restSeconds,
     )
 
     private fun RoutineExerciseIn.toEntity(routineId: String) = RoutineExerciseEntity(
         routineId = routineId, exerciseId = exerciseId, exerciseName = null,
         targetSets = targetSets, targetReps = targetReps, targetWeight = targetWeight,
         isBodyweight = isBodyweight, order = order, supersetGroup = supersetGroup,
+        restSeconds = restSeconds,
     )
 
     private fun RoutineExerciseEntity.toIn() = RoutineExerciseIn(
         exerciseId = exerciseId, targetSets = targetSets, targetReps = targetReps,
         targetWeight = targetWeight, isBodyweight = isBodyweight, order = order,
-        supersetGroup = supersetGroup,
+        supersetGroup = supersetGroup, restSeconds = restSeconds,
     )
 
     private fun RoutineExerciseEntity.toOut() = RoutineExerciseOut(
         id = "$routineId:$exerciseId", exerciseId = exerciseId, targetSets = targetSets,
         targetReps = targetReps, targetWeight = targetWeight, isBodyweight = isBodyweight,
         order = order, exerciseName = exerciseName, supersetGroup = supersetGroup,
+        restSeconds = restSeconds,
     )
 }

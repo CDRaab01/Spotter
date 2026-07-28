@@ -14,6 +14,7 @@ import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
+import com.spotter.data.model.InsightsOut
 import com.spotter.data.model.RoutineCreate
 import com.spotter.data.model.RoutineUpdate
 import com.spotter.data.model.SessionCreate
@@ -131,16 +132,45 @@ class HomeViewModel @Inject constructor(
     private val _staleAsOfMs = MutableStateFlow<Long?>(null)
     val staleAsOfMs: StateFlow<Long?> = _staleAsOfMs.asStateFlow()
 
+    /**
+     * Routines not attached to any program day. Surfaced as Home's "Your routines" section so a
+     * manually created routine is reachable before (or without) being scheduled into a program —
+     * previously a saved routine had no screen that could open it until a program day linked it.
+     */
+    private val _standaloneRoutines = MutableStateFlow<List<WorkoutRoutineEntity>>(emptyList())
+    val standaloneRoutines: StateFlow<List<WorkoutRoutineEntity>> = _standaloneRoutines.asStateFlow()
+
+    /**
+     * Proactive coaching signals (stalled lifts + PRs this week) from GET /insights. Null until
+     * a round succeeds — and a failed round leaves the last good value in place rather than
+     * blanking it. Purely additive polish: no error is ever surfaced for this.
+     */
+    private val _insights = MutableStateFlow<InsightsOut?>(null)
+    val insights: StateFlow<InsightsOut?> = _insights.asStateFlow()
+
     private var autoGenerateTriggered = false
 
     init {
         observeRoutines()
+        observeStandaloneRoutines()
         observePrograms()
         observeBodyweight()
         sync()
         loadStats()
         loadUpcoming()
         loadGreeting()
+        loadInsights()
+    }
+
+    /**
+     * Best-effort: any failure (offline, 404 on an older server, HTTP error) simply means no
+     * coach-signals card. Home must look exactly as it did before when this doesn't land.
+     */
+    private fun loadInsights() {
+        viewModelScope.launch {
+            runCatching { aiRepository.insights() }
+                .onSuccess { _insights.value = it }
+        }
     }
 
     private fun observePrograms() {
@@ -256,10 +286,20 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Re-pull stats and upcoming workouts (called on Home resume). */
+    /** Re-pull stats, upcoming workouts, and coach signals (called on Home resume). */
     fun refresh() {
         loadStats()
         loadUpcoming()
+        loadInsights()
+    }
+
+    /**
+     * Retry hook for the full-screen error state: the routines flow dies once its `catch`
+     * fires, so recovering needs a fresh collection plus a sync round.
+     */
+    fun retryLoad() {
+        observeRoutines()
+        sync()
     }
 
     private fun observeBodyweight() {
@@ -346,6 +386,15 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun observeStandaloneRoutines() {
+        viewModelScope.launch {
+            combine(routineRepository.routines, programDayDao.observeAll()) { routines, days ->
+                val linked = days.mapNotNull { it.routineId }.toSet()
+                routines.filter { it.id !in linked }
+            }.collect { _standaloneRoutines.value = it }
+        }
+    }
+
     private fun loadRoutineExercises(routines: List<WorkoutRoutineEntity>) {
         viewModelScope.launch {
             val map = routines.associate { routine ->
@@ -423,7 +472,10 @@ class HomeViewModel @Inject constructor(
                     }
                 }
             } catch (_: Exception) {
-                // silent — user can still create a routine manually
+                // The coach being down shouldn't read as a dead app: point at the preset
+                // path, which works entirely without the LLM.
+                _actionError.value =
+                    "Couldn't reach the AI coach — browse preset programs to get started."
             } finally {
                 _generatingPlan.value = false
             }
@@ -440,7 +492,10 @@ class HomeViewModel @Inject constructor(
                 )
                 _navigateToWorkout.emit(session.id)
             } catch (e: Exception) {
-                _startState.value = UiState.Error(e.message ?: "Could not start workout")
+                // Surface via the snackbar — startState is only read for its Loading flag,
+                // so an Error left there was invisible and the button silently did nothing.
+                _actionError.value = "Couldn't start the workout. Check your connection and try again."
+                _startState.value = UiState.Idle
                 return@launch
             }
             _startState.value = UiState.Idle
@@ -503,7 +558,9 @@ class HomeViewModel @Inject constructor(
                 metricRepository.addMetric(
                     BodyMetricCreate(date = LocalDate.now().toString(), weight = weight)
                 )
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                _actionError.value = "Couldn't save your weight. Try again."
+            }
         }
     }
 

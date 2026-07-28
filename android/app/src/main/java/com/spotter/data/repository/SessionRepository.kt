@@ -18,6 +18,7 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.remote.ApiService
+import com.spotter.health.HealthSync
 import com.spotter.util.TokenStore
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -42,6 +43,9 @@ class SessionRepository @Inject constructor(
     private val routineDao: WorkoutRoutineDao,
     private val exerciseDao: ExerciseDao,
     private val tokenStore: TokenStore,
+    // Opt-in Health Connect mirror. Defaults to the no-op so direct (test) construction is
+    // unchanged; Hilt always injects the real binding. See com.spotter.health.HealthSync.
+    private val healthSync: HealthSync = HealthSync.NoOp,
 ) {
     /**
      * The server id to send for a session's [routineId]. A routine created offline has a local
@@ -133,6 +137,7 @@ class SessionRepository @Inject constructor(
                                    else local.copy(
                                        reps = sl.reps, weight = sl.weight,
                                        completed = sl.completed, completedAt = sl.completedAt,
+                                       rpe = sl.rpe, setType = sl.setType,
                                    )
                         setLogDao.upsert(keep)
                         keep.toSetLogOut()
@@ -191,6 +196,19 @@ class SessionRepository @Inject constructor(
     suspend fun getStartedAtMs(id: String): Long? = sessionDao.getById(id)?.startedAtMs
 
     /**
+     * Per-exercise rest overrides for the session's routine: exerciseId → restSeconds, only for
+     * exercises that carry one. Read from the routine_exercises Room mirror (kept fresh by the
+     * routine sync), so it works offline; SetLogOut deliberately doesn't carry rest_seconds — it
+     * is routine prescription, not per-set data. Ad-hoc sessions (no routine) get an empty map.
+     */
+    suspend fun getRestSeconds(id: String): Map<String, Int> {
+        val routineId = sessionDao.getById(id)?.routineId ?: return emptyMap()
+        return routineExerciseDao.getByRoutineId(routineId)
+            .mapNotNull { ex -> ex.restSeconds?.let { ex.exerciseId to it } }
+            .toMap()
+    }
+
+    /**
      * Apply a user-accepted AI workout adjustment. Online-required by design — the
      * suggestion could only exist if chat (and therefore the server) was reachable.
      *
@@ -244,6 +262,7 @@ class SessionRepository @Inject constructor(
             syncPending = true,
         )
         sessionDao.upsert(updated)
+        healthSync.onStrengthSessionSaved(previousStatus = session.status, saved = updated)
 
         val serverSessionId = session.serverId
         return if (serverSessionId != null) {
@@ -262,7 +281,12 @@ class SessionRepository @Inject constructor(
 
     // ── Set log operations ────────────────────────────────────────────────────
 
-    suspend fun logSet(sessionId: String, req: SetLogCreate): SetLogOut {
+    /**
+     * [displayName] is a fallback for the sibling display enrichment below — pass it when adding
+     * the FIRST set of an exercise mid-workout (there is no sibling to copy the name from, and
+     * the getSession merge preserves local rows, so a null name would stick until a reconcile).
+     */
+    suspend fun logSet(sessionId: String, req: SetLogCreate, displayName: String? = null): SetLogOut {
         val localId = UUID.randomUUID().toString()
         // Copy display enrichment (name, targets, superset group) from a sibling set of
         // the same exercise so an offline-added set renders fully without a server round
@@ -273,9 +297,10 @@ class SessionRepository @Inject constructor(
             id = localId, sessionId = sessionId,
             exerciseId = req.exerciseId, setNumber = req.setNumber,
             reps = req.reps, weight = req.weight, completed = req.completed, completedAt = null,
-            exerciseName = sibling?.exerciseName, targetSets = sibling?.targetSets,
+            exerciseName = sibling?.exerciseName ?: displayName, targetSets = sibling?.targetSets,
             targetReps = sibling?.targetReps, targetWeight = sibling?.targetWeight,
             supersetGroup = sibling?.supersetGroup,
+            rpe = req.rpe, setType = req.setType,
             serverId = null, syncPending = true,
         )
         setLogDao.upsert(localLog)
@@ -301,6 +326,8 @@ class SessionRepository @Inject constructor(
             reps = req.reps ?: localLog.reps,
             weight = if (req.weight != null) req.weight else localLog.weight,
             completed = req.completed ?: localLog.completed,
+            rpe = req.rpe ?: localLog.rpe,
+            setType = req.setType ?: localLog.setType,
             syncPending = true,
         )
         setLogDao.upsert(updated)
@@ -320,6 +347,40 @@ class SessionRepository @Inject constructor(
             }
         } else {
             updated.toSetLogOut()
+        }
+    }
+
+    /**
+     * Delete one set. Local removal is immediate; the server DELETE is best-effort:
+     *
+     * - Never synced (`serverId == null`) → hard-delete locally, nothing to tell the server.
+     * - Synced + server DELETE succeeds → hard-delete locally.
+     * - Synced + connectivity failure ([IOException]) → the row becomes a **pendingDelete
+     *   tombstone** (the routine/program precedent applied to sets): hidden from every read
+     *   (the DAO queries filter it), so the getSession merge can't resurrect the server's copy,
+     *   and drained by [syncPending] which retries the DELETE on reconnect.
+     * - Synced + HTTP error → the server answered (e.g. 409 completed session): restore the row
+     *   and propagate, per the suite-wide degrade rule.
+     */
+    suspend fun deleteSet(localSessionId: String, setId: String) {
+        val local = setLogDao.getById(setId) ?: return
+        val serverSetId = local.serverId
+        val serverSessionId = sessionDao.getById(localSessionId)?.serverId
+        if (serverSetId == null || serverSessionId == null) {
+            // Never reached the server (or the whole session hasn't) — just drop it locally; the
+            // session-create sync path only pushes rows that still exist.
+            setLogDao.deleteById(setId)
+            return
+        }
+        setLogDao.upsert(local.copy(pendingDelete = true)) // hide immediately
+        try {
+            api.deleteSet(serverSessionId, serverSetId)
+            setLogDao.deleteById(setId)
+        } catch (_: IOException) {
+            // Tombstone stays; syncPending drains it on reconnect.
+        } catch (e: Exception) {
+            setLogDao.upsert(local.copy(pendingDelete = false))
+            throw e
         }
     }
 
@@ -370,6 +431,23 @@ class SessionRepository @Inject constructor(
     // ── Background sync ───────────────────────────────────────────────────────
 
     suspend fun syncPending() {
+        // 0. Drain set-deletion tombstones (offline deletions of server-synced sets). A 404/410
+        //    means the set is already gone server-side — treat as done; other HTTP errors also
+        //    clear the tombstone (the server answered and refuses; retrying forever would fight
+        //    it), while connectivity failures keep it queued.
+        for (sl in setLogDao.getPendingDeleteLogs()) {
+            val serverSessionId = sessionDao.getById(sl.sessionId)?.serverId ?: continue
+            val serverSetId = sl.serverId ?: run { setLogDao.deleteById(sl.id); null } ?: continue
+            try {
+                api.deleteSet(serverSessionId, serverSetId)
+                setLogDao.deleteById(sl.id)
+            } catch (_: IOException) {
+                continue
+            } catch (_: Exception) {
+                setLogDao.deleteById(sl.id)
+            }
+        }
+
         // 1. Create sessions on server that were created offline
         for (session in sessionDao.getUnsynced()) {
             try {
@@ -399,6 +477,7 @@ class SessionRepository @Inject constructor(
                             SetLogCreate(
                                 exerciseId = local.exerciseId, setNumber = local.setNumber,
                                 reps = local.reps, weight = local.weight, completed = local.completed,
+                                rpe = local.rpe, setType = local.setType,
                             )
                         )
                         setLogDao.upsert(local.copy(serverId = result.id, syncPending = false))
@@ -417,6 +496,7 @@ class SessionRepository @Inject constructor(
                     SetLogCreate(
                         exerciseId = sl.exerciseId, setNumber = sl.setNumber,
                         reps = sl.reps, weight = sl.weight, completed = sl.completed,
+                        rpe = sl.rpe, setType = sl.setType,
                     )
                 )
                 setLogDao.upsert(sl.copy(serverId = result.id, syncPending = false))
@@ -430,7 +510,10 @@ class SessionRepository @Inject constructor(
             try {
                 api.updateSet(
                     serverSessionId, serverSetId,
-                    SetLogUpdate(reps = sl.reps, weight = sl.weight, completed = sl.completed)
+                    SetLogUpdate(
+                        reps = sl.reps, weight = sl.weight, completed = sl.completed,
+                        rpe = sl.rpe, setType = sl.setType,
+                    )
                 )
                 setLogDao.upsert(sl.copy(syncPending = false))
             } catch (_: Exception) { continue }
@@ -478,6 +561,7 @@ class SessionRepository @Inject constructor(
         exerciseName = exerciseName, targetSets = targetSets,
         targetReps = targetReps, targetWeight = targetWeight,
         supersetGroup = supersetGroup,
+        rpe = rpe, setType = setType,
         serverId = id, syncPending = false,
     )
 
@@ -488,6 +572,7 @@ class SessionRepository @Inject constructor(
         exerciseName = exerciseName, targetSets = targetSets,
         targetReps = targetReps, targetWeight = targetWeight,
         supersetGroup = supersetGroup,
+        rpe = rpe, setType = setType,
     )
 
     private fun adaptSetLogs(

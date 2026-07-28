@@ -120,6 +120,23 @@ def _count_stalls(
     return stalls
 
 
+def stalled_sessions(
+    target_reps: int | None,
+    last_sets: list[SetResult],
+    exercise_history: list[SessionHistory],
+) -> int:
+    """Consecutive stalled sessions ending in the most recent one, or 0 when it
+    wasn't a real miss (a set left incomplete). The public face of the deload
+    trigger inside :func:`suggest_progression`, factored out so GET /insights can
+    reuse the exact same stall detection instead of duplicating it."""
+    if not last_sets or all(s.completed for s in last_sets):
+        return 0
+    last_weight = _working_weight(last_sets)
+    if last_weight is None:
+        return 0
+    return _count_stalls(last_weight, target_reps, exercise_history)
+
+
 def suggest_progression(
     target_reps: int | None,
     last_sets: list[SetResult],
@@ -188,7 +205,7 @@ def suggest_progression(
         )
 
     # A real miss (a set left incomplete) → hold, or deload once the stall is entrenched.
-    stalls = _count_stalls(last_weight, target_reps, exercise_history)
+    stalls = stalled_sessions(target_reps, last_sets, exercise_history)
     if stalls >= DELOAD_STALL_SESSIONS:
         deloaded = clamp_weight(last_weight * (1.0 - DELOAD_PCT))
         return ProgressionSuggestion(

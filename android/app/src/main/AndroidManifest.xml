@@ -12,9 +12,19 @@
     <!-- Read suite connection config from the Dragonfly hub (BROKER.md Phase 1). Granted only
          because all suite apps share one signing key; harmless if Dragonfly isn't installed. -->
     <uses-permission android:name="com.dragonfly.permission.READ_SUITE_CONFIG" />
-    <!-- API 30+ package visibility: needed to resolve Dragonfly's ContentProvider. -->
+
+    <!-- Health Connect (com.spotter.health) — WRITE ONLY, opt-in behind a Settings toggle.
+         Spotter mirrors finished workouts and weigh-ins into the user's system health record and
+         never reads anything back, so no READ_* permission is declared. -->
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_WEIGHT" />
+
+    <!-- API 30+ package visibility: needed to resolve Dragonfly's ContentProvider, and (below
+         Android 14, where Health Connect ships as a separate APK) to see the Health Connect
+         provider at all — without it HealthConnectClient.getSdkStatus always reports UNAVAILABLE. -->
     <queries>
         <package android:name="com.dragonfly" />
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <application
@@ -51,7 +61,38 @@
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
+            <!-- Health Connect privacy-policy rationale, pre-Android 14 (the standalone Health
+                 Connect APK). Deliberately wired to MainActivity rather than a dedicated screen:
+                 Spotter's Health Connect use is one opt-in toggle in Settings that explains itself,
+                 so landing the user in the app is the honest minimum. -->
+            <intent-filter>
+                <action android:name="androidx.health.connect.action.SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+        <!-- The same rationale entry point on Android 14+, where Health Connect is part of the
+             platform and uses the permission-usage intent instead. Same target, same reasoning. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Shares the downloaded data exports (cacheDir/exports/) with the Android share sheet.
+             See com.spotter.data.export.ExportRepository + res/xml/file_paths.xml. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- AppAuth (BROKER.md Phase 2c) themes its AuthorizationManagementActivity as AppCompat but
              leaves RedirectUriReceiverActivity to inherit the app theme, which isn't AppCompat →
              it crashes on the redirect ("You need to use a Theme.AppCompat theme"). Force an

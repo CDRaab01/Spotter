@@ -1,9 +1,11 @@
+import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from app.limits import REPS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
+from app.limits import PROGRAM_WEEKS_BOUNDS, REPS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
+from app.schemas.program import _check_deload_week
 from app.schemas.routine import RoutineExerciseIn
 
 
@@ -54,6 +56,10 @@ class AiProgramDraft(BaseModel):
     name: str
     source: str = "ai"
     days: list[AiProgramDay]
+    # Optional periodization from the model (untrusted): mesocycle length + which
+    # 1-based week is the deload. Clamped/validated by _extract_program, never here.
+    weeks: int | None = None
+    deload_week: int | None = None
 
 
 class SuggestedProgramDay(BaseModel):
@@ -65,13 +71,31 @@ class SuggestedProgramDay(BaseModel):
 class SuggestedProgram(BaseModel):
     name: str
     days: list[SuggestedProgramDay]
+    # Clamped by extraction: weeks within PROGRAM_WEEKS_BOUNDS, deload_week None
+    # unless it falls inside 1..weeks.
+    weeks: int | None = None
+    deload_week: int | None = None
 
 
 class AcceptProgramRequest(BaseModel):
     """Client echoes back the suggested program it showed; the server re-validates
-    bounds via RoutineExerciseIn before persisting."""
+    bounds via RoutineExerciseIn (and the weeks/deload_week Field + validator
+    below) before persisting."""
     name: str
     days: list[SuggestedProgramDay]
+    weeks: int | None = Field(
+        default=None, ge=PROGRAM_WEEKS_BOUNDS[0], le=PROGRAM_WEEKS_BOUNDS[1]
+    )
+    deload_week: int | None = Field(default=None, ge=1)
+    description: str | None = None
+    source: Literal["ai", "preset", "manual"] = "ai"
+    # False = save the program without touching the currently active one.
+    activate: bool = True
+
+    @model_validator(mode="after")
+    def _validate_deload(self) -> "AcceptProgramRequest":
+        _check_deload_week(self.weeks, self.deload_week)
+        return self
 
 
 # ── Live workout adjustments ────────────────────────────────────────────────
@@ -129,3 +153,28 @@ class ChatResponse(BaseModel):
     suggested_routine: SuggestedRoutine | None = None
     suggested_program: SuggestedProgram | None = None
     suggested_adjustment: SuggestedAdjustment | None = None
+
+
+# ── Post-workout debrief + weekly recap ─────────────────────────────────────
+
+
+class DebriefOut(BaseModel):
+    debrief: str
+
+
+class WeeklyRecapStats(BaseModel):
+    strength_sessions: int = 0
+    cardio_sessions: int = 0
+    total_volume_lb: float = 0.0
+    active_minutes: int = 0
+    prs: int = 0
+    # First vs last bodyweight metric in the window; null with fewer than 2 points.
+    bodyweight_delta_lb: float | None = None
+
+
+class WeeklyRecapOut(BaseModel):
+    week_start: datetime.date
+    stats: WeeklyRecapStats
+    # Best-effort LM narrative over the stats — null when LM Studio is unavailable
+    # (the numbers are always server-computed regardless).
+    narrative: str | None = None

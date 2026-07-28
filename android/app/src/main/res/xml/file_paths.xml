@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider roots for `${applicationId}.fileprovider`. Only the export directory is shared:
+  Settings → Export data writes the downloaded JSON/CSV into cacheDir/exports/ and hands the
+  share sheet a content:// URI for it (see com.spotter.data.export.ExportRepository).
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

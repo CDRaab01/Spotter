@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from fastapi import HTTPException, status
@@ -15,6 +16,44 @@ from app.schemas.program import (
     ProgramOut,
     ProgramUpdate,
 )
+
+
+def current_week(
+    started_on: datetime.date | None, weeks: int | None, today: datetime.date
+) -> int | None:
+    """The 1-based week a program is in on ``today``, or None when the program has
+    no week structure (either field unset). Mesocycles cycle: week ``weeks`` rolls
+    back over to week 1, so a 4-week block repeats indefinitely from ``started_on``.
+    Pure so the math is unit-testable in isolation."""
+    if started_on is None or weeks is None:
+        return None
+    return ((today - started_on).days // 7) % weeks + 1
+
+
+async def is_deload_day(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    routine_id: uuid.UUID,
+    on_date: datetime.date,
+) -> bool:
+    """True when ``routine_id`` belongs to the user's ACTIVE program and that
+    program is in its scheduled deload week on ``on_date``. Shared by session
+    creation (seed fewer/lighter sets) and session reads (SessionOut.is_deload) so
+    the two can never disagree."""
+    result = await db.execute(
+        select(WorkoutProgram)
+        .join(ProgramDay, ProgramDay.program_id == WorkoutProgram.id)
+        .where(
+            WorkoutProgram.user_id == user_id,
+            WorkoutProgram.is_active == True,  # noqa: E712
+            ProgramDay.routine_id == routine_id,
+        )
+        .limit(1)
+    )
+    program = result.scalar_one_or_none()
+    if program is None or program.deload_week is None:
+        return False
+    return current_week(program.started_on, program.weeks, on_date) == program.deload_week
 
 
 async def _to_out(program: WorkoutProgram) -> ProgramOut:
@@ -35,11 +74,20 @@ async def _to_out(program: WorkoutProgram) -> ProgramOut:
                 routine_name=routine_name,
             )
         )
+    week = current_week(program.started_on, program.weeks, datetime.date.today())
     return ProgramOut(
         id=program.id,
         name=program.name,
         is_active=program.is_active,
         days=day_outs,
+        created_at=program.created_at,
+        started_on=program.started_on,
+        source=program.source,
+        description=program.description,
+        weeks=program.weeks,
+        deload_week=program.deload_week,
+        current_week=week,
+        is_deload_week=program.deload_week is not None and week == program.deload_week,
     )
 
 
@@ -55,7 +103,14 @@ async def list_programs(db: AsyncSession, user_id: uuid.UUID) -> list[ProgramOut
 async def create_program(
     db: AsyncSession, user_id: uuid.UUID, req: ProgramCreate
 ) -> ProgramOut:
-    program = WorkoutProgram(user_id=user_id, name=req.name)
+    program = WorkoutProgram(
+        user_id=user_id,
+        name=req.name,
+        source=req.source,
+        description=req.description,
+        weeks=req.weeks,
+        deload_week=req.deload_week,
+    )
     db.add(program)
     await db.flush()
     for d in req.days:
@@ -92,6 +147,14 @@ async def update_program(
 
     if req.name is not None:
         program.name = req.name
+    if req.source is not None:
+        program.source = req.source
+    if req.description is not None:
+        program.description = req.description
+    if req.weeks is not None:
+        program.weeks = req.weeks
+    if req.deload_week is not None:
+        program.deload_week = req.deload_week
     if req.is_active is not None:
         if req.is_active:
             # Deactivate all other programs for this user first
@@ -103,6 +166,9 @@ async def update_program(
             )
             for p in all_result.scalars().all():
                 p.is_active = False
+            # First activation anchors the week counter (current_week counts from here).
+            if program.started_on is None:
+                program.started_on = datetime.date.today()
         program.is_active = req.is_active
 
     await db.commit()

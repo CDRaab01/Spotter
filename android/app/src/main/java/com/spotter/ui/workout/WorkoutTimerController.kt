@@ -130,6 +130,23 @@ class WorkoutTimerController @Inject constructor(
         }
     }
 
+    /**
+     * Nudge the in-progress rest by [deltaSec] (e.g. the panel's ±15s buttons). No-op while not
+     * resting. The countdown stays drift-free: the adjustment computes a new remaining from the
+     * current published state, re-persists the wall-clock end (so process death restores the
+     * adjusted rest), and restarts the countdown via [beginRest] — which bumps the generation and
+     * re-acquires the wake-lock, so the superseded countdown can neither clobber the new state nor
+     * release the new rest's lock. Remaining is floored at [MIN_REST_SEC] (never straight to the
+     * cue); the display duration shifts with it so the ring's progress stays meaningful.
+     */
+    fun adjustRest(deltaSec: Int) {
+        val current = _restState.value ?: return
+        val newRemaining = (current.remainingSec + deltaSec).coerceAtLeast(MIN_REST_SEC)
+        val newDuration = (current.durationSec + deltaSec).coerceAtLeast(newRemaining)
+        restStore.save(endEpochMs = time.nowMs() + newRemaining * 1000L, durationSec = newDuration)
+        beginRest(newRemaining, newDuration, ensureService = false)
+    }
+
     /** Cancel an in-progress rest *without* the completion cue (e.g. user tapped "Skip rest"). */
     fun dismissRest() {
         generation++
@@ -164,6 +181,9 @@ class WorkoutTimerController @Inject constructor(
 
     companion object {
         private const val POLL_MS = 250L
+
+        /** Floor for [adjustRest]: shrinking a rest never drops it below this (use skip for that). */
+        const val MIN_REST_SEC = 5
         private const val WAKE_LOCK_TAG = "spotter:rest_timer"
         private const val MAX_WAKELOCK_MS = 30L * 60 * 1000 // 30min backstop
 

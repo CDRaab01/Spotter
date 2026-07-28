@@ -23,6 +23,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -168,6 +169,41 @@ class RoutineDetailViewModelTest {
 
         verify(routineRepository).updateExercises(any(), any())
         assertFalse(viewModel.isEditing.value)
+    }
+
+    @Test
+    fun `edit round-trip preserves superset groups`() = runTest(testDispatcher) {
+        // Regression: startEdit dropped supersetGroup from the draft and saveEdits
+        // omitted it from RoutineExerciseIn, so any edit+save wiped all supersets.
+        val routine = fakeRoutine().copy(
+            exercises = listOf(
+                RoutineExerciseOut(
+                    id = "re-1", exerciseId = "ex-1", targetSets = 3, targetReps = 8,
+                    targetWeight = 135.0, isBodyweight = false, order = 0,
+                    exerciseName = "Squat", supersetGroup = 1,
+                ),
+                RoutineExerciseOut(
+                    id = "re-2", exerciseId = "ex-2", targetSets = 3, targetReps = 10,
+                    targetWeight = null, isBodyweight = true, order = 1,
+                    exerciseName = "Pull-up", supersetGroup = 1,
+                ),
+            )
+        )
+        whenever(routineRepository.getRoutine("routine-1")).thenReturn(routine)
+        whenever(routineRepository.updateExercises(any(), any())).thenReturn(routine)
+
+        viewModel.loadRoutine("routine-1")
+        advanceTimeBy(200)
+        viewModel.startEdit()
+
+        assertEquals(listOf(1, 1), viewModel.draftExercises.value.map { it.supersetGroup })
+
+        viewModel.saveEdits("routine-1")
+        advanceTimeBy(200)
+
+        val captor = argumentCaptor<List<RoutineExerciseIn>>()
+        verify(routineRepository).updateExercises(any(), captor.capture())
+        assertEquals(listOf(1, 1), captor.firstValue.map { it.supersetGroup })
     }
 
     @Test

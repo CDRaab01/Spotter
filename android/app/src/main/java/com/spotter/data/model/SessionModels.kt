@@ -17,6 +17,10 @@ data class SetLogCreate(
     val reps: Int,
     val weight: Double? = null,
     val completed: Boolean = false,
+    /** Rate of perceived exertion, 1.0–10.0 (one decimal); null when not tracked. */
+    val rpe: Double? = null,
+    /** normal | warmup | drop | failure | amrap. */
+    @SerialName("set_type") val setType: String = "normal",
 )
 
 @Serializable
@@ -34,6 +38,8 @@ data class SetLogOut(
     @SerialName("target_reps") val targetReps: Int? = null,
     @SerialName("target_weight") val targetWeight: Double? = null,
     @SerialName("superset_group") val supersetGroup: Int? = null,
+    val rpe: Double? = null,
+    @SerialName("set_type") val setType: String = "normal",
 )
 
 @Serializable
@@ -49,6 +55,8 @@ data class SetLogUpdate(
     val reps: Int? = null,
     val weight: Double? = null,
     val completed: Boolean? = null,
+    val rpe: Double? = null,
+    @SerialName("set_type") val setType: String? = null,
 )
 
 @Serializable
@@ -71,6 +79,8 @@ data class SessionOut(
     @SerialName("exercise_notes") val exerciseNotes: Map<String, String>? = null,
     @SerialName("set_logs") val setLogs: List<SetLogOut> = emptyList(),
     @SerialName("muscle_groups") val muscleGroups: List<MuscleGroupSummary> = emptyList(),
+    /** True when this session falls in the program's deload week (server-computed). */
+    @SerialName("is_deload") val isDeload: Boolean = false,
 )
 
 @Serializable

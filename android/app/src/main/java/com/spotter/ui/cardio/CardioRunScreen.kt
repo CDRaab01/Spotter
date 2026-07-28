@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.CardioPhase
+import design.pulse.ui.components.ConfettiHost
 import design.pulse.ui.components.DataText
 import design.pulse.ui.components.ProgressRing
 import design.pulse.ui.components.PulseButton
@@ -115,11 +116,14 @@ fun CardioRunScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             if (run.isComplete) {
-                CompleteContent(run.totalElapsedSec)
+                CompleteContent(run)
             } else {
                 RunningContent(run, pulse)
             }
         }
+        // Finishing a run gets the same celebratory beat as finishing a workout — before
+        // this, the only feedback was the center label switching to "COMPLETE".
+        ConfettiHost(play = run.isComplete)
 
         // Bottom controls.
         Box(
@@ -208,21 +212,42 @@ private fun RunningContent(run: CardioRunState, pulse: com.spotter.ui.theme.Puls
 }
 
 @Composable
-private fun CompleteContent(totalElapsedSec: Int) {
+private fun CompleteContent(run: CardioRunState) {
     val pulse = SpotterTheme.pulse
     Text(
-        text = "COMPLETE",
+        text = "RUN COMPLETE",
         style = MaterialTheme.typography.displaySmall,
         fontWeight = FontWeight.Bold,
         color = pulse.recovery,
         textAlign = TextAlign.Center,
     )
+    run.weekDayLabel?.let {
+        Spacer(Modifier.size(SpotterTheme.spacing.xs))
+        Text(
+            it,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     Spacer(Modifier.size(SpotterTheme.spacing.lg))
     DataText(
-        text = CardioFormat.clock(totalElapsedSec),
+        text = CardioFormat.clock(run.totalElapsedSec),
         style = SpotterTheme.dataType.dataXL,
         color = MaterialTheme.colorScheme.onSurface,
     )
+    Text(
+        "TOTAL TIME",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (!run.isOpenEnded && run.intervals.isNotEmpty()) {
+        Spacer(Modifier.size(SpotterTheme.spacing.md))
+        DataText(
+            text = "${run.intervals.size} intervals",
+            style = SpotterTheme.dataType.numeral,
+            color = pulse.recovery,
+        )
+    }
     Spacer(Modifier.size(SpotterTheme.spacing.sm))
     Text(
         "Nice work — that's in the books.",

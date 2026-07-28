@@ -22,12 +22,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -59,7 +61,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.spotter.R
+import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.data.local.entity.WorkoutRoutineEntity
+import com.spotter.data.model.InsightsOut
 import design.pulse.ui.components.ConfettiHost
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.ExercisePreviewRow
@@ -100,8 +105,11 @@ fun HomeScreen(
     val bodyweight by viewModel.bodyweight.collectAsState()
     val programs by viewModel.programs.collectAsState()
     val programDayCounts by viewModel.programDayCounts.collectAsState()
+    val standaloneRoutines by viewModel.standaloneRoutines.collectAsState()
+    val routineExercises by viewModel.routineExercises.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val staleAsOfMs by viewModel.staleAsOfMs.collectAsState()
+    val insights by viewModel.insights.collectAsState()
     val isStarting = startState is UiState.Loading
     var showBodyweightDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -204,6 +212,7 @@ fun HomeScreen(
                 is UiState.Error -> ErrorState(
                     message = state.message,
                     modifier = Modifier.padding(padding),
+                    onRetry = { viewModel.retryLoad() },
                 )
 
                 is UiState.Success -> {
@@ -238,6 +247,26 @@ fun HomeScreen(
                                 onLogBodyweight = { showBodyweightDialog = true },
                             )
                         }
+                        // The stats band shows this week at a glance; the recap is the narrated
+                        // version of the same week, so it hangs directly off the band.
+                        item {
+                            WeeklyRecapRow(
+                                onTap = { navController.navigate(Screen.WeeklyRecap.route) },
+                            )
+                        }
+                        // Proactive coaching. Absent entirely when /insights is unavailable or
+                        // has nothing to say, leaving Home exactly as it was.
+                        insights?.takeIf { it.stalled.isNotEmpty() || it.prsThisWeek > 0 }
+                            ?.let { signals ->
+                                item {
+                                    CoachSignalsCard(
+                                        insights = signals,
+                                        onTalkToCoach = {
+                                            navController.navigate(Screen.AiChat.createRoute())
+                                        },
+                                    )
+                                }
+                            }
 
                         if (upcomingList.isNotEmpty()) {
                             item { SectionHeader("Upcoming") }
@@ -262,35 +291,70 @@ fun HomeScreen(
 
                         when {
                             programs.isEmpty() && state.data.isEmpty() && !generatingPlan -> item {
-                                EmptyPlansPrompt(onChat = { navController.navigate(Screen.AiChat.createRoute()) })
+                                EmptyPlansPrompt(
+                                    onChat = { navController.navigate(Screen.AiChat.createRoute()) },
+                                    onBrowsePresets = { navController.navigate(Screen.ProgramPresets.route) },
+                                )
                             }
 
                             generatingPlan && programs.isEmpty() -> item {
                                 GeneratingPlaceholder()
                             }
 
-                            programs.isNotEmpty() -> {
-                                item {
-                                    SectionHeader(
-                                        label = "Your programs",
-                                        channel = SpotterTheme.pulse.strength,
-                                        trailing = {
-                                            TextButton(onClick = { navController.navigate(Screen.Programs.route) }) {
-                                                Text(
-                                                    "Manage",
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    color = SpotterTheme.pulse.effort,
-                                                )
-                                            }
-                                        },
-                                    )
+                            else -> {
+                                if (programs.isNotEmpty()) {
+                                    item {
+                                        SectionHeader(
+                                            label = "Your programs",
+                                            channel = SpotterTheme.pulse.strength,
+                                            trailing = {
+                                                TextButton(onClick = { navController.navigate(Screen.Programs.route) }) {
+                                                    Text(
+                                                        "Manage",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = SpotterTheme.pulse.effort,
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                    items(programs, key = { "program-${it.id}" }) { program ->
+                                        ProgramCard(
+                                            program = program,
+                                            dayCount = programDayCounts[program.id] ?: 0,
+                                            onTap = { navController.navigate(Screen.ProgramDetail.createRoute(program.id)) },
+                                        )
+                                    }
                                 }
-                                items(programs, key = { it.id }) { program ->
-                                    ProgramCard(
-                                        program = program,
-                                        dayCount = programDayCounts[program.id] ?: 0,
-                                        onTap = { navController.navigate(Screen.ProgramDetail.createRoute(program.id)) },
-                                    )
+                                // Routines not scheduled into any program. Without this section a
+                                // routine created via the top-bar "+" had no screen that could open
+                                // it (and programs-empty + routines-non-empty rendered nothing).
+                                if (standaloneRoutines.isNotEmpty()) {
+                                    item {
+                                        SectionHeader(
+                                            label = "Your routines",
+                                            channel = SpotterTheme.pulse.effort,
+                                        )
+                                    }
+                                    items(standaloneRoutines, key = { "routine-${it.id}" }) { routine ->
+                                        RoutineCard(
+                                            routine = routine,
+                                            lifts = routineExercises[routine.id].orEmpty(),
+                                            onTap = {
+                                                navController.navigate(Screen.RoutineDetail.createRoute(routine.id))
+                                            },
+                                        )
+                                    }
+                                    if (programs.isEmpty()) {
+                                        item {
+                                            OutlinedButton(
+                                                onClick = { navController.navigate(Screen.Programs.route) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Text("Combine routines into a program")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -391,6 +455,105 @@ private fun StatsBand(
     }
 }
 
+/**
+ * The recap entry point: a compact row hung under the stats band (Home has no stats
+ * `SectionHeader` to carry a trailing action, and the recap narrates exactly those numbers).
+ * Cards navigate — this one opens "Your week".
+ */
+@Composable
+private fun WeeklyRecapRow(onTap: () -> Unit) {
+    val pulse = SpotterTheme.pulse
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onTap,
+        contentPadding = SpotterTheme.spacing.md,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "YOUR WEEK",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = pulse.strength,
+                )
+                Text(
+                    text = "Sessions, volume, PRs — and your coach's read",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * "Coach signals" — the proactive half of the coach. A stalled lift is the actionable signal
+ * (streak amber = attention), a PR week is the celebratory one (strength violet, matching the
+ * summary screen's PR pill).
+ */
+@Composable
+private fun CoachSignalsCard(insights: InsightsOut, onTalkToCoach: () -> Unit) {
+    val pulse = SpotterTheme.pulse
+    val spacing = SpotterTheme.spacing
+    val weightUnit = LocalWeightUnit.current
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        channel = pulse.streak,
+    ) {
+        Text(
+            text = "COACH SIGNALS",
+            style = MaterialTheme.typography.labelSmall,
+            color = pulse.streak,
+        )
+        if (insights.prsThisWeek > 0) {
+            Spacer(Modifier.height(spacing.sm))
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(pulse.strengthDim)
+                    .padding(horizontal = spacing.md, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Icon(
+                    Icons.Default.EmojiEvents,
+                    contentDescription = null,
+                    tint = pulse.strength,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = if (insights.prsThisWeek == 1) "1 PR this week"
+                           else "${insights.prsThisWeek} PRs this week",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = pulse.strength,
+                )
+            }
+        }
+        if (insights.stalled.isNotEmpty()) {
+            Spacer(Modifier.height(spacing.sm))
+            insights.stalled.take(2).forEach { lift ->
+                val weight = lift.lastWeight?.let { " at ${weightUnit.formatWeight(it)}" }.orEmpty()
+                Text(
+                    text = "${lift.exerciseName} — stuck ${lift.sessionsStuck} sessions$weight",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.height(spacing.sm))
+            PulseButton(
+                text = "Talk to Coach",
+                onClick = onTalkToCoach,
+                tonal = true,
+                compact = true,
+            )
+        }
+    }
+}
+
 @Composable
 private fun UpcomingWorkoutCard(
     workout: UpcomingWorkout,
@@ -448,7 +611,7 @@ private fun UpcomingWorkoutCard(
 }
 
 @Composable
-private fun EmptyPlansPrompt(onChat: () -> Unit) {
+private fun EmptyPlansPrompt(onChat: () -> Unit, onBrowsePresets: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -478,6 +641,42 @@ private fun EmptyPlansPrompt(onChat: () -> Unit) {
         )
         Spacer(Modifier.height(SpotterTheme.spacing.xl))
         PulseButton(text = "Chat with AI Coach", onClick = onChat)
+        Spacer(Modifier.height(SpotterTheme.spacing.sm))
+        // The no-LLM path: curated preset programs work even when the coach is unreachable.
+        OutlinedButton(onClick = onBrowsePresets) {
+            Text("Browse preset programs")
+        }
+    }
+}
+
+/** A standalone routine at a glance: name + a short lift preview; the card opens the routine. */
+@Composable
+private fun RoutineCard(
+    routine: WorkoutRoutineEntity,
+    lifts: List<RoutineExerciseEntity>,
+    onTap: () -> Unit,
+) {
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onTap,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(routine.name, style = MaterialTheme.typography.titleMedium)
+                if (lifts.isNotEmpty()) {
+                    Spacer(Modifier.height(SpotterTheme.spacing.sm))
+                    lifts.forEach { lift ->
+                        ExercisePreviewRow(lift)
+                        Spacer(Modifier.height(2.dp))
+                    }
+                }
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

@@ -98,6 +98,7 @@ class RoutineDetailViewModel @Inject constructor(
                 targetWeight = pe.targetWeight,
                 isBodyweight = pe.isBodyweight,
                 order = pe.order,
+                supersetGroup = pe.supersetGroup,
             )
         }
         _isEditing.value = true
@@ -148,6 +149,7 @@ class RoutineDetailViewModel @Inject constructor(
                         targetWeight = ex.targetWeight,
                         isBodyweight = ex.isBodyweight,
                         order = i,
+                        supersetGroup = ex.supersetGroup,
                     )
                 }
                 routineRepository.updateExercises(routineId, exercises)

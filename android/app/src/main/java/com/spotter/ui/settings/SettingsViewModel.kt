@@ -4,12 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
+import com.spotter.data.export.ExportKind
+import com.spotter.data.export.ExportRepository
+import com.spotter.data.export.ExportedFile
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.di.IoDispatcher
+import com.spotter.health.HealthConnectManager
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
@@ -39,6 +43,8 @@ class SettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val database: SpotterDatabase,
     private val programRepository: ProgramRepository,
+    private val exportRepository: ExportRepository,
+    private val healthConnectManager: HealthConnectManager,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -67,6 +73,13 @@ class SettingsViewModel @Inject constructor(
 
     val distanceUnit: StateFlow<DistanceUnit> = appPreferences.distanceUnit
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DistanceUnit.MI)
+
+    /** Workout-mode toggles: RPE tracking (opt-in) + automatic rest start (default on). */
+    val trackRpe: StateFlow<Boolean> = appPreferences.trackRpe
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val autoStartRest: StateFlow<Boolean> = appPreferences.autoStartRest
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val workoutCadenceDays: StateFlow<Int> = appPreferences.workoutCadenceDays
         .stateIn(
@@ -104,6 +117,43 @@ class SettingsViewModel @Inject constructor(
 
     private val _resetError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val resetError: SharedFlow<String> = _resetError.asSharedFlow()
+
+    private val _navigateToOnboarding = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val navigateToOnboarding: SharedFlow<Unit> = _navigateToOnboarding.asSharedFlow()
+
+    // ── Export data ───────────────────────────────────────────────────────────
+
+    /** The export currently downloading, or null when idle — drives the per-row spinner. */
+    private val _exporting = MutableStateFlow<ExportKind?>(null)
+    val exporting: StateFlow<ExportKind?> = _exporting.asStateFlow()
+
+    /** A finished download, ready for the screen to hand to the Android share sheet. */
+    private val _exportReady = MutableSharedFlow<ExportedFile>(extraBufferCapacity = 1)
+    val exportReady: SharedFlow<ExportedFile> = _exportReady.asSharedFlow()
+
+    private val _exportError = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val exportError: SharedFlow<String> = _exportError.asSharedFlow()
+
+    // ── Health Connect ────────────────────────────────────────────────────────
+
+    /** Whether this device can use Health Connect at all — static per install, read once. */
+    val healthConnectAvailability: HealthConnectManager.Availability =
+        healthConnectManager.availability()
+
+    val healthConnectEnabled: StateFlow<Boolean> = appPreferences.healthConnectEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /**
+     * Emitted when the user turns the toggle on and the write permissions aren't granted yet: the
+     * screen launches [HealthConnectManager.permissionContract] with this set, then reports back
+     * through [onHealthPermissionsResult]. (The permission request needs an Activity, so it can't
+     * live here.)
+     */
+    private val _requestHealthPermissions = MutableSharedFlow<Set<String>>(extraBufferCapacity = 1)
+    val requestHealthPermissions: SharedFlow<Set<String>> = _requestHealthPermissions.asSharedFlow()
+
+    private val _healthMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val healthMessage: SharedFlow<String> = _healthMessage.asSharedFlow()
 
     init {
         loadUser()
@@ -150,6 +200,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { appPreferences.setWorkoutCadenceDays(value) }
     }
 
+    fun setTrackRpe(value: Boolean) {
+        viewModelScope.launch { appPreferences.setTrackRpe(value) }
+    }
+
+    fun setAutoStartRest(value: Boolean) {
+        viewModelScope.launch { appPreferences.setAutoStartRest(value) }
+    }
+
     /**
      * Toggles the workout-morning nudge. The actual WorkManager (re)schedule is driven by
      * [com.spotter.SpotterApp], which observes this preference — so flipping it here is enough.
@@ -160,6 +218,67 @@ class SettingsViewModel @Inject constructor(
 
     fun setQuietHours(startHour: Int, endHour: Int) {
         viewModelScope.launch { appPreferences.setQuietHours(startHour, endHour) }
+    }
+
+    /**
+     * Downloads an export into app cache and emits it on [exportReady] for the share sheet. One at
+     * a time; a failure (offline, HTTP error) surfaces on [exportError] and leaves nothing behind.
+     */
+    fun export(kind: ExportKind) {
+        if (_exporting.value != null) return
+        viewModelScope.launch {
+            _exporting.value = kind
+            try {
+                _exportReady.emit(
+                    when (kind) {
+                        ExportKind.JSON -> exportRepository.exportJson()
+                        ExportKind.CSV -> exportRepository.exportCsv()
+                    }
+                )
+            } catch (_: Exception) {
+                _exportError.emit("Couldn't export — check your connection.")
+            } finally {
+                _exporting.value = null
+            }
+        }
+    }
+
+    /**
+     * Flips the Health Connect mirror. Turning it ON only sticks once the write permissions are
+     * granted — otherwise the toggle stays off and [requestHealthPermissions] asks for them, with
+     * [onHealthPermissionsResult] completing the flip. Turning it OFF is unconditional.
+     */
+    fun setHealthConnectEnabled(value: Boolean) {
+        viewModelScope.launch {
+            if (!value) {
+                appPreferences.setHealthConnectEnabled(false)
+                return@launch
+            }
+            if (healthConnectAvailability != HealthConnectManager.Availability.AVAILABLE) {
+                _healthMessage.emit("Health Connect isn't available on this device.")
+                return@launch
+            }
+            if (healthConnectManager.hasPermissions()) {
+                appPreferences.setHealthConnectEnabled(true)
+            } else {
+                _requestHealthPermissions.emit(healthConnectManager.permissions)
+            }
+        }
+    }
+
+    /** The contract the screen registers to ask Health Connect for [HealthConnectManager.permissions]. */
+    fun healthPermissionContract() = healthConnectManager.permissionContract()
+
+    /** Result of the Health Connect permission request launched from the screen. */
+    fun onHealthPermissionsResult(granted: Set<String>) {
+        viewModelScope.launch {
+            if (granted.containsAll(healthConnectManager.permissions)) {
+                appPreferences.setHealthConnectEnabled(true)
+            } else {
+                appPreferences.setHealthConnectEnabled(false)
+                _healthMessage.emit("Health Connect needs both write permissions to sync.")
+            }
+        }
     }
 
     /**
@@ -203,8 +322,13 @@ class SettingsViewModel @Inject constructor(
 
     /**
      * Resets the account: wipes all data on the server (the login is kept), clears the local
-     * cache, chat history, and saved questionnaire profile, signs out, and routes to login.
-     * On next sign-in the user is sent back through the onboarding questionnaire.
+     * cache, chat history, and saved questionnaire profile, then routes straight into the
+     * onboarding questionnaire while still signed in.
+     *
+     * Deliberately NOT a sign-out: login unconditionally marks onboarding done (a returning
+     * user on a fresh install must skip the intro), so a reset that bounced through the login
+     * screen would silently skip the questionnaire it just promised — and the first-run
+     * auto-generate would then build a program from an empty profile.
      *
      * The server call happens first (while still authenticated); local state is only cleared
      * if it succeeds, so a failed reset leaves the user signed in and able to retry.
@@ -217,8 +341,7 @@ class SettingsViewModel @Inject constructor(
                 api.resetAccount()
                 withContext(ioDispatcher) { database.clearAllTables() }
                 appPreferences.clearOnboarding()
-                tokenStore.clear()
-                _navigateToLogin.emit(Unit)
+                _navigateToOnboarding.emit(Unit)
             } catch (e: Exception) {
                 _resetError.emit(e.message ?: "Couldn't reset your account. Try again.")
             } finally {

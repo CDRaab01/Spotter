@@ -38,6 +38,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -77,6 +79,7 @@ import com.spotter.ui.components.EmptyState
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
 import design.pulse.ui.theme.PulseMotion
 import com.spotter.ui.theme.SpotterTheme
@@ -99,10 +102,19 @@ fun ProgressScreen(
     val selectedExerciseId by viewModel.selectedExerciseId.collectAsState()
     val chartRange by viewModel.chartRange.collectAsState()
     val personalRecords by viewModel.personalRecords.collectAsState()
+    val actionError by viewModel.actionError.collectAsState()
     val pulse = SpotterTheme.pulse
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var showBodyweightDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(actionError) {
+        actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearActionError()
+        }
+    }
 
     if (showBodyweightDialog) {
         BodyweightLogDialog(
@@ -115,6 +127,7 @@ fun ProgressScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Progress") },
@@ -193,6 +206,7 @@ fun ProgressScreen(
                     onSelectExercise = { id -> viewModel.selectExercise(id) },
                     chartRange = chartRange,
                     onRangeSelect = { viewModel.setChartRange(it) },
+                    onRetry = { viewModel.retryTrackedExercises() },
                 )
                 2 -> RecordsTab(records = personalRecords)
             }
@@ -236,9 +250,10 @@ private fun RangeSelector(
     }
 }
 
+/** `internal` so the exercise-detail screen renders the genuine toggle instead of a copy. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StrengthMetricToggle(
+internal fun StrengthMetricToggle(
     selected: StrengthMetric,
     onSelect: (StrengthMetric) -> Unit,
 ) {
@@ -412,8 +427,12 @@ private fun MeasurementCell(trend: MeasurementTrend, unit: String, modifier: Mod
     }
 }
 
-/** Which series the Strength chart plots: the day's top weight, or the day's best estimated 1RM. */
-private enum class StrengthMetric(val label: String) {
+/**
+ * Which series the Strength chart plots: the day's top weight, or the day's best estimated 1RM.
+ * `internal` (with [StrengthMetricToggle] and [ChartCard]) so `ui/exercise` shares this exact
+ * chart language rather than duplicating it.
+ */
+internal enum class StrengthMetric(val label: String) {
     WEIGHT("Weight"),
     EST_1RM("Est. 1RM"),
 }
@@ -426,6 +445,7 @@ private fun StrengthTab(
     onSelectExercise: (String?) -> Unit,
     chartRange: ChartRange,
     onRangeSelect: (ChartRange) -> Unit,
+    onRetry: () -> Unit,
 ) {
     val weightUnit = LocalWeightUnit.current
     val pulse = SpotterTheme.pulse
@@ -436,6 +456,15 @@ private fun StrengthTab(
                 Modifier.fillMaxWidth().height(80.dp),
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator(color = pulse.strength) }
+
+            // Previously unhandled: an API failure here fell through to "Pick an exercise"
+            // with no chips to pick. Show the failure with a retry instead.
+            is UiState.Error -> EmptyState(
+                icon = Icons.Default.FitnessCenter,
+                title = "Couldn't load your lifts",
+                subtitle = trackedExercises.message,
+                action = { PulseButton(text = "Retry", onClick = onRetry) },
+            )
 
             is UiState.Success -> {
                 if (trackedExercises.data.isEmpty()) {
@@ -487,6 +516,11 @@ private fun StrengthTab(
             }
             else -> Unit
         }
+
+        // The chart/detail pane only makes sense once there are chips to pick from — rendering
+        // it alongside the list's own empty/error state stacked two full-size placeholders.
+        val hasTracked = trackedExercises is UiState.Success && trackedExercises.data.isNotEmpty()
+        if (!hasTracked) return@Column
 
         when (exerciseProgress) {
             is UiState.Loading -> LoadingState()
@@ -633,7 +667,7 @@ private fun RecordsTab(records: UiState<List<PersonalRecord>>) {
 
 /** Frames a chart in a panel so it sits on a clean instrument surface with breathing room. */
 @Composable
-private fun ChartCard(content: @Composable () -> Unit) {
+internal fun ChartCard(content: @Composable () -> Unit) {
     PanelCard(
         modifier = Modifier
             .fillMaxWidth()
