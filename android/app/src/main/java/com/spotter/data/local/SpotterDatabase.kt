@@ -38,7 +38,7 @@ import com.spotter.data.local.entity.WorkoutSessionEntity
         CardioSessionEntity::class,
         ExerciseEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = false,
 )
 abstract class SpotterDatabase : RoomDatabase() {
@@ -286,6 +286,17 @@ abstract class SpotterDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE workout_programs ADD COLUMN weeks INTEGER")
                 db.execSQL("ALTER TABLE workout_programs ADD COLUMN deloadWeek INTEGER")
                 db.execSQL("ALTER TABLE workout_programs ADD COLUMN startedOn TEXT")
+            }
+        }
+
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // AI suggestion cards survive process death: a suggestion is an attribute of the
+                // assistant turn that produced it, so the envelope rides on that message row
+                // (plus the session it was about, for session-scoped adjustment cards).
+                // Purely additive, and purely local — chat history never syncs.
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN suggestionsJson TEXT")
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN suggestionSessionId TEXT")
             }
         }
     }

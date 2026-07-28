@@ -3,6 +3,7 @@ package com.spotter.ai
 import com.spotter.data.local.dao.ChatMessageDao
 import com.spotter.data.local.entity.ChatMessageEntity
 import com.spotter.data.model.ChatResponse
+import com.spotter.data.model.PendingSuggestions
 import com.spotter.data.model.RoutineExerciseIn
 import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.ProgramOut
@@ -36,6 +37,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -47,20 +49,46 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-// In-memory DAO for tests
+// In-memory DAO for tests. Survives ViewModel recreation, so a second ViewModel built over the
+// same instance is exactly the process-death case.
 private class FakeChatMessageDao : ChatMessageDao {
     private val _messages = MutableStateFlow<List<ChatMessageEntity>>(emptyList())
+    private var nextId = 1L
     override fun getAllMessages(): Flow<List<ChatMessageEntity>> = _messages.asStateFlow()
-    override suspend fun insert(message: ChatMessageEntity) {
-        _messages.value = _messages.value + message
+    override suspend fun insert(message: ChatMessageEntity): Long {
+        val id = nextId++
+        _messages.value = _messages.value + message.copy(id = id)
+        return id
+    }
+    override suspend fun latestAssistantMessage(): ChatMessageEntity? =
+        _messages.value.lastOrNull { it.role == "assistant" }
+    override suspend fun updateSuggestions(
+        id: Long,
+        suggestionsJson: String?,
+        suggestionSessionId: String?,
+    ) {
+        _messages.value = _messages.value.map {
+            if (it.id == id) {
+                it.copy(suggestionsJson = suggestionsJson, suggestionSessionId = suggestionSessionId)
+            } else {
+                it
+            }
+        }
     }
     override suspend fun clearAll() { _messages.value = emptyList() }
+
+    /** Test helper: the envelope currently stored on the newest assistant row (null = none). */
+    fun storedSuggestions(): String? = _messages.value.lastOrNull { it.role == "assistant" }?.suggestionsJson
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AiChatViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
+
+    /** Mirrors AppModule.provideJson so the persisted envelope round-trips exactly as in the app. */
+    private val testJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
     private lateinit var aiRepository: AiRepository
     private lateinit var routineRepository: RoutineRepository
     private lateinit var programRepository: ProgramRepository
@@ -99,7 +127,7 @@ class AiChatViewModelTest {
     /** Build a VM; pass a SavedStateHandle with "sessionId" to simulate in-workout chat. */
     private fun buildViewModel(savedStateHandle: SavedStateHandle) = AiChatViewModel(
         aiRepository, routineRepository, programRepository, sessionRepository, profileRepository,
-        fakeChatDao, sessionDao, appPreferences, savedStateHandle,
+        fakeChatDao, sessionDao, appPreferences, testJson, savedStateHandle,
     )
 
     @After
@@ -553,5 +581,268 @@ class AiChatViewModelTest {
         advanceTimeBy(200)
 
         assertEquals(0, viewModel.messages.value.size)
+    }
+
+    // ── Suggestion cards survive process death ──────────────────────────────
+    //
+    // The cards used to be in-memory only, so a process kill left the assistant bubble saying
+    // "tap Save Program" with no card. They now ride on the assistant message row that produced
+    // them; a second ViewModel over the same DAO is the process-death simulation.
+
+    private val ppl = SuggestedProgram(
+        name = "PPL",
+        days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
+    )
+
+    @Test
+    fun `send persists the suggestion envelope on the assistant row`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "Here's your split.", suggestedProgram = ppl))
+
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+
+        val stored = fakeChatDao.storedSuggestions()
+        assertNotNull(stored)
+        assertEquals(ppl, testJson.decodeFromString(PendingSuggestions.serializer(), stored).program)
+    }
+
+    @Test
+    fun `send without a suggestion stores no envelope`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "What equipment?"))
+
+        viewModel.send("hi")
+        advanceTimeBy(200)
+
+        assertNull(fakeChatDao.storedSuggestions())
+    }
+
+    @Test
+    fun `a fresh ViewModel restores the program card after process death`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "Here's your split.", suggestedProgram = ppl))
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+
+        assertEquals(ppl, reborn.pendingProgram.value)
+        // Restoring is a pure read — no extra chat round-trip, no duplicated message.
+        org.mockito.kotlin.verify(aiRepository, org.mockito.kotlin.times(1)).chat(any())
+        assertEquals(2, reborn.messages.value.size)
+    }
+
+    @Test
+    fun `a fresh ViewModel restores a routine and a profile update`() = runTest(testDispatcher) {
+        val routine = SuggestedRoutine(
+            name = "Upper Body Push",
+            exercises = listOf(RoutineExerciseIn(exerciseId = "ex-1", targetSets = 3, targetReps = 8)),
+        )
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(
+                reply = "Routine + a note on your kit.",
+                suggestedRoutine = routine,
+                suggestedProfileUpdate = equipmentUpdate,
+            )
+        )
+        viewModel.send("routine")
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+
+        assertEquals(routine, reborn.pendingRoutine.value)
+        assertEquals(equipmentUpdate, reborn.pendingProfileUpdate.value)
+    }
+
+    @Test
+    fun `only the latest assistant turn restores a card`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "Here's your split.", suggestedProgram = ppl))
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+
+        // A later turn proposes nothing — the older turn's card must not come back.
+        whenever(aiRepository.chat(any())).thenReturn(ChatResponse(reply = "Sounds good."))
+        viewModel.send("thanks")
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+
+        assertNull(reborn.pendingProgram.value)
+    }
+
+    @Test
+    fun `adjustment restores in a chat on the same session`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        vm.send("swap it")
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        advanceTimeBy(200)
+
+        assertEquals(listOf(swapAction), reborn.pendingAdjustment.value?.actions)
+    }
+
+    @Test
+    fun `adjustment does not restore in a chat without a session`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        vm.send("swap it")
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+
+        assertNull(reborn.pendingAdjustment.value)
+    }
+
+    @Test
+    fun `adjustment does not restore in a chat on a different session`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        vm.send("swap it")
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-2")))
+        advanceTimeBy(200)
+
+        assertNull(reborn.pendingAdjustment.value)
+    }
+
+    @Test
+    fun `saveProgram clears the persisted envelope`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "split", suggestedProgram = ppl))
+        whenever(aiRepository.acceptProgram(any()))
+            .thenReturn(ProgramOut(id = "prog-1", name = "PPL", isActive = true))
+
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+        viewModel.saveProgram()
+        advanceTimeBy(200)
+
+        assertNull(fakeChatDao.storedSuggestions())
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+        assertNull(reborn.pendingProgram.value)
+    }
+
+    @Test
+    fun `dismissProgram clears the persisted envelope`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "split", suggestedProgram = ppl))
+
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+        viewModel.dismissProgram()
+        advanceTimeBy(200)
+
+        assertNull(fakeChatDao.storedSuggestions())
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+        assertNull(reborn.pendingProgram.value)
+    }
+
+    @Test
+    fun `applying one card leaves the other persisted`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(
+                reply = "Rack-friendly split.",
+                suggestedProgram = ppl,
+                suggestedProfileUpdate = equipmentUpdate,
+            )
+        )
+        whenever(aiRepository.acceptProgram(any()))
+            .thenReturn(ProgramOut(id = "prog-1", name = "PPL", isActive = true))
+
+        viewModel.send("squat rack + program")
+        advanceTimeBy(200)
+        viewModel.saveProgram()
+        advanceTimeBy(200)
+
+        val reborn = buildViewModel(SavedStateHandle())
+        advanceTimeBy(200)
+        assertNull(reborn.pendingProgram.value)
+        assertEquals(equipmentUpdate, reborn.pendingProfileUpdate.value)
+    }
+
+    @Test
+    fun `applyAdjustment failure keeps the persisted envelope`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        whenever(sessionRepository.applyAdjustment(any(), any(), any()))
+            .thenThrow(RuntimeException("network"))
+
+        vm.send("swap")
+        advanceTimeBy(200)
+        vm.applyAdjustment(applyToRoutine = true)
+        advanceTimeBy(200)
+
+        assertNotNull(fakeChatDao.storedSuggestions())
+        val reborn = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        advanceTimeBy(200)
+        assertNotNull(reborn.pendingAdjustment.value)  // still retryable after a restart
+    }
+
+    @Test
+    fun `dismissAdjustment clears the persisted envelope`() = runTest(testDispatcher) {
+        val vm = buildViewModel(SavedStateHandle(mapOf("sessionId" to "local-1")))
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedAdjustment = SuggestedAdjustment(listOf(swapAction)))
+        )
+        vm.send("swap")
+        advanceTimeBy(200)
+        vm.dismissAdjustment()
+        advanceTimeBy(200)
+
+        assertNull(fakeChatDao.storedSuggestions())
+    }
+
+    @Test
+    fun `applyProfileUpdate clears the persisted envelope`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "ok", suggestedProfileUpdate = equipmentUpdate)
+        )
+        whenever(profileRepository.current()).thenReturn(storedProfile)
+        whenever(profileRepository.save(any())).thenReturn(true)
+
+        viewModel.send("squat rack")
+        advanceTimeBy(200)
+        viewModel.applyProfileUpdate()
+        advanceTimeBy(200)
+
+        assertNull(fakeChatDao.storedSuggestions())
+    }
+
+    @Test
+    fun `clearHistory clears the pending cards too`() = runTest(testDispatcher) {
+        whenever(aiRepository.chat(any())).thenReturn(
+            ChatResponse(reply = "split", suggestedProgram = ppl, suggestedProfileUpdate = equipmentUpdate)
+        )
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+        assertNotNull(viewModel.pendingProgram.value)
+        assertNotNull(viewModel.pendingProfileUpdate.value)
+
+        viewModel.clearHistory()
+        advanceTimeBy(200)
+
+        assertNull(viewModel.pendingRoutine.value)
+        assertNull(viewModel.pendingProgram.value)
+        assertNull(viewModel.pendingAdjustment.value)
+        assertNull(viewModel.pendingProfileUpdate.value)
+        assertNull(fakeChatDao.storedSuggestions())
     }
 }

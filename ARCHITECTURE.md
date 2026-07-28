@@ -187,7 +187,15 @@ counters.
   Rest supports ±15s, an auto-start toggle, and per-exercise overrides read from the routine
   mirror (`SessionRepository.getRestSeconds`) — an explicit prescription is used verbatim, with
   no failure bump. Exercises can be added/removed mid-session by hand, not just by the coach.
-- `ui/ai/` — coach chat + the three suggestion cards (plan / program / live adjustment).
+- `ui/ai/` — coach chat + four suggestion cards (routine / program / live adjustment / training
+  profile update). **A card is an attribute of the assistant turn that produced it**, persisted
+  with that row (`chat_messages.suggestionsJson` + `suggestionSessionId`, Room v15) — the messages
+  were already persisted while the cards lived in memory, so process death left a bubble saying
+  "tap Apply" with no card to tap. Restore rules: only the **latest** assistant turn may restore
+  (an old card must never resurface); an **adjustment only restores into the matching workout
+  session** (`suggestionSessionId == localSessionId`), since it mutates that specific live
+  session; and apply/dismiss clear the persisted copy row-scoped, so acting on one card leaves a
+  co-arriving one intact. Restore is read-only — it never re-issues the chat call.
 - `ui/history/` — the history list plus `SessionDetailScreen` (2026-07-28): a read-only
   per-set breakdown of a past session served by `SessionRepository.getSession`, so it works
   offline from the Room mirror. History cards navigate (resume when in-progress, detail when
