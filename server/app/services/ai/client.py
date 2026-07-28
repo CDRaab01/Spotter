@@ -19,6 +19,7 @@ from app.limits import (
 )
 from app.models.exercise import Exercise
 from app.models.set_log import SetLog
+from app.models.user import User
 from app.models.workout_session import WorkoutSession
 from app.schemas.ai import (
     AiAdjustmentDraft,
@@ -29,11 +30,13 @@ from app.schemas.ai import (
     ChatResponse,
     SuggestedAdjustment,
     SuggestedAdjustmentAction,
+    SuggestedProfileUpdate,
     SuggestedRoutine,
     SuggestedProgram,
     SuggestedProgramDay,
 )
 from app.schemas.routine import RoutineExerciseIn
+from app.schemas.user import TRAINING_PROFILE_FIELDS, TRAINING_PROFILE_MAX_LENS
 from app.services.ai.context_service import (
     build_current_session_context,
     build_exercise_catalog,
@@ -122,8 +125,16 @@ async def chat(
     messages = build_messages(history, last_user, user_context, exercise_catalog)
 
     raw_reply = await lm_completion(messages)
-    # Exactly one suggestion type per reply: adjustment (only meaningful with a live
-    # session in context) wins over program, which wins over a single plan.
+    # Invariant: exactly one *workout* suggestion per reply, plus an optional
+    # profile update. Among the workout suggestions the precedence is unchanged —
+    # adjustment (only meaningful with a live session in context) wins over
+    # program, which wins over a single plan.
+    #
+    # The profile update is deliberately OUTSIDE that contest: learning a durable
+    # fact about the athlete's setup ("I bought a squat rack") is not a workout
+    # suggestion, and forcing exactly-one would mean the user applies the
+    # equipment change and then has to re-ask for the program they wanted in the
+    # same breath. It is extracted independently and may accompany any of them.
     suggested_adjustment = (
         await _extract_adjustment(raw_reply, db, user_id, req.current_session_id)
         if (user_id and req.current_session_id)
@@ -136,6 +147,9 @@ async def chat(
         None
         if (suggested_adjustment or suggested_program)
         else await _extract_plan(raw_reply, db)
+    )
+    suggested_profile_update = (
+        await _extract_profile_update(raw_reply, db, user_id) if user_id else None
     )
     # The structured JSON is surfaced via its card — strip it from the chat text so the
     # bubble shows only the prose. If the model returned nothing but JSON, fall back to
@@ -153,11 +167,17 @@ async def chat(
             )
         elif suggested_routine:
             clean_reply = "I've put together a routine for you — tap Save Routine to add it."
+        elif suggested_profile_update:
+            clean_reply = (
+                "I can update your saved training profile — review the change below "
+                "and confirm to apply it."
+            )
     return ChatResponse(
         reply=clean_reply,
         suggested_routine=suggested_routine,
         suggested_program=suggested_program,
         suggested_adjustment=suggested_adjustment,
+        suggested_profile_update=suggested_profile_update,
     )
 
 
@@ -225,6 +245,65 @@ def _extract_json_block(raw_reply: str) -> str | None:
     return json_str if json_str.strip().startswith("{") else None
 
 
+def _candidate_json_blocks(raw_reply: str) -> list[str]:
+    """Every JSON object in the reply, fenced blocks first, else a bare object.
+
+    A reply may now legitimately carry TWO blocks (a workout suggestion and a
+    profile update), so "the first block" is no longer a safe proxy for "the
+    block I want" — see _first_valid_block.
+    """
+    candidates = [
+        c for c in re.findall(r"```(?:json)?\s*(.*?)\s*```", raw_reply, re.DOTALL)
+        if c.strip().startswith("{")
+    ]
+    if candidates:
+        return candidates
+    bare = _extract_json_block(raw_reply)
+    return [bare] if bare is not None else []
+
+
+def _first_valid_block(raw_reply: str, model):
+    """First JSON block in the reply that validates as ``model``, else None.
+
+    Order-independent by design: the workout extractors used to validate only the
+    first block, which silently dropped the workout suggestion whenever the model
+    emitted the profile-update block ahead of it. Prompt ordering is guidance, not
+    a guarantee — local models reorder freely — so selection is by SHAPE, not
+    position. A block of the wrong shape is skipped, never fatal.
+    """
+    for json_str in _candidate_json_blocks(raw_reply):
+        try:
+            return model.model_validate(json.loads(json_str))
+        except Exception:
+            continue
+    return None
+
+
+def _extract_keyed_json_block(raw_reply: str, key: str) -> dict | None:
+    """Return the object stored under top-level ``key`` in a JSON block, or None.
+
+    Unlike ``_extract_json_block`` (first block in the reply wins), this scans
+    EVERY fenced block. That is what lets a profile update ride alongside a
+    plan/program block in the same reply — they are independent suggestion
+    types, not competing ones. Malformed blocks are skipped, not fatal.
+    """
+    candidates = re.findall(r"```(?:json)?\s*(.*?)\s*```", raw_reply, re.DOTALL)
+    if not candidates:
+        # No fenced block — fall back to a bare object, same as the sibling helper.
+        bare = _extract_json_block(raw_reply)
+        candidates = [bare] if bare is not None else []
+    for candidate in candidates:
+        if not candidate.strip().startswith("{"):
+            continue
+        try:
+            data = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(data, dict) and isinstance(data.get(key), dict):
+            return data[key]
+    return None
+
+
 async def _resolve_exercises(
     draft_exercises: list[AiPlanExercise], db: AsyncSession
 ) -> list[RoutineExerciseIn]:
@@ -253,13 +332,8 @@ async def _resolve_exercises(
 
 
 async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedRoutine | None:
-    json_str = _extract_json_block(raw_reply)
-    if json_str is None:
-        return None
-    try:
-        data = json.loads(json_str)
-        draft = AiPlanDraft.model_validate(data)
-    except Exception:
+    draft = _first_valid_block(raw_reply, AiPlanDraft)
+    if draft is None:
         return None
 
     resolved = await _resolve_exercises(draft.exercises, db)
@@ -275,13 +349,8 @@ async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram
     ``exercises``) fails ``AiProgramDraft`` validation and returns None so the
     caller can fall back to ``_extract_plan``.
     """
-    json_str = _extract_json_block(raw_reply)
-    if json_str is None:
-        return None
-    try:
-        data = json.loads(json_str)
-        draft = AiProgramDraft.model_validate(data)
-    except Exception:
+    draft = _first_valid_block(raw_reply, AiProgramDraft)
+    if draft is None:
         return None
 
     days: list[SuggestedProgramDay] = []
@@ -324,13 +393,8 @@ async def _extract_adjustment(
     the action count is capped. The result is a *suggestion* only — it is persisted
     exclusively by POST /ai/sessions/{id}/adjust on explicit user accept.
     """
-    json_str = _extract_json_block(raw_reply)
-    if json_str is None:
-        return None
-    try:
-        data = json.loads(json_str)
-        draft = AiAdjustmentDraft.model_validate(data)
-    except Exception:
+    draft = _first_valid_block(raw_reply, AiAdjustmentDraft)
+    if draft is None:
         return None
 
     # Exercises actually in the live session (ownership-filtered).
@@ -401,6 +465,79 @@ async def _extract_adjustment(
     if not actions:
         return None
     return SuggestedAdjustment(actions=actions)
+
+
+async def _extract_profile_update(
+    raw_reply: str, db: AsyncSession, user_id: uuid.UUID
+) -> SuggestedProfileUpdate | None:
+    """Extract a proposed training-profile change from the reply, or None.
+
+    The model is untrusted, so this layer takes the same posture as the plan and
+    adjustment extractors: unknown keys are dropped, values are stripped, and an
+    over-long value is **clamped** (truncated to the column's length) rather than
+    dropping the whole suggestion, exactly as out-of-bounds numbers are clamped
+    elsewhere.
+
+    A proposal that matches what is already stored is not a proposal. Every
+    field is diffed against the user's CURRENT saved profile
+    (case/whitespace-insensitive) and dropped when it is already the stored
+    value; if nothing differs afterwards this returns None, so the user never
+    sees a card that would change nothing.
+
+    Returns None when: there is no ``profile_update`` block, the JSON is
+    malformed, every profile field is null/blank, or ``summary`` is missing or
+    blank (the card would have nothing to say).
+
+    This is a *suggestion* only. It is persisted exclusively when the user
+    confirms the card, which re-uses the existing ``PATCH /users/me/profile`` —
+    that endpoint's partial semantics (an omitted key is unchanged) are already
+    exactly this payload's shape, which is why no apply endpoint is added here.
+    """
+    raw = _extract_keyed_json_block(raw_reply, "profile_update")
+    if raw is None:
+        return None
+
+    summary = raw.get("summary")
+    summary = summary.strip() if isinstance(summary, str) else ""
+    if not summary:
+        return None
+
+    current = await _current_training_profile(db, user_id)
+    fields: dict[str, str] = {}
+    for name in TRAINING_PROFILE_FIELDS:  # unknown keys are ignored by construction
+        value = raw.get(name)
+        if not isinstance(value, str):
+            continue
+        value = value.strip()[: TRAINING_PROFILE_MAX_LENS[name]].strip()
+        if not value:
+            continue
+        stored = (current.get(name) or "").strip()
+        if value.casefold() == stored.casefold():
+            logger.info("Profile update: %r already stored — dropping field", name)
+            continue
+        fields[name] = value
+
+    if not fields:
+        return None
+    return SuggestedProfileUpdate(summary=summary, **fields)
+
+
+async def _current_training_profile(
+    db: AsyncSession, user_id: uuid.UUID
+) -> dict[str, str | None]:
+    """The user's stored training profile, so a proposal can be diffed against it.
+
+    Read straight off the `users` row — the same source
+    ``context_service._training_profile_block`` shows the model — so "propose only
+    a genuine change" is judged against what the model was actually told.
+    """
+    result = await db.execute(
+        select(*(getattr(User, field) for field in TRAINING_PROFILE_FIELDS)).where(
+            User.id == user_id
+        )
+    )
+    row = result.first()
+    return dict(zip(TRAINING_PROFILE_FIELDS, row)) if row is not None else {}
 
 
 def _default_summary(

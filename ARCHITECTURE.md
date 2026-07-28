@@ -56,7 +56,12 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
 - `prompts.py` — the server-side system prompt (intake protocol, plan/program JSON rules,
   live-adjustment rules, scope limits). Client never supplies prompts.
 - `client.py` — LM Studio transport + extraction: `_extract_plan` / `_extract_program` /
-  `_extract_adjustment` parse the model's JSON, resolve exercise names → catalog ids, and
+  `_extract_adjustment` / `_extract_profile_update`. **Block selection is by shape, not
+  position** (`_first_valid_block`): a reply may legitimately carry two blocks (a workout
+  suggestion and a profile update), and the extractors used to validate only the *first* one, so
+  a model that emitted them in the other order silently dropped the workout suggestion. Prompt
+  ordering is guidance, not a guarantee — pinned by `test_block_order_does_not_matter`. They
+  resolve exercise names → catalog ids, and
   **clamp** out-of-range numbers into `app/limits.py` bounds (clamp, never drop). Malformed
   responses → 502; unreachable LM Studio → 503. Injection screening runs over *every* user turn:
   the NEW turn hard-fails (422), while a blocked turn in the resent *history* is silently dropped
@@ -82,7 +87,13 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
   mapping is identical everywhere.
 
 The trust model, everywhere: **AI proposes, user commits.** There is no autonomous write path;
-adding one is an architecture change, not a feature. The workout screen's progression **Apply**
+adding one is an architecture change, not a feature. The coach may propose a **training-profile
+update** ("I bought a squat rack") the same way — a suggestion card that applies through the
+ordinary `PATCH /users/me/profile`, never a silent write. It is the one suggestion that sits
+*outside* the single-suggestion rule: the invariant is **exactly one workout suggestion
+(adjustment > program > plan), plus an optional profile update**, because learning a durable fact
+and acting on it are different things and forcing one would make the user re-ask for the program
+they requested in the same breath. The workout screen's progression **Apply**
 button (2026-07-28) rides the same `POST /ai/sessions/{id}/adjust` rails with a client-built
 `adjust_weight` action — user-initiated, same incomplete-sets-only invariant, and its
 `apply_to_routine` write-back is what advances the routine's `target_weight` so the next

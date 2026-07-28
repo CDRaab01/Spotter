@@ -7,6 +7,13 @@ from pydantic import BaseModel, Field, model_validator
 from app.limits import PROGRAM_WEEKS_BOUNDS, REPS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
 from app.schemas.program import _check_deload_week
 from app.schemas.routine import RoutineExerciseIn
+from app.schemas.user import (
+    AGE_GROUP_MAX_LEN,
+    EQUIPMENT_MAX_LEN,
+    EXPERIENCE_MAX_LEN,
+    GOAL_MAX_LEN,
+    LIMITATIONS_MAX_LEN,
+)
 
 
 class ChatMessage(BaseModel):
@@ -148,11 +155,42 @@ class ApplyAdjustmentRequest(BaseModel):
     apply_to_routine: bool = True
 
 
+# ── Training-profile updates ────────────────────────────────────────────────
+
+
+class SuggestedProfileUpdate(BaseModel):
+    """A proposed change to the user's saved training profile.
+
+    Each field is the COMPLETE proposed new value for that field (not a delta),
+    or None meaning "leave this field unchanged" — so `equipment` carries the
+    whole new equipment list, because applying overwrites the stored column.
+
+    There is deliberately **no apply endpoint**: the client applies an accepted
+    proposal through the existing ``PATCH /users/me/profile``, whose partial
+    semantics (an omitted key is unchanged) are exactly this payload's shape.
+    Nothing is persisted until the user confirms the card — the AI proposes, the
+    user commits, same as SuggestedProgram and SuggestedAdjustment.
+
+    Lengths mirror ``TrainingProfileUpdate``; the extraction layer clamps to
+    them so the eventual PATCH can't be rejected for length.
+    """
+
+    equipment: str | None = Field(default=None, max_length=EQUIPMENT_MAX_LEN)
+    experience: str | None = Field(default=None, max_length=EXPERIENCE_MAX_LEN)
+    goal: str | None = Field(default=None, max_length=GOAL_MAX_LEN)
+    age_group: str | None = Field(default=None, max_length=AGE_GROUP_MAX_LEN)
+    limitations: str | None = Field(default=None, max_length=LIMITATIONS_MAX_LEN)
+    # One short human sentence for the confirmation card.
+    summary: str
+
+
 class ChatResponse(BaseModel):
     reply: str
     suggested_routine: SuggestedRoutine | None = None
     suggested_program: SuggestedProgram | None = None
     suggested_adjustment: SuggestedAdjustment | None = None
+    # Independent of the three above — see the invariant comment in client.chat().
+    suggested_profile_update: SuggestedProfileUpdate | None = None
 
 
 # ── Post-workout debrief + weekly recap ─────────────────────────────────────
