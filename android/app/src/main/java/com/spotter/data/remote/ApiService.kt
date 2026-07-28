@@ -38,6 +38,8 @@ import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.model.ProgramDaysUpdate
 import com.spotter.data.model.ProgramOut
 import com.spotter.data.model.ProgramUpdate
+import com.spotter.data.model.ProfileOut
+import com.spotter.data.model.ProfileUpdate
 import com.spotter.data.model.ResetPasswordRequest
 import com.spotter.data.model.SuiteLoginRequest
 import com.spotter.data.model.TokenResponse
@@ -182,6 +184,14 @@ interface ApiService {
     // Users
     @GET("users/me")
     suspend fun getMe(): UserOut
+
+    /** The persistent training profile the AI coach reads (equipment, experience, goal, …). */
+    @GET("users/me/profile")
+    suspend fun getProfile(): ProfileOut
+
+    /** Partial profile write: omitted key = unchanged, explicit empty string = cleared. */
+    @PATCH("users/me/profile")
+    suspend fun updateProfile(@Body req: ProfileUpdate): ProfileOut
 
     /** Wipes all of the current user's server data; the account (login) is kept. */
     @POST("users/reset")

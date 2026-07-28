@@ -1,6 +1,7 @@
 package com.spotter.util
 
 import android.content.Context
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -72,6 +73,21 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val TRACK_RPE = booleanPreferencesKey("pref_track_rpe")
         private val AUTO_START_REST = booleanPreferencesKey("pref_auto_start_rest")
         private val HEALTH_CONNECT_ENABLED = booleanPreferencesKey("pref_health_connect_enabled")
+        private val PROFILE_SYNC_PENDING = booleanPreferencesKey("pref_profile_sync_pending")
+    }
+
+    /**
+     * True when the local training profile holds an edit the server hasn't acknowledged yet (it was
+     * made offline). Drained by [com.spotter.data.repository.ProfileRepository]; while it is set,
+     * a server pull must not overwrite the mirror or the user's offline edit would be resurrected
+     * away.
+     */
+    val profileSyncPending: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[PROFILE_SYNC_PENDING] ?: false
+    }
+
+    suspend fun setProfileSyncPending(value: Boolean) {
+        context.dataStore.edit { it[PROFILE_SYNC_PENDING] = value }
     }
 
     /**
@@ -226,15 +242,30 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         }
     }
 
+    /** Saves the onboarding questionnaire: the profile plus the "don't show the intro again" flag. */
     suspend fun saveProfile(profile: UserProfile) {
         context.dataStore.edit { prefs ->
-            prefs[PROFILE_EXPERIENCE] = profile.experience
-            prefs[PROFILE_GOAL] = profile.goal
-            prefs[PROFILE_EQUIPMENT] = profile.equipment
-            prefs[PROFILE_AGE_GROUP] = profile.ageGroup
-            prefs[PROFILE_LIMITATIONS] = profile.limitations
+            prefs.writeProfile(profile)
             prefs[ONBOARDING_DONE] = true
         }
+    }
+
+    /**
+     * Writes the five profile fields **without** touching the onboarding flag — the mirror write
+     * used by [com.spotter.data.repository.ProfileRepository] for Settings edits and for the copy
+     * pulled back from the server. (Settings must never be able to un-onboard the user, and a
+     * server pull must not imply the questionnaire was answered on this device.)
+     */
+    suspend fun setProfile(profile: UserProfile) {
+        context.dataStore.edit { prefs -> prefs.writeProfile(profile) }
+    }
+
+    private fun MutablePreferences.writeProfile(profile: UserProfile) {
+        this[PROFILE_EXPERIENCE] = profile.experience
+        this[PROFILE_GOAL] = profile.goal
+        this[PROFILE_EQUIPMENT] = profile.equipment
+        this[PROFILE_AGE_GROUP] = profile.ageGroup
+        this[PROFILE_LIMITATIONS] = profile.limitations
     }
 
     /**
@@ -260,6 +291,8 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
             prefs.remove(PROFILE_EQUIPMENT)
             prefs.remove(PROFILE_AGE_GROUP)
             prefs.remove(PROFILE_LIMITATIONS)
+            // The server copy is wiped by the same reset, so there is nothing left to push.
+            prefs.remove(PROFILE_SYNC_PENDING)
         }
     }
 }

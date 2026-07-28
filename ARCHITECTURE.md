@@ -120,6 +120,12 @@ callback registered in `SpotterApp.onCreate`) drains the pending work on reconne
   reconcile without duplicating.
 - **Calendar** serves the last-known projection on an offline read instead of throwing.
 - **Cardio** writes are local-first with best-effort push, dedupe-safe.
+- **Training profile** (`ProfileRepository`): the server row is the source of truth and
+  `AppPreferences.userProfile` is the offline mirror that existing callers already read. Two
+  ordering rules matter — `refresh()` **drains pending edits before pulling** (otherwise a sync
+  round would pull the stale server copy straight over an edit made offline), and `save()`
+  returns whether the server actually acknowledged, so the UI can say "saved on this device,
+  will sync later" rather than falsely claiming a sync.
 - **Exercise catalog mirror** (`ExerciseEntity`/`ExerciseDao`, Room v13): the seeded server
   catalog is mirrored locally — seeded opportunistically by the Home sync round and the reconnect
   observer, and refreshed as a side effect of every online read (`ExerciseRepository`). Offline it

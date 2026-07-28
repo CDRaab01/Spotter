@@ -23,6 +23,7 @@ import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
 import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.MetricRepository
+import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.RoutineRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.data.repository.SessionRepository
@@ -62,6 +63,7 @@ class HomeViewModel @Inject constructor(
     private val aiRepository: AiRepository,
     private val programRepository: ProgramRepository,
     private val exerciseRepository: ExerciseRepository,
+    private val profileRepository: ProfileRepository,
     private val appPreferences: AppPreferences,
     private val api: ApiService,
     private val sessionDao: WorkoutSessionDao,
@@ -413,6 +415,11 @@ class HomeViewModel @Inject constructor(
             try { sessionRepository.syncPending() } catch (_: Exception) {}
             try { programRepository.sync() } catch (_: Exception) {}
             try { metricRepository.sync() } catch (_: Exception) {}
+            // Pull the persistent training profile into the local mirror (and push a queued offline
+            // edit first). Home is where every sign-in lands, so this is what gives a returning user
+            // on a fresh install their equipment back instead of an empty profile — without putting
+            // a network call in the auth path. Best-effort: offline it leaves the mirror alone.
+            try { profileRepository.refresh() } catch (_: Exception) {}
             // Opportunistic exercise-catalog seed so offline library search, preset resolution,
             // and the offline muscle-group summary have data. Best-effort — failures are silent.
             exerciseRepository.refreshCatalog()

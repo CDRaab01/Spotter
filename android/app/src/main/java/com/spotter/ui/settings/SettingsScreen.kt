@@ -28,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -98,6 +99,8 @@ fun SettingsScreen(
     val serverVersion by viewModel.serverVersion.collectAsState()
     val exporting by viewModel.exporting.collectAsState()
     val healthConnectEnabled by viewModel.healthConnectEnabled.collectAsState()
+    val profileDraft by viewModel.profileDraft.collectAsState()
+    val profileSaving by viewModel.profileSaving.collectAsState()
     val context = LocalContext.current
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -117,6 +120,12 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         viewModel.healthMessage.collect { msg ->
             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.profileMessage.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -223,6 +232,76 @@ fun SettingsScreen(
                 )
 
                 else -> Unit
+            }
+
+            SettingsSection("Training profile") {
+                Text(
+                    "Your coach reads this before every reply — keep the equipment line current " +
+                        "and it won't have to ask again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+
+                // Equipment leads: it's the thing that actually changes (new gym, new dumbbells)
+                // and the thing the coach was forgetting.
+                OutlinedTextField(
+                    value = profileDraft.equipment,
+                    onValueChange = { viewModel.setProfileEquipment(it) },
+                    label = { Text("Equipment") },
+                    supportingText = {
+                        Text("e.g. dumbbells up to 50lb, pull-up bar, bands")
+                    },
+                    singleLine = false,
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(Modifier.height(12.dp))
+                ChoiceRow(
+                    label = "Experience",
+                    options = TrainingProfileOptions.EXPERIENCE,
+                    selected = profileDraft.experience,
+                    onSelect = { viewModel.setProfileExperience(it) },
+                )
+
+                Spacer(Modifier.height(12.dp))
+                ChoiceRow(
+                    label = "Goal",
+                    options = TrainingProfileOptions.GOAL,
+                    selected = profileDraft.goal,
+                    onSelect = { viewModel.setProfileGoal(it) },
+                )
+
+                Spacer(Modifier.height(12.dp))
+                ChoiceRow(
+                    label = "Age group",
+                    options = TrainingProfileOptions.AGE_GROUP,
+                    selected = profileDraft.ageGroup,
+                    onSelect = { viewModel.setProfileAgeGroup(it) },
+                    perRow = 4,
+                )
+
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = profileDraft.limitations,
+                    onValueChange = { viewModel.setProfileLimitations(it) },
+                    label = { Text("Limitations / injuries") },
+                    supportingText = { Text("e.g. lower back, left shoulder — leave blank if none") },
+                    singleLine = false,
+                    maxLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { viewModel.saveProfile() },
+                    enabled = !profileSaving,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (profileSaving) "Saving…" else "Save training profile")
+                }
             }
 
             SettingsSection("Appearance") {
@@ -614,6 +693,75 @@ private fun ExportRow(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * The picker values for the training profile, kept **identical to the onboarding questionnaire**
+ * (`ui/onboarding/OnboardingScreen.kt`) so a profile edited here stays comparable to one collected
+ * there — `UserProfile.toContextString()` humanises these codes for the coach's prompt.
+ */
+private object TrainingProfileOptions {
+    val EXPERIENCE = listOf(
+        "BEGINNER" to "Beginner",
+        "INTERMEDIATE" to "Intermediate",
+        "ADVANCED" to "Advanced",
+    )
+    val GOAL = listOf(
+        "MUSCLE" to "Build muscle",
+        "FAT_LOSS" to "Lose fat",
+        "STRENGTH" to "Strength",
+        "FITNESS" to "General fitness",
+    )
+    val AGE_GROUP = listOf(
+        "13_17" to "13–17",
+        "18_24" to "18–24",
+        "25_34" to "25–34",
+        "35_44" to "35–44",
+        "45_54" to "45–54",
+        "55_64" to "55–64",
+        "65_PLUS" to "65+",
+    )
+}
+
+/**
+ * A labelled single-choice chip group (value → label). Wrapped in fixed-size rows rather than a
+ * flow layout so it lays out identically everywhere; tapping the selected chip clears the field
+ * (the profile contract reads an empty string as "cleared").
+ */
+@Composable
+private fun ChoiceRow(
+    label: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    perRow: Int = 3,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        options.chunked(perRow).forEach { chunk ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                chunk.forEach { (value, text) ->
+                    FilterChip(
+                        selected = selected == value,
+                        onClick = { onSelect(if (selected == value) "" else value) },
+                        label = { Text(text, style = MaterialTheme.typography.labelLarge) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                // Keep the last row's chips the same width as the full rows above it.
+                repeat(perRow - chunk.size) { Spacer(Modifier.weight(1f)) }
+            }
+            Spacer(Modifier.height(6.dp))
         }
     }
 }

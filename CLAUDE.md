@@ -907,3 +907,55 @@ row against the same DB.
 
 **Not done, deliberately:** nothing here estimates recovery timelines, judges readiness, or
 interprets symptoms — that's her doctor's and pelvic floor physio's job, and the app says so.
+
+## Equipment memory fix — persistent training profile (2026-07-28)
+
+**Reported as "the AI keeps forgetting what equipment I have."** It wasn't the model forgetting;
+the equipment was never stored anywhere the coach could trust or the user could edit. Server
+**320 pytest green** + ruff clean; Android **386 unit tests green** + `assembleDebug`.
+
+### Why it happened (three compounding causes)
+1. The training profile (experience/goal/**equipment**/age group/limitations) lived **only** in
+   Android DataStore and reached the model **only** as `ChatRequest.user_context` — a
+   client-supplied string `_merged_context` deliberately treats as "stated preferences", never as
+   trusted context. The server had no idea what equipment existed.
+2. **Onboarding almost never runs.** `AuthViewModel.login()`/`completeSuiteLogin()` mark
+   onboarding done unconditionally (deliberate — a returning user on a fresh install shouldn't be
+   re-onboarded), so only the Register path fills the profile. Everyone else had an empty
+   `UserProfile`, whose `toContextString()` returns `""` → sent as `null`.
+3. **Nothing could edit it after onboarding.** `OnboardingViewModel.finish()` was the only writer
+   in the app, so new equipment could never be recorded.
+   (`users.settings` existed but was dead — only ever assigned `None`.)
+
+### Fixed
+- **Migration `0016`** — `users` gains `equipment`/`experience`/`goal`/`age_group`/`limitations`/
+  `profile_updated_at`; the dead `settings` column is dropped in the same revision.
+- **`GET`/`PATCH /users/me/profile`** (30/min). PATCH is partial via `model_fields_set`: an
+  omitted key is unchanged, an explicit `""`/`null` clears it, and `PATCH {}` is a true no-op so a
+  never-filled profile stays distinguishable from a deliberately cleared one. Account reset clears
+  it.
+- **The actual fix:** `context_service.build_user_context` now leads the trusted DB-derived block
+  with the saved profile, so equipment reaches the model on every chat regardless of what the
+  client attaches. This also fixed a **second instance of the same bug class** — the function
+  early-returned `None` when the user had no training history, so a saved profile would never have
+  reached the model for anyone who hadn't logged a session yet.
+- **[AI prompt change]** the Training profile block is authoritative and persisted: never re-ask
+  its items, program within the listed equipment, and honour an in-chat contradiction ("hotel gym
+  this week") for that conversation without re-interrogating everything else.
+- **Settings → Training profile** — equipment first and multi-line, then experience/goal/age as
+  chip groups mirroring onboarding's values, then limitations. `ProfileRepository` keeps the
+  server authoritative with the DataStore mirror for offline; `refresh()` drains before pulling so
+  a sync can't clobber an offline edit; onboarding now pushes to the server too, and the Home sync
+  round + reconnect observer pull it back (chosen over touching `AuthViewModel`, where a hang
+  would break sign-in).
+
+### Deliberately not done
+The coach cannot write to the profile itself. "I bought a squat rack" mid-chat does **not**
+silently update stored equipment — that would break the "AI proposes, user commits" invariant.
+If that's wanted, it should be a confirm card like every other AI write.
+
+### Still open (unchanged, noted for later)
+`login()`/`completeSuiteLogin()` still mark onboarding done unconditionally, so most users never
+see the questionnaire. Much less harmful now that Settings can edit the profile and the server
+copy repopulates on sign-in, but the root behaviour stands — fixing it means touching the auth
+flow, which is the riskiest possible place for this.
