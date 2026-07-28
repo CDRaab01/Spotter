@@ -5,6 +5,7 @@ import com.spotter.data.local.entity.BodyMetricEntity
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.BodyMetricOut
 import com.spotter.data.remote.ApiService
+import com.spotter.health.HealthSync
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
@@ -18,6 +19,8 @@ import javax.inject.Inject
 class MetricRepository @Inject constructor(
     private val api: ApiService,
     private val dao: BodyMetricDao,
+    // Opt-in Health Connect mirror; no-op by default (see com.spotter.health.HealthSync).
+    private val healthSync: HealthSync = HealthSync.NoOp,
 ) {
     val metrics: Flow<List<BodyMetricEntity>> = dao.observeAll()
 
@@ -32,6 +35,7 @@ class MetricRepository @Inject constructor(
     suspend fun addMetric(req: BodyMetricCreate) {
         val localId = UUID.randomUUID().toString()
         dao.upsert(req.toEntity(id = localId, userId = "", serverId = null, syncPending = true))
+        healthSync.onBodyweightLogged(date = req.date, weightLb = req.weight)
         // Best-effort immediate push; on success promote the local row to the acknowledged one.
         runCatching { promote(localId, api.addWeightMetric(req)) }
     }

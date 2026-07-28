@@ -9,6 +9,7 @@ import com.spotter.data.model.CardioSessionOut
 import com.spotter.data.model.CardioSessionUpdate
 import com.spotter.data.model.CardioStatus
 import com.spotter.data.remote.ApiService
+import com.spotter.health.HealthSync
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 import java.util.UUID
@@ -25,6 +26,8 @@ import javax.inject.Singleton
 class CardioRepository @Inject constructor(
     private val api: ApiService,
     private val dao: CardioSessionDao,
+    // Opt-in Health Connect mirror; no-op by default (see com.spotter.health.HealthSync).
+    private val healthSync: HealthSync = HealthSync.NoOp,
 ) {
     fun sessionsFor(programId: String): Flow<List<CardioSessionEntity>> =
         dao.observeByProgram(programId)
@@ -114,6 +117,7 @@ class CardioRepository @Inject constructor(
             local // offline — stays syncPending, picked up by sync()
         }
         dao.upsert(synced)
+        healthSync.onCardioSessionSaved(previous = null, saved = synced)
         return synced
     }
 
@@ -144,6 +148,7 @@ class CardioRepository @Inject constructor(
             CardioSessionUpdate(status = status, totalElapsedSec = elapsedSec),
         )
         dao.upsert(pushed)
+        healthSync.onCardioSessionSaved(previous = current, saved = pushed)
     }
 
     /** Try to PATCH the server; returns the entity with the resulting sync state. */

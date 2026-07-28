@@ -14,6 +14,7 @@ import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
 import com.spotter.data.model.ChatMessage
 import com.spotter.data.model.ChatRequest
+import com.spotter.data.model.InsightsOut
 import com.spotter.data.model.RoutineCreate
 import com.spotter.data.model.RoutineUpdate
 import com.spotter.data.model.SessionCreate
@@ -139,6 +140,14 @@ class HomeViewModel @Inject constructor(
     private val _standaloneRoutines = MutableStateFlow<List<WorkoutRoutineEntity>>(emptyList())
     val standaloneRoutines: StateFlow<List<WorkoutRoutineEntity>> = _standaloneRoutines.asStateFlow()
 
+    /**
+     * Proactive coaching signals (stalled lifts + PRs this week) from GET /insights. Null until
+     * a round succeeds — and a failed round leaves the last good value in place rather than
+     * blanking it. Purely additive polish: no error is ever surfaced for this.
+     */
+    private val _insights = MutableStateFlow<InsightsOut?>(null)
+    val insights: StateFlow<InsightsOut?> = _insights.asStateFlow()
+
     private var autoGenerateTriggered = false
 
     init {
@@ -150,6 +159,18 @@ class HomeViewModel @Inject constructor(
         loadStats()
         loadUpcoming()
         loadGreeting()
+        loadInsights()
+    }
+
+    /**
+     * Best-effort: any failure (offline, 404 on an older server, HTTP error) simply means no
+     * coach-signals card. Home must look exactly as it did before when this doesn't land.
+     */
+    private fun loadInsights() {
+        viewModelScope.launch {
+            runCatching { aiRepository.insights() }
+                .onSuccess { _insights.value = it }
+        }
     }
 
     private fun observePrograms() {
@@ -265,10 +286,11 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Re-pull stats and upcoming workouts (called on Home resume). */
+    /** Re-pull stats, upcoming workouts, and coach signals (called on Home resume). */
     fun refresh() {
         loadStats()
         loadUpcoming()
+        loadInsights()
     }
 
     /**

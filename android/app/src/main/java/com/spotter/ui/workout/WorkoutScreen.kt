@@ -137,7 +137,10 @@ fun WorkoutScreen(
         viewModel.navigateToSummary.collect { data ->
             navController.navigate(
                 Screen.WorkoutSummary.createRoute(
-                    data.durationSeconds, data.doneSets, data.totalSets, data.totalVolumeLb, data.newPrCount
+                    data.durationSeconds, data.doneSets, data.totalSets, data.totalVolumeLb, data.newPrCount,
+                    // Carries the just-finished session so the summary can ask the coach for a
+                    // debrief; the summary renders fully without it.
+                    sessionId = sessionId,
                 )
             ) { popUpTo(Screen.Workout.route) { inclusive = true } }
         }

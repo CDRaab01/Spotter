@@ -1,7 +1,13 @@
 package com.spotter.program
 
+import com.spotter.ui.program.PresetDay
+import com.spotter.ui.program.PresetExercise
+import com.spotter.ui.program.PresetProgram
 import com.spotter.ui.program.ProgramPresets
+import com.spotter.ui.program.presetCadenceLine
+import com.spotter.ui.program.restDay
 import org.junit.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ProgramPresetsTest {
@@ -54,6 +60,58 @@ class ProgramPresetsTest {
                 "Preset '${preset.displayName}' has no exercises",
             )
         }
+    }
+
+    @Test
+    fun `every preset schedules at least one rest day`() {
+        // Without rest days in the cycle a "3x a week" preset actually trains every single day —
+        // the prescribed cadence has to exist in the days list to be real.
+        ProgramPresets.all.forEach { preset ->
+            assertTrue(
+                preset.days.any { it.isRest },
+                "Preset '${preset.displayName}' has no rest day in its cycle",
+            )
+        }
+    }
+
+    @Test
+    fun `rest days are labelled and carry no exercises`() {
+        ProgramPresets.all.forEach { preset ->
+            preset.days.filter { it.isRest }.forEach { day ->
+                assertTrue(
+                    day.label.isNotBlank(),
+                    "A rest day in '${preset.displayName}' has no label",
+                )
+                assertTrue(day.exercises.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `every preset trains between 2 and 6 times a week`() {
+        ProgramPresets.all.forEach { preset ->
+            val perWeek = preset.trainingDays.size * 7.0 / preset.days.size
+            assertTrue(
+                perWeek in 2.0..6.0,
+                "Preset '${preset.displayName}' prescribes $perWeek sessions a week",
+            )
+        }
+    }
+
+    @Test
+    fun `cadence line is derived from the cycle`() {
+        val preset = PresetProgram(
+            id = "x",
+            displayName = "X",
+            description = "d",
+            days = listOf(
+                PresetDay("Day A", listOf(PresetExercise("Bench Press", 5, 5, weight = 95.0))),
+                restDay(),
+                PresetDay("Day B", listOf(PresetExercise("Barbell Row", 5, 5, weight = 95.0))),
+                restDay(),
+            ),
+        )
+        assertEquals("2 workouts in a 4-day cycle · about 3.5 a week", presetCadenceLine(preset))
     }
 
     @Test

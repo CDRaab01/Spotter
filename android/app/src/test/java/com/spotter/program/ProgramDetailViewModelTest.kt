@@ -2,6 +2,7 @@ package com.spotter.program
 
 import com.spotter.data.local.dao.RoutineExerciseDao
 import com.spotter.data.local.entity.ProgramDayEntity
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.data.model.ProgramDayIn
 import com.spotter.data.model.ProgramDaysUpdate
@@ -87,21 +88,28 @@ class ProgramDetailViewModelTest {
     }
 
     @Test
-    fun `load populates days and name from repository`() = runTest(testDispatcher) {
-        whenever(programRepository.programName(any())).thenReturn("PPL")
-        whenever(programRepository.daysFor(any())).thenReturn(
-            listOf(
-                ProgramDayEntity("d1", "prog1", "routine1", "Push", 0, "Push"),
-                ProgramDayEntity("d2", "prog1", "routine2", "Pull", 1, "Pull"),
+    fun `load populates days, name and the periodization fields from repository`() =
+        runTest(testDispatcher) {
+            whenever(programRepository.program(any())).thenReturn(
+                WorkoutProgramEntity(
+                    id = "prog1", name = "PPL", isActive = true,
+                    weeks = 8, deloadWeek = 4, startedOn = "2026-07-01",
+                )
             )
-        )
+            whenever(programRepository.daysFor(any())).thenReturn(
+                listOf(
+                    ProgramDayEntity("d1", "prog1", "routine1", "Push", 0, "Push"),
+                    ProgramDayEntity("d2", "prog1", "routine2", "Pull", 1, "Pull"),
+                )
+            )
 
-        viewModel.load("prog1")
-        advanceTimeBy(200)
+            viewModel.load("prog1")
+            advanceTimeBy(200)
 
-        assertEquals("PPL", viewModel.programName.value)
-        assertEquals(listOf("Push", "Pull"), viewModel.days.value.map { it.label })
-    }
+            assertEquals("PPL", viewModel.programName.value)
+            assertEquals(8, viewModel.program.value?.weeks)
+            assertEquals(listOf("Push", "Pull"), viewModel.days.value.map { it.label })
+        }
 
     @Test
     fun `save sends days with recomputed order`() = runTest(testDispatcher) {

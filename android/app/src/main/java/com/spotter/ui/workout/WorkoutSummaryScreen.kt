@@ -17,6 +17,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -25,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,24 +38,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.text.font.FontStyle
 import design.pulse.ui.theme.rememberPulseHaptics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.spotter.data.model.MuscleGroupSummary
 import design.pulse.ui.components.CelebrationPulse
 import design.pulse.ui.components.ConfettiHost
 import design.pulse.ui.components.DataText
 import com.spotter.ui.components.HeatBar
+import com.spotter.ui.components.shimmer
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.TickerNumber
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.summary.WorkoutSummaryViewModel
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatVolume
 import com.spotter.ui.theme.formatWeight
+import com.spotter.util.UiState
 
 @Composable
 fun WorkoutSummaryScreen(
@@ -61,7 +71,11 @@ fun WorkoutSummaryScreen(
     muscleGroups: List<MuscleGroupSummary> = emptyList(),
     newPrCount: Int = 0,
     navController: NavController,
+    viewModel: WorkoutSummaryViewModel = hiltViewModel(),
 ) {
+    // Best-effort coach debrief: fired from the VM's init off the route's session id. The screen
+    // below renders identically whether or not it ever lands.
+    val debrief by viewModel.debrief.collectAsState()
     val weightUnit = LocalWeightUnit.current
     val pulse = SpotterTheme.pulse
     val spacing = SpotterTheme.spacing
@@ -243,6 +257,34 @@ fun WorkoutSummaryScreen(
                 }
             }
 
+            // The coach's read on the session. Arrives (or doesn't) after the fact — a failure
+            // renders nothing at all, which is the common case when LM Studio is down.
+            when (val state = debrief) {
+                is UiState.Loading -> {
+                    Spacer(Modifier.height(spacing.xl))
+                    CoachDebriefCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacing.lg),
+                    ) {
+                        DebriefSkeleton()
+                    }
+                }
+
+                is UiState.Success -> {
+                    Spacer(Modifier.height(spacing.xl))
+                    CoachDebriefCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacing.lg),
+                    ) {
+                        DebriefProse(state.data)
+                    }
+                }
+
+                else -> Unit
+            }
+
             Spacer(Modifier.height(40.dp))
             PulseButton(
                 text = "Return to Home",
@@ -264,6 +306,75 @@ fun WorkoutSummaryScreen(
 
         // Celebration burst on entry; a perfect session gets it regardless of size.
         ConfettiHost(play = play)
+    }
+}
+
+/**
+ * The coach speaking: a violet-channel panel under a "COACH" caption. Same shell for the
+ * in-flight skeleton and the landed prose so the card doesn't jump when the text arrives.
+ */
+@Composable
+private fun CoachDebriefCard(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val pulse = SpotterTheme.pulse
+    PanelCard(modifier = modifier, channel = pulse.strength) {
+        Text(
+            text = "COACH",
+            style = MaterialTheme.typography.labelSmall,
+            color = pulse.strength,
+        )
+        Spacer(Modifier.height(SpotterTheme.spacing.sm))
+        content()
+    }
+}
+
+/** Quoted prose: a violet rule down the left edge, the debrief indented beside it. */
+@Composable
+private fun DebriefProse(text: String) {
+    val pulse = SpotterTheme.pulse
+    Row(Modifier.height(IntrinsicSize.Min)) {
+        Box(
+            Modifier
+                .width(2.dp)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(1.dp))
+                .background(pulse.strengthDim),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            fontStyle = FontStyle.Italic,
+            modifier = Modifier.padding(start = SpotterTheme.spacing.md),
+        )
+    }
+}
+
+/** "Coach is reviewing your session…" — a caption plus two shimmering prose lines. */
+@Composable
+private fun DebriefSkeleton() {
+    val spacing = SpotterTheme.spacing
+    Column {
+        Text(
+            text = "Coach is reviewing your session…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(spacing.sm))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .shimmer(RoundedCornerShape(5.dp)),
+        )
+        Spacer(Modifier.height(spacing.xs))
+        Box(
+            Modifier
+                .fillMaxWidth(0.7f)
+                .height(10.dp)
+                .shimmer(RoundedCornerShape(5.dp)),
+        )
     }
 }
 

@@ -23,23 +23,55 @@ data class PresetExercise(
 data class PresetDay(
     val label: String,
     val exercises: List<PresetExercise>,
-)
+) {
+    /**
+     * A day with no exercises is a rest day — the same shape a program day takes on the server
+     * (a labelled day with no routine linked), so it survives the accept-program round trip.
+     */
+    val isRest: Boolean get() = exercises.isEmpty()
+}
+
+/** A rest day in a preset's cycle. Prescribed cadence is only real if the rests are in the list. */
+fun restDay(label: String = "Rest"): PresetDay = PresetDay(label, emptyList())
 
 data class PresetProgram(
     val id: String,
     val displayName: String,
     val description: String,
+    /**
+     * The repeating cycle, rest days included: the program advances one day per calendar day,
+     * so `days.size` is the cycle length and the training days inside it set the real frequency.
+     */
     val days: List<PresetDay>,
-)
+) {
+    val trainingDays: List<PresetDay> get() = days.filter { !it.isRest }
+}
+
+/**
+ * One line describing what the preset's cycle actually prescribes, e.g.
+ * "2 workouts in a 4-day cycle · about 3.5 a week". Derived from the days list rather than the
+ * prose, so the displayed cadence can never drift from what gets scheduled.
+ */
+fun presetCadenceLine(preset: PresetProgram): String {
+    val training = preset.trainingDays.size
+    val cycle = preset.days.size.coerceAtLeast(1)
+    val perWeek = training * 7.0 / cycle
+    val rounded = if (perWeek % 1.0 == 0.0) perWeek.toInt().toString()
+                  else String.format(java.util.Locale.US, "%.1f", perWeek)
+    val workouts = if (training == 1) "1 workout" else "$training workouts"
+    return "$workouts in a $cycle-day cycle · about $rounded a week"
+}
 
 object ProgramPresets {
+
+    fun byId(id: String): PresetProgram? = all.firstOrNull { it.id == id }
 
     val all: List<PresetProgram> = listOf(
         PresetProgram(
             id = "stronglifts_5x5",
             displayName = "StrongLifts 5×5",
-            description = "Classic barbell strength. Alternate Day A / Day B, ~3×/week. " +
-                "Add weight each session.",
+            description = "Classic barbell strength. Alternate Day A / Day B with a rest day " +
+                "between each — about 3–4 sessions a week. Add weight every session.",
             days = listOf(
                 PresetDay(
                     "Day A",
@@ -49,6 +81,7 @@ object ProgramPresets {
                         PresetExercise("Barbell Row", 5, 5, weight = 95.0),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Day B",
                     listOf(
@@ -57,13 +90,14 @@ object ProgramPresets {
                         PresetExercise("Conventional Deadlift", 1, 5, weight = 135.0),
                     ),
                 ),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "ppl",
             displayName = "Push / Pull / Legs",
-            description = "A 3-day hypertrophy split hitting each muscle group with " +
-                "compound-first volume. Run once or twice per week.",
+            description = "A hypertrophy split hitting each muscle group with compound-first " +
+                "volume: three sessions, then a rest day, repeat.",
             days = listOf(
                 PresetDay(
                     "Push",
@@ -96,13 +130,14 @@ object ProgramPresets {
                         PresetExercise("Leg Extension", 3, 15, weight = 70.0),
                     ),
                 ),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "upper_lower",
             displayName = "Upper / Lower",
-            description = "A 4-day split alternating upper- and lower-body days. " +
-                "Balanced strength and size.",
+            description = "Alternating upper- and lower-body days: two on, one off — " +
+                "4–5 sessions a week. Balanced strength and size.",
             days = listOf(
                 PresetDay(
                     "Upper",
@@ -125,13 +160,14 @@ object ProgramPresets {
                         PresetExercise("Leg Extension", 3, 15, weight = 70.0),
                     ),
                 ),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "full_body",
             displayName = "Full Body (Beginner)",
-            description = "One balanced full-body session, run ~3×/week. The simplest " +
-                "way to build a base of strength.",
+            description = "One balanced full-body session every other day — about 3 a week. " +
+                "The simplest way to build a base of strength.",
             days = listOf(
                 PresetDay(
                     "Full Body",
@@ -143,13 +179,14 @@ object ProgramPresets {
                         PresetExercise("Romanian Deadlift", 3, 10, weight = 95.0),
                     ),
                 ),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "dumbbell_only",
             displayName = "Dumbbell Only",
-            description = "A full-body home routine needing only dumbbells. Great for " +
-                "training without a barbell or machines.",
+            description = "A full-body home routine needing only dumbbells, alternating two " +
+                "days with rest between. Great for training without a barbell or machines.",
             days = listOf(
                 PresetDay(
                     "Day A",
@@ -161,6 +198,7 @@ object ProgramPresets {
                         PresetExercise("Dumbbell Curl", 3, 12, weight = 20.0),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Day B",
                     listOf(
@@ -171,6 +209,7 @@ object ProgramPresets {
                         PresetExercise("Dumbbell Overhead Tricep Extension", 3, 12, weight = 25.0),
                     ),
                 ),
+                restDay(),
             ),
         ),
         // ── Special-case programs ─────────────────────────────────────────────
@@ -183,8 +222,8 @@ object ProgramPresets {
             displayName = "Knee-Friendly Strength",
             description = "Train around a cranky knee: upper-body strength plus " +
                 "knee-sparing glute and hamstring work — no squats, lunges, or leg " +
-                "extensions. Stay in pain-free range, and get cleared by your doctor " +
-                "or physio first.",
+                "extensions. Three sessions a week with a rest day between each. Stay in " +
+                "pain-free range, and get cleared by your doctor or physio first.",
             days = listOf(
                 PresetDay(
                     "Upper Push",
@@ -196,6 +235,7 @@ object ProgramPresets {
                         PresetExercise("Tricep Pushdown", 3, 12, weight = 40.0),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Upper Pull",
                     listOf(
@@ -206,6 +246,7 @@ object ProgramPresets {
                         PresetExercise("Hammer Curl", 3, 12, weight = 20.0),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Hips & Hamstrings",
                     listOf(
@@ -216,6 +257,7 @@ object ProgramPresets {
                         PresetExercise("Standing Calf Raise", 3, 15, isBodyweight = true),
                     ),
                 ),
+                restDay(),
             ),
         ),
         PresetProgram(
@@ -223,8 +265,8 @@ object ProgramPresets {
             displayName = "Prenatal — Third Trimester",
             description = "Light full-body strength for late pregnancy: seated or " +
                 "standing work only, nothing lying flat on your back, no breath-holding " +
-                "or core flexion. Keep loads light and stop anything that feels wrong — " +
-                "with your OB's okay.",
+                "or core flexion. Two easy sessions a week with plenty of rest. Keep loads " +
+                "light and stop anything that feels wrong — with your OB's okay.",
             days = listOf(
                 PresetDay(
                     "Day A",
@@ -236,6 +278,7 @@ object ProgramPresets {
                         PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Day B",
                     listOf(
@@ -246,15 +289,17 @@ object ProgramPresets {
                         PresetExercise("Cable Glute Kickback", 2, 12, weight = 10.0),
                     ),
                 ),
+                restDay(),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "postpartum_rebuild",
             displayName = "Postpartum Rebuild",
             description = "A gentle return to training after giving birth — core- and " +
-                "pelvic-floor-friendly, no crunches and no heavy lifting. Start only " +
-                "after your doctor clears exercise (often around 6 weeks), and progress " +
-                "by how you feel.",
+                "pelvic-floor-friendly, no crunches and no heavy lifting. Two sessions a " +
+                "week with rest between. Start only after your doctor clears exercise " +
+                "(often around 6 weeks), and progress by how you feel.",
             days = listOf(
                 PresetDay(
                     "Foundations",
@@ -266,6 +311,7 @@ object ProgramPresets {
                         PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Light Strength",
                     listOf(
@@ -276,14 +322,17 @@ object ProgramPresets {
                         PresetExercise("Cable Glute Kickback", 2, 12, weight = 10.0),
                     ),
                 ),
+                restDay(),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "back_friendly",
             displayName = "Lower-Back Friendly",
             description = "Strength work that keeps the spine happy: supported rows, " +
-                "machines, and glute work instead of heavy hinging off the floor. " +
-                "Pain-free range only — clear it with your doctor or physio first.",
+                "machines, and glute work instead of heavy hinging off the floor, with a " +
+                "rest day between sessions. Pain-free range only — clear it with your " +
+                "doctor or physio first.",
             days = listOf(
                 PresetDay(
                     "Lower (spine-sparing)",
@@ -295,6 +344,7 @@ object ProgramPresets {
                         PresetExercise("Standing Calf Raise", 3, 15, isBodyweight = true),
                     ),
                 ),
+                restDay(),
                 PresetDay(
                     "Upper (supported)",
                     listOf(
@@ -305,13 +355,14 @@ object ProgramPresets {
                         PresetExercise("Face Pull", 3, 15, weight = 30.0),
                     ),
                 ),
+                restDay(),
             ),
         ),
         PresetProgram(
             id = "bodyweight_basics",
             displayName = "Bodyweight Basics",
             description = "No equipment needed. Full-body calisthenics you can do " +
-                "anywhere — progress by adding reps.",
+                "anywhere, every other day — progress by adding reps.",
             days = listOf(
                 PresetDay(
                     "Full Body",
@@ -327,6 +378,7 @@ object ProgramPresets {
                         PresetExercise("Mountain Climber", 3, 20, isBodyweight = true),
                     ),
                 ),
+                restDay(),
             ),
         ),
     )

@@ -4,12 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.spotter.BuildConfig
 import com.spotter.data.local.SpotterDatabase
+import com.spotter.data.export.ExportKind
+import com.spotter.data.export.ExportRepository
+import com.spotter.data.export.ExportedFile
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.di.IoDispatcher
+import com.spotter.health.HealthConnectManager
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
@@ -39,6 +43,8 @@ class SettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val database: SpotterDatabase,
     private val programRepository: ProgramRepository,
+    private val exportRepository: ExportRepository,
+    private val healthConnectManager: HealthConnectManager,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -115,6 +121,40 @@ class SettingsViewModel @Inject constructor(
     private val _navigateToOnboarding = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateToOnboarding: SharedFlow<Unit> = _navigateToOnboarding.asSharedFlow()
 
+    // ── Export data ───────────────────────────────────────────────────────────
+
+    /** The export currently downloading, or null when idle — drives the per-row spinner. */
+    private val _exporting = MutableStateFlow<ExportKind?>(null)
+    val exporting: StateFlow<ExportKind?> = _exporting.asStateFlow()
+
+    /** A finished download, ready for the screen to hand to the Android share sheet. */
+    private val _exportReady = MutableSharedFlow<ExportedFile>(extraBufferCapacity = 1)
+    val exportReady: SharedFlow<ExportedFile> = _exportReady.asSharedFlow()
+
+    private val _exportError = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val exportError: SharedFlow<String> = _exportError.asSharedFlow()
+
+    // ── Health Connect ────────────────────────────────────────────────────────
+
+    /** Whether this device can use Health Connect at all — static per install, read once. */
+    val healthConnectAvailability: HealthConnectManager.Availability =
+        healthConnectManager.availability()
+
+    val healthConnectEnabled: StateFlow<Boolean> = appPreferences.healthConnectEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /**
+     * Emitted when the user turns the toggle on and the write permissions aren't granted yet: the
+     * screen launches [HealthConnectManager.permissionContract] with this set, then reports back
+     * through [onHealthPermissionsResult]. (The permission request needs an Activity, so it can't
+     * live here.)
+     */
+    private val _requestHealthPermissions = MutableSharedFlow<Set<String>>(extraBufferCapacity = 1)
+    val requestHealthPermissions: SharedFlow<Set<String>> = _requestHealthPermissions.asSharedFlow()
+
+    private val _healthMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val healthMessage: SharedFlow<String> = _healthMessage.asSharedFlow()
+
     init {
         loadUser()
         loadServerVersion()
@@ -178,6 +218,67 @@ class SettingsViewModel @Inject constructor(
 
     fun setQuietHours(startHour: Int, endHour: Int) {
         viewModelScope.launch { appPreferences.setQuietHours(startHour, endHour) }
+    }
+
+    /**
+     * Downloads an export into app cache and emits it on [exportReady] for the share sheet. One at
+     * a time; a failure (offline, HTTP error) surfaces on [exportError] and leaves nothing behind.
+     */
+    fun export(kind: ExportKind) {
+        if (_exporting.value != null) return
+        viewModelScope.launch {
+            _exporting.value = kind
+            try {
+                _exportReady.emit(
+                    when (kind) {
+                        ExportKind.JSON -> exportRepository.exportJson()
+                        ExportKind.CSV -> exportRepository.exportCsv()
+                    }
+                )
+            } catch (_: Exception) {
+                _exportError.emit("Couldn't export — check your connection.")
+            } finally {
+                _exporting.value = null
+            }
+        }
+    }
+
+    /**
+     * Flips the Health Connect mirror. Turning it ON only sticks once the write permissions are
+     * granted — otherwise the toggle stays off and [requestHealthPermissions] asks for them, with
+     * [onHealthPermissionsResult] completing the flip. Turning it OFF is unconditional.
+     */
+    fun setHealthConnectEnabled(value: Boolean) {
+        viewModelScope.launch {
+            if (!value) {
+                appPreferences.setHealthConnectEnabled(false)
+                return@launch
+            }
+            if (healthConnectAvailability != HealthConnectManager.Availability.AVAILABLE) {
+                _healthMessage.emit("Health Connect isn't available on this device.")
+                return@launch
+            }
+            if (healthConnectManager.hasPermissions()) {
+                appPreferences.setHealthConnectEnabled(true)
+            } else {
+                _requestHealthPermissions.emit(healthConnectManager.permissions)
+            }
+        }
+    }
+
+    /** The contract the screen registers to ask Health Connect for [HealthConnectManager.permissions]. */
+    fun healthPermissionContract() = healthConnectManager.permissionContract()
+
+    /** Result of the Health Connect permission request launched from the screen. */
+    fun onHealthPermissionsResult(granted: Set<String>) {
+        viewModelScope.launch {
+            if (granted.containsAll(healthConnectManager.permissions)) {
+                appPreferences.setHealthConnectEnabled(true)
+            } else {
+                appPreferences.setHealthConnectEnabled(false)
+                _healthMessage.emit("Health Connect needs both write permissions to sync.")
+            }
+        }
     }
 
     /**

@@ -11,7 +11,10 @@ import com.spotter.data.model.CardioSessionOut
 import com.spotter.data.model.CardioSessionUpdate
 import com.spotter.data.model.ChatRequest
 import com.spotter.data.model.ChatResponse
+import com.spotter.data.model.DebriefOut
 import com.spotter.data.model.ExerciseOut
+import com.spotter.data.model.InsightsOut
+import com.spotter.data.model.WeeklyRecapOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.ExerciseProgressPoint
 import com.spotter.data.model.PersonalRecord
@@ -41,6 +44,8 @@ import com.spotter.data.model.TokenResponse
 import com.spotter.data.model.TrackedExercise
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
+import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -49,6 +54,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface ApiService {
     // Auth
@@ -146,6 +152,19 @@ interface ApiService {
         @Body req: ApplyAdjustmentRequest,
     ): SessionOut
 
+    /** Post-workout coach debrief for a completed session (409 while it's still in progress). */
+    @POST("ai/sessions/{id}/debrief")
+    suspend fun debriefSession(@Path("id") id: String): DebriefOut
+
+    /** This week's recap: server-computed stats + an optional LLM narrative (always 200). */
+    @GET("ai/recap/weekly")
+    suspend fun getWeeklyRecap(): WeeklyRecapOut
+
+    // Insights
+    /** Proactive coaching signals: stalled lifts + PRs this week. */
+    @GET("insights")
+    suspend fun getInsights(): InsightsOut
+
     // Calendar
     @GET("calendar")
     suspend fun getCalendar(
@@ -171,6 +190,19 @@ interface ApiService {
     /** Server build info (unauthenticated) — shown in Settings → About. */
     @GET("version")
     suspend fun getServerVersion(): VersionOut
+
+    // Export (Settings → Export data). Both stream so a large history never has to be fully
+    // buffered in memory, and both return the raw Response so the server-suggested filename can be
+    // read off Content-Disposition.
+    /** Full JSON export of the signed-in user's data. */
+    @Streaming
+    @GET("export")
+    suspend fun exportJson(): Response<ResponseBody>
+
+    /** Every logged set as CSV (`date,exercise,set_number,set_type,reps,weight,rpe,completed`). */
+    @Streaming
+    @GET("export/sets.csv")
+    suspend fun exportSetsCsv(): Response<ResponseBody>
 
     // Progress
     @GET("progress/exercises")

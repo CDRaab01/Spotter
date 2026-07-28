@@ -71,6 +71,20 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val LAST_SUCCESSFUL_SYNC_MS = longPreferencesKey("pref_last_successful_sync_ms")
         private val TRACK_RPE = booleanPreferencesKey("pref_track_rpe")
         private val AUTO_START_REST = booleanPreferencesKey("pref_auto_start_rest")
+        private val HEALTH_CONNECT_ENABLED = booleanPreferencesKey("pref_health_connect_enabled")
+    }
+
+    /**
+     * Opt-in (default OFF): mirror finished workouts and weigh-ins into Health Connect. Write-only —
+     * Spotter never reads back. See [com.spotter.health.HealthSync]; the toggle alone isn't enough,
+     * the write path also re-checks the granted permissions each time.
+     */
+    val healthConnectEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[HEALTH_CONNECT_ENABLED] ?: false
+    }
+
+    suspend fun setHealthConnectEnabled(value: Boolean) {
+        context.dataStore.edit { it[HEALTH_CONNECT_ENABLED] = value }
     }
 
     /** Opt-in (default OFF): completed set rows show a compact RPE (1–10) entry in workout mode. */

@@ -250,9 +250,10 @@ private fun RangeSelector(
     }
 }
 
+/** `internal` so the exercise-detail screen renders the genuine toggle instead of a copy. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StrengthMetricToggle(
+internal fun StrengthMetricToggle(
     selected: StrengthMetric,
     onSelect: (StrengthMetric) -> Unit,
 ) {
@@ -426,8 +427,12 @@ private fun MeasurementCell(trend: MeasurementTrend, unit: String, modifier: Mod
     }
 }
 
-/** Which series the Strength chart plots: the day's top weight, or the day's best estimated 1RM. */
-private enum class StrengthMetric(val label: String) {
+/**
+ * Which series the Strength chart plots: the day's top weight, or the day's best estimated 1RM.
+ * `internal` (with [StrengthMetricToggle] and [ChartCard]) so `ui/exercise` shares this exact
+ * chart language rather than duplicating it.
+ */
+internal enum class StrengthMetric(val label: String) {
     WEIGHT("Weight"),
     EST_1RM("Est. 1RM"),
 }
@@ -662,7 +667,7 @@ private fun RecordsTab(records: UiState<List<PersonalRecord>>) {
 
 /** Frames a chart in a panel so it sits on a clean instrument surface with breathing room. */
 @Composable
-private fun ChartCard(content: @Composable () -> Unit) {
+internal fun ChartCard(content: @Composable () -> Unit) {
     PanelCard(
         modifier = Modifier
             .fillMaxWidth()

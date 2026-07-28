@@ -51,9 +51,11 @@ import androidx.navigation.NavController
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.WorkoutRoutineEntity
 import com.spotter.ui.components.ExercisePreviewRow
+import design.pulse.ui.components.DataText
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import com.spotter.ui.navigation.Screen
+import com.spotter.ui.theme.SpotterTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +65,7 @@ fun ProgramDetailScreen(
     viewModel: ProgramDetailViewModel = hiltViewModel(),
 ) {
     val programName by viewModel.programName.collectAsState()
+    val program by viewModel.program.collectAsState()
     val days by viewModel.days.collectAsState()
     val dayExercises by viewModel.dayExercises.collectAsState()
     val availableRoutines by viewModel.availableRoutines.collectAsState()
@@ -107,6 +110,9 @@ fun ProgramDetailScreen(
                 .padding(horizontal = 16.dp),
         ) {
             Spacer(Modifier.height(8.dp))
+
+            // Periodization: only programs with a planned length say anything here.
+            program?.let { PeriodizationHeader(programWeek(it)) }
 
             AddDayRow(
                 routines = availableRoutines,
@@ -158,6 +164,46 @@ fun ProgramDetailScreen(
             Spacer(Modifier.height(8.dp))
         }
     }
+}
+
+/**
+ * "Week N of M" for a periodized block, plus an amber DELOAD WEEK badge when this is the planned
+ * light week. Renders nothing for open-ended programs (the overwhelming majority).
+ */
+@Composable
+private fun PeriodizationHeader(week: ProgramWeek?) {
+    val label = weekLabel(week) ?: return
+    val pulse = SpotterTheme.pulse
+    val isDeload = week?.isDeloadWeek == true
+    PanelCard(
+        modifier = Modifier.fillMaxWidth(),
+        channel = if (isDeload) pulse.streak else null,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DataText(
+                text = label.uppercase(),
+                style = SpotterTheme.dataType.numeral,
+                color = if (isDeload) pulse.streak else pulse.effort,
+                modifier = Modifier.weight(1f),
+            )
+            if (isDeload) {
+                Text(
+                    "DELOAD WEEK",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = pulse.streak,
+                )
+            }
+        }
+        if (isDeload) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                DELOAD_EXPLANATION,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

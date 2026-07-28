@@ -41,6 +41,15 @@ class RoutineRepository @Inject constructor(
         pullFromServer()
     }
 
+    /**
+     * The stable local (Room PK) id for a routine referenced by either id. A server-served payload
+     * (e.g. `SessionOut.routineId`) carries the server id; everything local keys off the Room PK.
+     * Falls back to the input when the routine isn't mirrored, so callers never get a null.
+     */
+    suspend fun localRoutineId(routineId: String): String =
+        if (dao.getById(routineId) != null) routineId
+        else dao.getByServerId(routineId)?.id ?: routineId
+
     suspend fun getRoutine(id: String): RoutineOut {
         // Prefer the server copy when we have a server id and connectivity; fall back to local.
         val local = dao.getById(id)

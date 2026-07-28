@@ -18,6 +18,7 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.remote.ApiService
+import com.spotter.health.HealthSync
 import com.spotter.util.TokenStore
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -42,6 +43,9 @@ class SessionRepository @Inject constructor(
     private val routineDao: WorkoutRoutineDao,
     private val exerciseDao: ExerciseDao,
     private val tokenStore: TokenStore,
+    // Opt-in Health Connect mirror. Defaults to the no-op so direct (test) construction is
+    // unchanged; Hilt always injects the real binding. See com.spotter.health.HealthSync.
+    private val healthSync: HealthSync = HealthSync.NoOp,
 ) {
     /**
      * The server id to send for a session's [routineId]. A routine created offline has a local
@@ -258,6 +262,7 @@ class SessionRepository @Inject constructor(
             syncPending = true,
         )
         sessionDao.upsert(updated)
+        healthSync.onStrengthSessionSaved(previousStatus = session.status, saved = updated)
 
         val serverSessionId = session.serverId
         return if (serverSessionId != null) {

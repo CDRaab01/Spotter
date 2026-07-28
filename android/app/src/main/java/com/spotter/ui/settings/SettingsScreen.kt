@@ -21,9 +21,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,9 +56,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import android.content.Context
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.spotter.data.export.ExportKind
+import com.spotter.data.export.ExportedFile
+import com.spotter.health.HealthConnectManager
 import com.spotter.ui.components.PulsingDots
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.PanelCard
@@ -86,8 +96,39 @@ fun SettingsScreen(
     val programs by viewModel.programs.collectAsState()
     val resetting by viewModel.resetting.collectAsState()
     val serverVersion by viewModel.serverVersion.collectAsState()
+    val exporting by viewModel.exporting.collectAsState()
+    val healthConnectEnabled by viewModel.healthConnectEnabled.collectAsState()
     val context = LocalContext.current
     var showResetDialog by remember { mutableStateOf(false) }
+
+    // Health Connect asks for its write permissions through its own contract (it needs an
+    // Activity, so the VM only signals *when* to ask and consumes the result).
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        contract = remember { viewModel.healthPermissionContract() },
+        onResult = { granted -> viewModel.onHealthPermissionsResult(granted) },
+    )
+
+    LaunchedEffect(Unit) {
+        viewModel.requestHealthPermissions.collect { permissions ->
+            healthPermissionLauncher.launch(permissions)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.healthMessage.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.exportReady.collect { exported -> shareExport(context, exported) }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.exportError.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToLogin.collect {
@@ -372,6 +413,61 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSection("Export data") {
+                Text(
+                    "Download your own copy. Files are handed straight to the share sheet — " +
+                        "save them, mail them, drop them in a spreadsheet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                ExportRow(
+                    icon = Icons.Default.Description,
+                    label = "Workout data (JSON)",
+                    busy = exporting == ExportKind.JSON,
+                    enabled = exporting == null,
+                    onClick = { viewModel.export(ExportKind.JSON) },
+                )
+                ExportRow(
+                    icon = Icons.Default.TableChart,
+                    label = "Sets (CSV)",
+                    busy = exporting == ExportKind.CSV,
+                    enabled = exporting == null,
+                    onClick = { viewModel.export(ExportKind.CSV) },
+                )
+            }
+
+            SettingsSection("Health Connect") {
+                val available =
+                    viewModel.healthConnectAvailability == HealthConnectManager.Availability.AVAILABLE
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Sync to Health Connect", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            when (viewModel.healthConnectAvailability) {
+                                HealthConnectManager.Availability.AVAILABLE ->
+                                    "Finished workouts and weigh-ins are copied to Health Connect. " +
+                                        "Spotter only writes — it never reads your health data."
+                                HealthConnectManager.Availability.UPDATE_REQUIRED ->
+                                    "Update Health Connect on this device to turn this on."
+                                HealthConnectManager.Availability.UNAVAILABLE ->
+                                    "Health Connect isn't available on this device."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = healthConnectEnabled && available,
+                        enabled = available,
+                        onCheckedChange = { viewModel.setHealthConnectEnabled(it) },
+                    )
+                }
+            }
+
             SettingsSection("Server") {
                 var serverUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
                 OutlinedTextField(
@@ -452,6 +548,72 @@ fun SettingsScreen(
                         )
                     }
             }
+        }
+    }
+}
+
+/**
+ * Hands a finished export to the Android share sheet via the app's FileProvider — the only way a
+ * cache file can leave the app sandbox. The read grant is scoped to the receiving app.
+ */
+private fun shareExport(context: Context, exported: ExportedFile) {
+    val uri = runCatching {
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", exported.file)
+    }.getOrNull() ?: run {
+        Toast.makeText(context, "Couldn't open the export file.", Toast.LENGTH_LONG).show()
+        return
+    }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = exported.mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TITLE, exported.file.name)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "Share ${exported.file.name}"))
+}
+
+/** An export row: icon + label, swapping the chevron for a spinner while the download runs. */
+@Composable
+private fun ExportRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    busy: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (enabled || busy) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled || busy) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            modifier = Modifier.weight(1f),
+        )
+        if (busy) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = SpotterTheme.pulse.effort,
+            )
+        } else {
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -36,13 +36,14 @@ e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `config.py
 | Auth/users | `auth.py`, `users.py`, `suite_auth.py` | `auth_service`, `suite_auth` | `User` |
 | Routines (the user-facing "plans") | `routines.py` | `routine_service` | `WorkoutRoutine`, `RoutineExercise` |
 | Programs (multi-day) | `programs.py` | `program_service` | `WorkoutProgram`, `ProgramDay` |
-| Sessions + sets | `sessions.py` | `session_service` (+ `progression.py` for `/prior-bests`) | `WorkoutSession`, `SetLog` |
+| Sessions + sets | `sessions.py` | `session_service` (+ `progression.py` for `/prior-bests`) | `WorkoutSession`, `SetLog` (+ `rpe`, `set_type`) |
 | Cardio | `cardio.py` | `cardio_service` | `CardioSession` (guided/free live runs **+** `POST /cardio/sessions/manual` after-the-fact walk/run entries: `program_id="manual"`, completed, optional `activity_type`/`distance_meters`) |
 | Metrics/progress/calendar | `metrics.py`, `progress.py`, `calendar.py` | matching services | `BodyMetric` + reads over sessions |
-| Exercise catalog | `exercises.py` | — (seeded reads) | `Exercise` |
+| Exercise catalog | `exercises.py` | — (seeded reads) | `Exercise` (name, muscle group, equipment, **`instructions` + `secondary_muscles`** backfilled for all 81 seeded movements by migration `0013`; `GET /exercises/{id}` serves the detail screen) |
 | AI | `ai.py` | `services/ai/` (see below) | writes via other services only |
+| Insights | `insights.py` | `insights_service` | reads sessions/sets — stalled lifts + PRs this week, **reusing `progression.stalled_sessions()`** rather than a second stall implementation |
 | Cross-app | `workouts.py` | `workout_service` | reads sessions/cardio |
-| Export | `export.py` | `export_service` | generic `__table__.columns` dump |
+| Export | `export.py` | `export_service` | generic `__table__.columns` dump (`GET /export`) + a flat per-set CSV (`GET /export/sets.csv`) |
 
 **Naming trap:** the original "plan" concept was renamed to **routine** (`/routines`,
 `WorkoutRoutine`). The AI schemas still say `SuggestedPlan` — that's the AI-draft object, not a
@@ -67,6 +68,12 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
 - `adjustment_apply.py` — the only path an AI suggestion touches the DB, and only via
   `POST /ai/sessions/{id}/adjust` after an explicit user Apply. **Completed sets are immutable**;
   only incomplete sets are ever mutated, in one transaction.
+- `debrief.py` / `recap.py` — read-only narration (`POST /ai/sessions/{id}/debrief`,
+  `GET /ai/recap/weekly`). Neither can write. **The recap's numbers are always computed
+  server-side and the narrative is best-effort**: LM Studio unreachable ⇒ `narrative: null` and
+  the endpoint still 200s, so a dead LLM degrades the prose, never the data (the Dragonfly
+  digest philosophy). All three LM callers share `client.lm_completion()`, so the 502/503/504
+  mapping is identical everywhere.
 
 The trust model, everywhere: **AI proposes, user commits.** There is no autonomous write path;
 adding one is an architecture change, not a feature. The workout screen's progression **Apply**
@@ -149,18 +156,42 @@ counters.
 
 ### Feature packages worth knowing
 
-- `ui/workout/` — the core product surface (set logging, rest panel, edit mode, resume strip via
+- `ui/workout/` — the core product surface (set logging, rest panel, resume strip via
   `util/ActiveWorkoutStore`). Supersets render as visually paired rows under a "SUPERSET A/B"
   header driven by the routine's `supersetGroup` (shared rest); the server derives the grouping,
-  the client only displays it.
+  the client only displays it. Sets carry a **type** (tap the set number: normal/warm-up/drop/
+  failure/AMRAP, badge replaces the number) and an optional **RPE** entry (Settings → Workout).
+  Rest supports ±15s, an auto-start toggle, and per-exercise overrides read from the routine
+  mirror (`SessionRepository.getRestSeconds`) — an explicit prescription is used verbatim, with
+  no failure bump. Exercises can be added/removed mid-session by hand, not just by the coach.
 - `ui/ai/` — coach chat + the three suggestion cards (plan / program / live adjustment).
 - `ui/history/` — the history list plus `SessionDetailScreen` (2026-07-28): a read-only
   per-set breakdown of a past session served by `SessionRepository.getSession`, so it works
   offline from the Room mirror. History cards navigate (resume when in-progress, detail when
   done) per the "cards navigate, buttons act" grammar — the old tap-to-expand preview is gone.
 - `ui/program/ProgramPresets.kt` — client-side preset programs (incl. special-case presets);
-  applying one reuses `POST /ai/programs/accept`. A guardrail test pins preset names to the
-  seeded catalog.
+  applying one reuses `POST /ai/programs/accept`, with a preview screen
+  (`ProgramPresetDetailScreen`) offering **add-and-activate or add-without-activating**. A
+  guardrail test pins preset names to the seeded catalog.
+  **Presets are cycles, not calendar weeks:** each defines the smallest repeating unit
+  (`A, Rest, B, Rest`), because `accept_program` creates one routine per training day — a literal
+  7-day week listing the same day twice would create duplicate routines. `presetCadenceLine`
+  derives the advertised frequency from the day list, so the description can't drift from the
+  schedule again. A training day whose exercises all fail to resolve is **dropped**, never sent
+  empty — an empty day now *means* rest.
+- `ui/program/Periodization.kt` — pure `programWeek`/`weekLabel` over the mirrored `startedOn`.
+  The server's `current_week`/`is_deload_week` are deliberately **not** mirrored (they're
+  time-derived, so a cached copy would be stale by definition); the client recomputes them from
+  the same formula instead.
+- `ui/history/SessionTemplate.kt` — pure derivation for "repeat this workout" / "save as routine"
+  (a completed session → `RoutineExerciseIn`s), table-tested.
+- `ui/exercise/ExerciseDetailScreen.kt` — form instructions + muscles from the catalog mirror
+  (offline-capable), plus a server-computed history chart and PR panel loaded independently, so
+  a history failure never takes the instructions down with it.
+- `ui/recap/` + `ui/summary/` — the weekly recap screen and the post-workout coach debrief. Both
+  treat the LLM as optional: the debrief card is **omitted entirely** on failure (LM Studio being
+  down is the normal case here, not an error worth showing), and the recap renders its
+  server-computed numbers with a quiet note when the narrative is null.
 - `ui/cardio/` — C25K/free-run screens + `CardioSchedule.kt` (shared next-run math for Home/
   Calendar/overview); the "active cardio program" flag is client-side DataStore, not server.
   `ManualCardioScreen` logs a walk/run after the fact (`CardioRepository.logManualSession`);
@@ -183,6 +214,19 @@ counters.
 - `util/nudge/` — an opt-in workout-morning reminder (`WorkoutNudgeScheduler` enqueues a
   WorkManager `WorkoutNudgeWorker`); it re-checks enabled/permission/quiet-hours/is-today-a-
   workout-day at fire time so a stale schedule can't nag.
+- `data/export/` — Settings → Export data. Streams `GET /export` (JSON) and `GET /export/sets.csv`
+  into `cacheDir/exports/` and hands the file to the share sheet via FileProvider. Filename
+  parsing (`ExportFilenames`) is pure and table-tested, including RFC 5987 `filename*` and
+  path-traversal sanitising.
+- `health/` — **write-only** Health Connect mirroring, opt-in and default off. `HealthMapper` is
+  pure and SDK-free (it emits a local enum + pounds, not `EXERCISE_TYPE_*`/`Mass`, so the
+  time/type/unit logic is plain-JUnit testable); `HealthConnectManager` wraps availability,
+  permissions and writes, every path `runCatching`-guarded. Repos call a one-line
+  `HealthSync` hook that defaults to `HealthSync.NoOp` in the constructor — Dagger injects the
+  real binding while direct construction in tests stays unchanged. The
+  "only on entering completed" transition guard lives in `HealthConnectSync`, so re-saving a
+  finished workout can't duplicate a record, and **a Health Connect failure never affects the
+  user's save**.
 
 ### Auth plumbing
 
@@ -198,6 +242,22 @@ the manifest is load-bearing (see CLAUDE.md suite section).
 4. Timers derive from monotonic anchors; fonts are static per-weight instances (variable fonts
    render wrong on real devices).
 5. Non-medical scope: presets/prompts advise professional clearance, never diagnose.
+6. **Warm-up sets are not training data.** `set_type == "warmup"` is excluded from volume,
+   progression inputs, est-1RM trend and PR detection — that exclusion is the entire point of
+   the set-type concept, so any new computation over sets must filter it too.
+7. **A PR requires a prior best to beat.** A brand-new exercise's first session sets a baseline,
+   not a PR — otherwise every first workout reads as a wall of records.
+
+### Periodization (as built)
+
+A program may carry `weeks` + `deload_week`; activation stamps `started_on`. `current_week` is
+derived — `((today - started_on).days // 7) % weeks + 1`, so mesocycles **cycle** rather than
+running off the end — and `is_deload_week` compares it to `deload_week`. Both live in
+`program_service` as pure helpers shared by the create and read paths, so a session seeded as a
+deload and a screen labelled "deload week" can never disagree. A deload session seeds
+`ceil(sets × DELOAD_SET_FACTOR)` sets at `weight × DELOAD_WEIGHT_FACTOR`. The coach can author
+`weeks`/`deload_week` through the normal extract-and-clamp path — it gains no new write power,
+just a richer suggestion shape.
 
 ## Where to make common changes
 

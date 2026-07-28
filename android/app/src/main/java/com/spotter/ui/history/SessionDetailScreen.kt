@@ -21,12 +21,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -36,12 +39,14 @@ import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SetLogOut
 import com.spotter.ui.components.ErrorState
 import com.spotter.ui.components.LoadingState
+import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.util.UiState
 import design.pulse.ui.components.DataText
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 
 /**
@@ -57,10 +62,28 @@ fun SessionDetailScreen(
     viewModel: SessionDetailViewModel = hiltViewModel(),
 ) {
     val sessionState by viewModel.session.collectAsState()
+    val working by viewModel.working.collectAsState()
+    val actionMessage by viewModel.actionMessage.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(sessionId) { viewModel.load(sessionId) }
 
+    LaunchedEffect(actionMessage) {
+        actionMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearActionMessage()
+        }
+    }
+    LaunchedEffect(Unit) {
+        viewModel.startedSessionId.collect { newId ->
+            navController.navigate(Screen.Workout.createRoute(newId)) {
+                popUpTo(Screen.SessionDetail.route) { inclusive = true }
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -87,6 +110,9 @@ fun SessionDetailScreen(
 
             is UiState.Success -> SessionDetailContent(
                 session = state.data,
+                working = working,
+                onRepeat = { viewModel.repeatWorkout() },
+                onSaveAsRoutine = { viewModel.saveAsRoutine() },
                 modifier = Modifier.padding(padding),
             )
 
@@ -96,7 +122,13 @@ fun SessionDetailScreen(
 }
 
 @Composable
-private fun SessionDetailContent(session: SessionOut, modifier: Modifier = Modifier) {
+private fun SessionDetailContent(
+    session: SessionOut,
+    working: Boolean,
+    onRepeat: () -> Unit,
+    onSaveAsRoutine: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val weightUnit = LocalWeightUnit.current
     val pulse = SpotterTheme.pulse
     val spacing = SpotterTheme.spacing
@@ -141,6 +173,27 @@ private fun SessionDetailContent(session: SessionOut, modifier: Modifier = Modif
                     Spacer(Modifier.height(spacing.sm))
                     Text(note, style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+        }
+
+        // Templates: do this workout again, or keep what was performed as a routine.
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                if (session.routineId != null) {
+                    PulseButton(
+                        text = "Repeat this workout",
+                        onClick = onRepeat,
+                        enabled = !working,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                PulseButton(
+                    text = "Save as routine",
+                    onClick = onSaveAsRoutine,
+                    enabled = !working,
+                    tonal = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 

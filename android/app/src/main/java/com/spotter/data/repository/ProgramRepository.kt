@@ -112,6 +112,9 @@ class ProgramRepository @Inject constructor(
 
     suspend fun programName(programId: String): String? = programDao.getById(programId)?.name
 
+    /** The mirrored program row — carries the periodization fields (weeks/deloadWeek/startedOn). */
+    suspend fun program(programId: String): WorkoutProgramEntity? = programDao.getById(programId)
+
     // ── Sync ──────────────────────────────────────────────────────────────────
 
     private suspend fun drainPending() {

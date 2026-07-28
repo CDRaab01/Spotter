@@ -38,8 +38,10 @@ import com.spotter.ui.onboarding.OnboardingScreen
 import com.spotter.ui.plan.CreateRoutineScreen
 import com.spotter.ui.plan.RoutineDetailScreen
 import com.spotter.ui.progress.ProgressScreen
+import com.spotter.ui.recap.WeeklyRecapScreen
 import com.spotter.ui.settings.SettingsScreen
 import com.spotter.ui.program.ProgramDetailScreen
+import com.spotter.ui.program.ProgramPresetDetailScreen
 import com.spotter.ui.program.ProgramPresetsScreen
 import com.spotter.ui.program.ProgramScreen
 import com.spotter.ui.workout.WorkoutScreen
@@ -230,6 +232,13 @@ fun AppNavGraph(
                     navArgument("totalSets") { type = NavType.IntType },
                     navArgument("volume") { type = NavType.IntType },
                     navArgument("newPrCount") { type = NavType.IntType },
+                    // Optional: the local session id, read by WorkoutSummaryViewModel for the
+                    // best-effort coach debrief. Absent (null) simply means no debrief.
+                    navArgument("sessionId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
                 ),
             ) { backStack ->
                 val duration = backStack.arguments?.getInt("duration") ?: 0
@@ -275,6 +284,9 @@ fun AppNavGraph(
                 val routineId = backStack.arguments?.getString("routineId") ?: ""
                 RoutineDetailScreen(routineId = routineId, navController = navController)
             }
+            composable(Screen.WeeklyRecap.route) {
+                WeeklyRecapScreen(navController = navController)
+            }
             composable(Screen.SessionHistory.route) {
                 SessionHistoryScreen(navController = navController)
             }
@@ -290,6 +302,13 @@ fun AppNavGraph(
             }
             composable(Screen.ProgramPresets.route) {
                 ProgramPresetsScreen(navController = navController)
+            }
+            composable(
+                route = Screen.ProgramPresetDetail.route,
+                arguments = listOf(navArgument("presetId") { type = NavType.StringType }),
+            ) { backStack ->
+                val presetId = backStack.arguments?.getString("presetId") ?: ""
+                ProgramPresetDetailScreen(presetId = presetId, navController = navController)
             }
             composable(
                 route = Screen.ProgramDetail.route,

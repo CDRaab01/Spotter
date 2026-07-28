@@ -189,6 +189,17 @@ private fun ProgramCard(
                     color = if (program.isActive) SpotterTheme.pulse.effort
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Periodized blocks say where they are; open-ended programs stay silent.
+                val week = programWeek(program)
+                weekLabel(week)?.let { label ->
+                    val deload = week?.isDeloadWeek == true
+                    Text(
+                        if (deload) "$label · DELOAD WEEK" else label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (deload) SpotterTheme.pulse.streak
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (!program.isActive) {
                 IconButton(onClick = onActivate) {
