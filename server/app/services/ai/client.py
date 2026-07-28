@@ -167,10 +167,12 @@ async def _merged_context(
     client_profile: str | None,
     current_session_id: uuid.UUID | None = None,
 ) -> str | None:
-    """Combine the server-derived (trusted) training history with the client's
-    self-reported profile. The DB history is authoritative; the client string is
-    treated as stated preferences only. When a workout is in progress, a trusted
-    live-session block is prepended so the coach is aware of it."""
+    """Combine the server-derived (trusted) profile + training history with the
+    client's self-reported profile. The DB-derived block — which now leads with the
+    user's persisted training profile (equipment/experience/goal/age/limitations) —
+    is authoritative; the client string is still treated as stated preferences only
+    and is never promoted. When a workout is in progress, a trusted live-session
+    block is prepended so the coach is aware of it."""
     history = await build_user_context(db, user_id) if user_id else None
     profile = client_profile.strip() if client_profile else None
     live = (

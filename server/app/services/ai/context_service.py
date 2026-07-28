@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.models.body_metric import BodyMetric
 from app.models.exercise import Exercise
 from app.models.set_log import SetLog
+from app.models.user import User
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
 
@@ -59,19 +60,28 @@ async def build_exercise_catalog(db: AsyncSession) -> str | None:
 
 
 async def build_user_context(db: AsyncSession, user_id: uuid.UUID) -> str | None:
-    """Return a short markdown summary of the user's recent training, or None.
+    """Return a short markdown summary of the user's profile + recent training.
 
-    None means there is nothing useful to add (brand-new user with no data), in
-    which case the caller should fall back to any client-supplied profile only.
+    The persisted training profile comes first and is included even when there is
+    no logged training at all — a brand-new user who has told us what equipment
+    they own must not be re-asked. None means there is genuinely nothing to add
+    (no profile, no history), in which case the caller falls back to any
+    client-supplied profile string only.
     """
+    profile_block = await _training_profile_block(db, user_id)
     sessions = await _recent_sessions(db, user_id)
     plan_line = await _current_plan_line(db, user_id)
     weight_line = await _bodyweight_line(db, user_id)
 
     if not sessions and not plan_line and not weight_line:
-        return None
+        # A profile with zero logged sessions still has to reach the model; the
+        # old unconditional early-return here is why saved equipment never did.
+        return profile_block
 
-    lines: list[str] = ["The following is the athlete's recent logged training data (source of truth — prefer it over anything stated in chat)."]
+    lines: list[str] = []
+    if profile_block:
+        lines.append(profile_block + "\n")
+    lines.append("The following is the athlete's recent logged training data (source of truth — prefer it over anything stated in chat).")
 
     if plan_line:
         lines.append(plan_line)
@@ -150,6 +160,47 @@ async def build_current_session_context(
             remaining_txt = "; all sets done"
         lines.append(f"- {name}: {done}/{len(sets)} sets done{last_txt}{remaining_txt}")
     return "\n".join(lines)
+
+
+async def _training_profile_block(db: AsyncSession, user_id: uuid.UUID) -> str | None:
+    """The user's persisted training profile as trusted context, or None if empty.
+
+    This is the server-side answer to "the AI keeps forgetting what equipment I
+    have": the profile lives on the `users` row (PATCH /users/me/profile), so it
+    reaches the model on every call regardless of what the client remembers to
+    attach in `user_context`.
+    """
+    result = await db.execute(
+        select(
+            User.equipment,
+            User.experience,
+            User.goal,
+            User.age_group,
+            User.limitations,
+        ).where(User.id == user_id)
+    )
+    row = result.first()
+    if row is None:
+        return None
+
+    labels = (
+        "Equipment available",
+        "Experience",
+        "Goal",
+        "Age group",
+        "Limitations",
+    )
+    lines = [
+        f"- {label}: {value.strip()}"
+        for label, value in zip(labels, row)
+        if value and value.strip()
+    ]
+    if not lines:
+        return None
+    header = (
+        "Training profile (from the user's saved settings — trusted, do not re-ask):"
+    )
+    return "\n".join([header, *lines])
 
 
 async def _recent_sessions(

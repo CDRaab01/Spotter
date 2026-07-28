@@ -62,9 +62,15 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
   the NEW turn hard-fails (422), while a blocked turn in the resent *history* is silently dropped
   before it reaches the model — rejecting on history permanently poisoned the conversation
   (clients resend the full transcript, so one blocked phrase 422'd every later request).
-- `context_service.py` — trusted context from the DB (training history; live-session summary
-  when `current_session_id` is given). Client-supplied profile text is appended as stated
-  preferences only — it never overrides DB-derived facts.
+- `context_service.py` — trusted context from the DB: the user's persisted **training profile**
+  (equipment/experience/goal/age group/limitations, from `users`) then training history, plus a
+  live-session summary when `current_session_id` is given. Client-supplied profile text is
+  appended as stated preferences only — it never overrides DB-derived facts.
+  **Equipment belongs in the trusted block, not the client string.** It used to live only in
+  Android DataStore, written once by onboarding (which most users never see, since login marks
+  onboarding done) and forwarded as an optional `user_context` string — so the coach genuinely
+  did not know what equipment existed and re-asked every conversation. Anything the coach must
+  never forget belongs on the user row and in this function.
 - `adjustment_apply.py` — the only path an AI suggestion touches the DB, and only via
   `POST /ai/sessions/{id}/adjust` after an explicit user Apply. **Completed sets are immutable**;
   only incomplete sets are ever mutated, in one transaction.
