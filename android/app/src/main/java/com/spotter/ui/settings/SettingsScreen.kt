@@ -105,6 +105,12 @@ fun SettingsScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.navigateToOnboarding.collect {
+            navController.navigate(Screen.Onboarding.route) { popUpTo(0) { inclusive = true } }
+        }
+    }
+
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { if (!resetting) showResetDialog = false },
@@ -113,7 +119,7 @@ fun SettingsScreen(
                 Text(
                     "This permanently deletes all your workouts, sessions, progress, " +
                         "programs, and chat history. Your account and login are kept. " +
-                        "You'll be signed out and asked to set up again.",
+                        "You'll be asked to set up again.",
                 )
             },
             confirmButton = {
@@ -277,11 +283,29 @@ fun SettingsScreen(
             SettingsSection("Programs") {
                 if (programs.isEmpty()) {
                     Text(
-                        "No programs yet. Ask the AI coach for a multi-day program, or build one " +
-                            "from the Programs menu.",
+                        "No programs yet. Ask the AI coach for a multi-day program, or start " +
+                            "from a preset.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { navController.navigate(Screen.Programs.route) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Browse programs & presets",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 } else {
                     programs.forEach { program ->
                         Row(

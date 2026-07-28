@@ -57,7 +57,10 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
 - `client.py` — LM Studio transport + extraction: `_extract_plan` / `_extract_program` /
   `_extract_adjustment` parse the model's JSON, resolve exercise names → catalog ids, and
   **clamp** out-of-range numbers into `app/limits.py` bounds (clamp, never drop). Malformed
-  responses → 502; unreachable LM Studio → 503. Injection screening runs over *every* user turn.
+  responses → 502; unreachable LM Studio → 503. Injection screening runs over *every* user turn:
+  the NEW turn hard-fails (422), while a blocked turn in the resent *history* is silently dropped
+  before it reaches the model — rejecting on history permanently poisoned the conversation
+  (clients resend the full transcript, so one blocked phrase 422'd every later request).
 - `context_service.py` — trusted context from the DB (training history; live-session summary
   when `current_session_id` is given). Client-supplied profile text is appended as stated
   preferences only — it never overrides DB-derived facts.
@@ -66,7 +69,11 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
   only incomplete sets are ever mutated, in one transaction.
 
 The trust model, everywhere: **AI proposes, user commits.** There is no autonomous write path;
-adding one is an architecture change, not a feature.
+adding one is an architecture change, not a feature. The workout screen's progression **Apply**
+button (2026-07-28) rides the same `POST /ai/sessions/{id}/adjust` rails with a client-built
+`adjust_weight` action — user-initiated, same incomplete-sets-only invariant, and its
+`apply_to_routine` write-back is what advances the routine's `target_weight` so the next
+session pre-fills at the new load.
 
 Bounds are enforced twice by design: Pydantic `Field(ge/le)` on write schemas rejects bad client
 input (422); the extraction layer clamps bad model output. Both source from `app/limits.py`.
@@ -147,6 +154,10 @@ counters.
   header driven by the routine's `supersetGroup` (shared rest); the server derives the grouping,
   the client only displays it.
 - `ui/ai/` — coach chat + the three suggestion cards (plan / program / live adjustment).
+- `ui/history/` — the history list plus `SessionDetailScreen` (2026-07-28): a read-only
+  per-set breakdown of a past session served by `SessionRepository.getSession`, so it works
+  offline from the Room mirror. History cards navigate (resume when in-progress, detail when
+  done) per the "cards navigate, buttons act" grammar — the old tap-to-expand preview is gone.
 - `ui/program/ProgramPresets.kt` — client-side preset programs (incl. special-case presets);
   applying one reuses `POST /ai/programs/accept`. A guardrail test pins preset names to the
   seeded catalog.
@@ -156,7 +167,8 @@ counters.
   distance is entered in the user's unit and converted to canonical meters at the edge
   (`ui/theme/AppLocals.kt` distance helpers). Completed cardio (manual, guided, or free) counts
   toward the Home streak + active-minutes stats alongside completed strength sessions
-  (`HomeViewModel.loadStats`).
+  (`HomeViewModel.loadStats`), and lists back on Cardio home's "Recent activity" panel
+  (`CardioHomeViewModel`, 2026-07-28).
 - `data/remote/SuiteAuthManager.kt` + `util/SuiteConfigReader` — suite SSO + hub config broker.
 - `ui/theme/SpotterTheme.kt` — Pulse channel semantics (Spotter leads blue; effort/strength/
   streak/recovery channels). Components come from the Pulse library — never re-inline them.

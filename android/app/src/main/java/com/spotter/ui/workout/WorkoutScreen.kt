@@ -34,6 +34,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -91,10 +93,19 @@ fun WorkoutScreen(
     val workSeconds by viewModel.workSeconds.collectAsState()
     val exerciseNotes by viewModel.exerciseNotes.collectAsState()
     val priorBests by viewModel.priorBests.collectAsState()
-    val timerText = "%02d:%02d".format(elapsed / 60, elapsed % 60)
+    val actionError by viewModel.actionError.collectAsState()
+    val timerText = formatElapsed(elapsed)
     val isFinishing = finishState is UiState.Loading
 
     var showFinishDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(actionError) {
+        actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearActionError()
+        }
+    }
 
     // The end-of-rest vibration is owned by WorkoutTimerController (which holds a wake lock and fires
     // even when the app is backgrounded / screen-off), so there's no foreground-only cue here.
@@ -147,6 +158,7 @@ fun WorkoutScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -282,6 +294,9 @@ fun WorkoutScreen(
                                         },
                                         onAddSet = { lastSet -> viewModel.addSet(sessionId, exerciseId, lastSet) },
                                         onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
+                                        onApplySuggestion = {
+                                            priorBests[exerciseId]?.let { viewModel.applyProgression(sessionId, it) }
+                                        },
                                     )
                                 }
                                 when (block) {
@@ -419,6 +434,7 @@ private fun ExerciseCard(
     onToggleComplete: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
     onNoteSave: (String) -> Unit,
+    onApplySuggestion: (() -> Unit)? = null,
 ) {
     val weightUnit = LocalWeightUnit.current
     val pulse = SpotterTheme.pulse
@@ -492,6 +508,7 @@ private fun ExerciseCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 // Deload reads as a caution (amber), everything else as an action (blue).
                                 color = if (prog.isDeload) pulse.streak else pulse.effort,
+                                modifier = Modifier.weight(1f, fill = false),
                             )
                             if (prog.showPr) {
                                 Spacer(Modifier.width(6.dp))
@@ -499,6 +516,22 @@ private fun ExerciseCard(
                                     "PR",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = pulse.strength,
+                                )
+                            }
+                            // One-tap apply: incomplete sets take the suggested load now and the
+                            // routine's target advances — without it, presets pre-fill the same
+                            // starting weight forever and the suggestion is read-only advice.
+                            val suggested = priorBest.suggestedWeight
+                            val canApply = onApplySuggestion != null &&
+                                suggested != null &&
+                                sets.any { !it.completed && it.weight != suggested }
+                            if (canApply) {
+                                Spacer(Modifier.width(SpotterTheme.spacing.sm))
+                                PulseButton(
+                                    text = "Apply",
+                                    onClick = { onApplySuggestion!!() },
+                                    tonal = true,
+                                    compact = true,
                                 )
                             }
                         }
@@ -616,6 +649,14 @@ internal data class ProgressionUi(
     val showPr: Boolean,
     val e1rmText: String?,
 )
+
+/** MM:SS under an hour, H:MM:SS beyond — a 75-minute session reads 1:15:00, not 75:00. */
+internal fun formatElapsed(totalSec: Int): String {
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
 
 internal fun progressionUi(p: ExercisePrior, formatWeight: (Double) -> String): ProgressionUi {
     val weight = p.suggestedWeight

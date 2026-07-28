@@ -131,10 +131,19 @@ class HomeViewModel @Inject constructor(
     private val _staleAsOfMs = MutableStateFlow<Long?>(null)
     val staleAsOfMs: StateFlow<Long?> = _staleAsOfMs.asStateFlow()
 
+    /**
+     * Routines not attached to any program day. Surfaced as Home's "Your routines" section so a
+     * manually created routine is reachable before (or without) being scheduled into a program —
+     * previously a saved routine had no screen that could open it until a program day linked it.
+     */
+    private val _standaloneRoutines = MutableStateFlow<List<WorkoutRoutineEntity>>(emptyList())
+    val standaloneRoutines: StateFlow<List<WorkoutRoutineEntity>> = _standaloneRoutines.asStateFlow()
+
     private var autoGenerateTriggered = false
 
     init {
         observeRoutines()
+        observeStandaloneRoutines()
         observePrograms()
         observeBodyweight()
         sync()
@@ -262,6 +271,15 @@ class HomeViewModel @Inject constructor(
         loadUpcoming()
     }
 
+    /**
+     * Retry hook for the full-screen error state: the routines flow dies once its `catch`
+     * fires, so recovering needs a fresh collection plus a sync round.
+     */
+    fun retryLoad() {
+        observeRoutines()
+        sync()
+    }
+
     private fun observeBodyweight() {
         viewModelScope.launch {
             metricRepository.metrics.collect { metrics ->
@@ -346,6 +364,15 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun observeStandaloneRoutines() {
+        viewModelScope.launch {
+            combine(routineRepository.routines, programDayDao.observeAll()) { routines, days ->
+                val linked = days.mapNotNull { it.routineId }.toSet()
+                routines.filter { it.id !in linked }
+            }.collect { _standaloneRoutines.value = it }
+        }
+    }
+
     private fun loadRoutineExercises(routines: List<WorkoutRoutineEntity>) {
         viewModelScope.launch {
             val map = routines.associate { routine ->
@@ -423,7 +450,10 @@ class HomeViewModel @Inject constructor(
                     }
                 }
             } catch (_: Exception) {
-                // silent — user can still create a routine manually
+                // The coach being down shouldn't read as a dead app: point at the preset
+                // path, which works entirely without the LLM.
+                _actionError.value =
+                    "Couldn't reach the AI coach — browse preset programs to get started."
             } finally {
                 _generatingPlan.value = false
             }
@@ -440,7 +470,10 @@ class HomeViewModel @Inject constructor(
                 )
                 _navigateToWorkout.emit(session.id)
             } catch (e: Exception) {
-                _startState.value = UiState.Error(e.message ?: "Could not start workout")
+                // Surface via the snackbar — startState is only read for its Loading flag,
+                // so an Error left there was invisible and the button silently did nothing.
+                _actionError.value = "Couldn't start the workout. Check your connection and try again."
+                _startState.value = UiState.Idle
                 return@launch
             }
             _startState.value = UiState.Idle
@@ -503,7 +536,9 @@ class HomeViewModel @Inject constructor(
                 metricRepository.addMetric(
                     BodyMetricCreate(date = LocalDate.now().toString(), weight = weight)
                 )
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                _actionError.value = "Couldn't save your weight. Try again."
+            }
         }
     }
 

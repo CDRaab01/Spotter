@@ -1,6 +1,5 @@
 package com.spotter.ui.history
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,6 +109,10 @@ fun SessionHistoryScreen(
                                     onTap = {
                                         if (session.status == "in_progress") {
                                             navController.navigate(Screen.Workout.createRoute(session.id))
+                                        } else {
+                                            // Completed sessions were a dead end: counts only,
+                                            // never the actual reps/weights behind them.
+                                            navController.navigate(Screen.SessionDetail.createRoute(session.id))
                                         }
                                     },
                                     onDelete = { viewModel.deleteSession(session.id) },
@@ -132,7 +134,6 @@ private fun SessionCard(
     onTap: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     if (showDeleteDialog) {
@@ -152,78 +153,50 @@ private fun SessionCard(
         )
     }
 
+    // "Cards navigate, explicit buttons act": tapping opens the session (resume when live,
+    // full detail when finished). The old tap-to-expand preview left onTap dead code — the
+    // navigation never fired — and the detail screen now shows everything the preview did.
     PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 0.dp) {
-        Column(
+        Row(
             modifier = Modifier
-                .clickable { expanded = !expanded }
-                .padding(16.dp),
+                .clickable { onTap() }
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        formatDate(session.date),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        session.routineName ?: "No Routine",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                StatusBadge(session.status)
-                Spacer(Modifier.width(8.dp))
-                Column(horizontalAlignment = Alignment.End) {
-                    session.durationSeconds?.let { secs ->
-                        DataText(
-                            text = formatDuration(secs),
-                            style = SpotterTheme.dataType.numeral,
-                        )
-                    }
-                    DataText(
-                        text = "${session.completedSets}/${session.totalSets} sets",
-                        style = SpotterTheme.dataType.numeral,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    formatDate(session.date),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    session.routineName ?: "No Routine",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-
-            AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 8.dp)) {
-                    Divider()
-                    session.exercises.forEach { ex ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(ex.exerciseName, style = MaterialTheme.typography.bodySmall)
-                            DataText(
-                                text = "${ex.completedSets}/${ex.totalSets}",
-                                style = SpotterTheme.dataType.numeral,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        TextButton(onClick = { showDeleteDialog = true }) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete session",
-                                modifier = Modifier.width(18.dp),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Delete", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
+            Spacer(Modifier.width(8.dp))
+            StatusBadge(session.status)
+            Spacer(Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                session.durationSeconds?.let { secs ->
+                    DataText(
+                        text = formatDuration(secs),
+                        style = SpotterTheme.dataType.numeral,
+                    )
                 }
+                DataText(
+                    text = "${session.completedSets}/${session.totalSets} sets",
+                    style = SpotterTheme.dataType.numeral,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = { showDeleteDialog = true }) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete session",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -250,7 +223,7 @@ private fun StatusBadge(status: String) {
     }
 }
 
-private fun formatDate(dateStr: String): String {
+internal fun formatDate(dateStr: String): String {
     return try {
         val date = LocalDate.parse(dateStr)
         date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.US))
@@ -259,7 +232,7 @@ private fun formatDate(dateStr: String): String {
     }
 }
 
-private fun formatDuration(seconds: Int): String {
+internal fun formatDuration(seconds: Int): String {
     val minutes = seconds / 60
     return if (minutes >= 60) {
         val h = minutes / 60

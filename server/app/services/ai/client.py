@@ -49,17 +49,22 @@ async def chat(
     last_user = next(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
-    # Check the new message and every prior user turn — injection can be embedded
-    # in earlier history entries to bypass a guard that only checks the latest turn.
-    for msg in req.messages:
-        if msg.role == "user":
-            error = validate_request(msg.content)
-            if error:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
-                )
+    # Hard-reject only the NEW turn. Prior user turns are screened too — injection can
+    # be embedded in earlier history entries — but a blocked one is dropped from the
+    # history instead of failing the request: clients resend the whole transcript, so
+    # rejecting on history would permanently 422 every conversation that ever
+    # contained a blocked phrase. Dropped turns never reach the model either way.
+    error = validate_request(last_user)
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
+        )
 
-    history = [m.model_dump() for m in req.messages[:-1]]
+    history = [
+        m.model_dump()
+        for m in req.messages[:-1]
+        if not (m.role == "user" and validate_request(m.content))
+    ]
     user_context = await _merged_context(
         db, user_id, req.user_context, req.current_session_id
     )

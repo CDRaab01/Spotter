@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -135,6 +136,12 @@ class ProgressViewModel @Inject constructor(
         }
     }
 
+    /** Retry hook for the Strength tab's error state. */
+    fun retryTrackedExercises() {
+        _trackedExercises.value = UiState.Loading
+        loadTrackedExercises()
+    }
+
     private fun loadPersonalRecords() {
         viewModelScope.launch {
             try {
@@ -143,6 +150,14 @@ class ProgressViewModel @Inject constructor(
                 _personalRecords.value = UiState.Error(e.message ?: "Failed to load records")
             }
         }
+    }
+
+    /** One-line failure messages surfaced by the screen's snackbar. */
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError: StateFlow<String?> = _actionError.asStateFlow()
+
+    fun clearActionError() {
+        _actionError.value = null
     }
 
     fun selectExercise(exerciseId: String?) {
@@ -169,7 +184,9 @@ class ProgressViewModel @Inject constructor(
                         thigh = draft.thigh,
                     )
                 )
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                _actionError.value = "Couldn't save your log. Try again."
+            }
         }
     }
 

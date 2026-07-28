@@ -69,6 +69,10 @@ class CalendarViewModel @Inject constructor(
     private val _navigateToWorkout = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToWorkout: SharedFlow<String> = _navigateToWorkout.asSharedFlow()
 
+    /** One-line failure messages surfaced by the screen's snackbar. */
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError: StateFlow<String?> = _actionError.asStateFlow()
+
     init {
         loadMonth(YearMonth.now(), sync = true)
     }
@@ -191,8 +195,12 @@ class CalendarViewModel @Inject constructor(
                 )
                 _navigateToWorkout.emit(session.id)
             } catch (_: Exception) {
-                // Surfacing handled by the screen staying put; user can retry.
+                _actionError.value = "Couldn't start the workout. Check your connection and try again."
             }
         }
+    }
+
+    fun clearActionError() {
+        _actionError.value = null
     }
 }

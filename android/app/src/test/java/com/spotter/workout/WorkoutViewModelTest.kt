@@ -6,6 +6,7 @@ import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
+import com.spotter.data.model.SuggestedAdjustmentAction
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.workout.WorkoutTimerController
 import com.spotter.ui.workout.WorkoutViewModel
@@ -346,6 +347,93 @@ class WorkoutViewModelTest {
         val captor = argumentCaptor<SessionUpdate>()
         verify(repository).updateSession(eq(session.id), captor.capture())
         assertEquals(5, captor.firstValue.durationSeconds)
+    }
+
+    @Test
+    fun `finishSession failure surfaces actionError and resets finishState`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.updateSession(any(), any())).thenThrow(RuntimeException("network down"))
+
+        viewModel.loadSession(session.id)
+        advanceTimeBy(200)
+        viewModel.finishSession(session.id)
+        advanceTimeBy(200)
+
+        // Previously the error was parked in finishState (read only for Loading) — invisible.
+        assertNotNull(viewModel.actionError.value)
+        assertIs<UiState.Idle>(viewModel.finishState.value)
+    }
+
+    @Test
+    fun `applyProgression sends adjust_weight with routine write-back`() = runTest(testDispatcher) {
+        val session = fakeSession()
+        whenever(repository.getSession(session.id)).thenReturn(session)
+        whenever(repository.getPriorBests(session.id)).thenReturn(emptyList())
+        whenever(repository.applyAdjustment(any(), any(), any())).thenReturn(session)
+        val prior = ExercisePrior(
+            exerciseId = "exercise-1",
+            exerciseName = "Squat",
+            reps = 8,
+            weight = 135.0,
+            date = "2026-05-01",
+            suggestedWeight = 140.0,
+            suggestedReps = 8,
+            suggestedReason = "All sets at 8+ reps — add weight",
+            action = "add_weight",
+        )
+
+        viewModel.applyProgression(session.id, prior)
+        advanceTimeBy(200)
+
+        val actions = argumentCaptor<List<SuggestedAdjustmentAction>>()
+        val toRoutine = argumentCaptor<Boolean>()
+        verify(repository).applyAdjustment(eq(session.id), actions.capture(), toRoutine.capture())
+        val action = actions.firstValue.single()
+        assertEquals("adjust_weight", action.type)
+        assertEquals("exercise-1", action.exerciseId)
+        assertEquals(140.0, action.weight)
+        assertEquals(8, action.reps)
+        // The write-back is the point: next session pre-fills at the new load.
+        assertEquals(true, toRoutine.firstValue)
+    }
+
+    @Test
+    fun `applyProgression without a suggested weight is a no-op`() = runTest(testDispatcher) {
+        val prior = ExercisePrior(
+            exerciseId = "exercise-1",
+            reps = 8,
+            date = "2026-05-01",
+            suggestedReason = "add reps",
+            action = "add_reps",
+        )
+
+        viewModel.applyProgression("session-1", prior)
+        advanceTimeBy(200)
+
+        verify(repository, org.mockito.kotlin.never()).applyAdjustment(any(), any(), any())
+    }
+
+    @Test
+    fun `applyProgression failure surfaces actionError`() = runTest(testDispatcher) {
+        whenever(repository.applyAdjustment(any(), any(), any()))
+            .thenThrow(RuntimeException("offline"))
+        val prior = ExercisePrior(
+            exerciseId = "exercise-1",
+            exerciseName = "Squat",
+            reps = 8,
+            date = "2026-05-01",
+            suggestedWeight = 140.0,
+            action = "add_weight",
+        )
+
+        viewModel.applyProgression("session-1", prior)
+        advanceTimeBy(200)
+
+        assertNotNull(viewModel.actionError.value)
+        viewModel.clearActionError()
+        assertNull(viewModel.actionError.value)
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

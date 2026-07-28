@@ -105,6 +105,9 @@ class SettingsViewModel @Inject constructor(
     private val _resetError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val resetError: SharedFlow<String> = _resetError.asSharedFlow()
 
+    private val _navigateToOnboarding = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val navigateToOnboarding: SharedFlow<Unit> = _navigateToOnboarding.asSharedFlow()
+
     init {
         loadUser()
         loadServerVersion()
@@ -203,8 +206,13 @@ class SettingsViewModel @Inject constructor(
 
     /**
      * Resets the account: wipes all data on the server (the login is kept), clears the local
-     * cache, chat history, and saved questionnaire profile, signs out, and routes to login.
-     * On next sign-in the user is sent back through the onboarding questionnaire.
+     * cache, chat history, and saved questionnaire profile, then routes straight into the
+     * onboarding questionnaire while still signed in.
+     *
+     * Deliberately NOT a sign-out: login unconditionally marks onboarding done (a returning
+     * user on a fresh install must skip the intro), so a reset that bounced through the login
+     * screen would silently skip the questionnaire it just promised — and the first-run
+     * auto-generate would then build a program from an empty profile.
      *
      * The server call happens first (while still authenticated); local state is only cleared
      * if it succeeds, so a failed reset leaves the user signed in and able to retry.
@@ -217,8 +225,7 @@ class SettingsViewModel @Inject constructor(
                 api.resetAccount()
                 withContext(ioDispatcher) { database.clearAllTables() }
                 appPreferences.clearOnboarding()
-                tokenStore.clear()
-                _navigateToLogin.emit(Unit)
+                _navigateToOnboarding.emit(Unit)
             } catch (e: Exception) {
                 _resetError.emit(e.message ?: "Couldn't reset your account. Try again.")
             } finally {

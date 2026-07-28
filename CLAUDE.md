@@ -733,3 +733,54 @@ unit tests; build/emulator passes are owned by CI.
 - Accepted offline gap: `getPriorBests` stays empty offline (progression hints are
   server-computed). Tests: new `ExerciseRepositoryTest`, `OfflineMuscleGroupsTest`,
   `SessionRepositoryTest`; updated Home/History/Presets VM tests.
+
+## Audit Resolution Log — Tier 1 (2026-07-28)
+
+A third full-app audit ran 2026-07-28 (`AUDIT-2026-07.md` — AI coach, program structure,
+layout/flow, premium roadmap). This round fixed its Tier 1 ("make what exists land"): server
+**234 pytest green** + `ruff check app` clean; Android `:app:testDebugUnitTest` green (new
+regression tests noted below). On-device pass still owed, as usual.
+
+### Fixed
+- **[HIGH][Android] Routine edit wiped supersets.** `RoutineDetailViewModel.startEdit`/`saveEdits`
+  dropped `supersetGroup` (create path had it right), so any edit+save destroyed all grouping.
+  Regression test: "edit round-trip preserves superset groups".
+- **[HIGH][Server][AI guardrail change] Chat-history poisoning.** One blocked phrase anywhere in
+  the transcript 422'd every later request forever (client resends full history; guard validated
+  every turn fatally). Now: the NEW turn still hard-fails 422; blocked *historical* turns are
+  silently dropped from what reaches the model. Injection still never reaches the LLM —
+  `test_injection_in_earlier_turn_dropped_not_fatal` pins both properties.
+- **[HIGH][Android] Progression suggestions are now appliable.** The chip gained an **Apply**
+  button: incomplete sets take the suggested weight/reps and the routine's `target_weight`
+  advances (write-back via a client-built `adjust_weight` action on the existing
+  `POST /ai/sessions/{id}/adjust` rails). Presets finally progress instead of pre-filling the
+  starting weight forever. Tests: 4 new `WorkoutViewModelTest` cases.
+- **[MED][Android] Home blank state + routine dead end.** Home now renders a "Your routines"
+  section for routines not linked to any program day (tap → RoutineDetail — previously a saved
+  routine had NO screen that could open it and the programs-empty+routines-non-empty state
+  rendered nothing). Empty state gained "Browse preset programs" (the no-LLM path); Settings'
+  empty Programs section gained a nav row; first-run auto-generate failure now snackbars a
+  pointer at presets instead of dying silently.
+- **[MED][Android] Reset Account now actually re-onboards.** It routed to login, but login
+  unconditionally sets `onboardingDone` (deliberate, for returning users on fresh installs) —
+  the questionnaire never showed and a program was auto-generated from an empty profile. Reset
+  now clears data and navigates straight into Onboarding while still signed in.
+- **[MED][Android] Swallowed errors surfaced.** Home `startSession`, Workout `finishSession` /
+  `deleteSession`, Calendar `startProjectedSession`, and both `logBodyweight` paths now snackbar
+  (finish failure also resets `finishState` so the button recovers); Home's full-screen error
+  and the new screens wire `ErrorState(onRetry)`; Progress→Strength handles its error state
+  (retry chip) and no longer stacks two full-size empty states.
+- **[MED][Android] Completed-session detail.** History cards now navigate: in-progress →
+  Workout (the old `onTap` was dead code — resume-from-history never fired), completed → new
+  `SessionDetailScreen` (per-set reps/weights, notes, muscle groups; offline-capable). The
+  tap-to-expand preview was removed; delete is an explicit icon.
+- **[LOW][Android] Cardio parity, first slice.** Run completion is a real summary (stats +
+  confetti); Cardio home lists "Recent activity" (`CardioHomeViewModel`) so manual/guided/free
+  sessions are visible after the fact. Durations past an hour render `1:15:00` (was `75:00`) in
+  Workout + Summary.
+
+### Deliberately NOT in this round
+Tier 2/3 of `AUDIT-2026-07.md` (exercise media, RPE/set types, manual mid-workout editing,
+Health Connect, export, periodization schema, post-workout AI debrief) and the audit's smaller
+polish list (resume-strip midnight filter, deep-link `launchSingleTop`, cleartext in release,
+dead `nextProgramDay` fetch, stale "four destinations" KDocs).

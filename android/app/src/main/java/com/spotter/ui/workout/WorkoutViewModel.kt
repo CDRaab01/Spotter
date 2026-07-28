@@ -9,6 +9,7 @@ import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
+import com.spotter.data.model.SuggestedAdjustmentAction
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
@@ -73,6 +74,14 @@ class WorkoutViewModel @Inject constructor(
 
     private val _finishState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
     val finishState: StateFlow<UiState<Unit>> = _finishState
+
+    /** One-line failure messages surfaced by the screen's snackbar (finish/delete/apply). */
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError: StateFlow<String?> = _actionError.asStateFlow()
+
+    fun clearActionError() {
+        _actionError.value = null
+    }
 
     private val _navigateBack = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val navigateBack: SharedFlow<Unit> = _navigateBack
@@ -259,13 +268,46 @@ class WorkoutViewModel @Inject constructor(
         workoutTimer.dismissRest()
     }
 
+    /**
+     * Applies the progression engine's suggestion for one exercise: this session's incomplete
+     * sets take the suggested weight (and reps, when suggested) now, and the routine's target
+     * is updated so the NEXT session pre-fills at the new load instead of the original
+     * prescription forever. Reuses the adjustment-apply path — user-initiated, same trust
+     * model and the same incomplete-sets-only invariant as an AI Apply card.
+     */
+    fun applyProgression(sessionId: String, prior: ExercisePrior) {
+        val weight = prior.suggestedWeight ?: return
+        viewModelScope.launch {
+            try {
+                sessionRepository.applyAdjustment(
+                    sessionId,
+                    listOf(
+                        SuggestedAdjustmentAction(
+                            type = "adjust_weight",
+                            exerciseId = prior.exerciseId,
+                            exerciseName = prior.exerciseName ?: "",
+                            weight = weight,
+                            reps = prior.suggestedReps,
+                            summary = prior.suggestedReason ?: "Apply progression suggestion",
+                        )
+                    ),
+                    applyToRoutine = true,
+                )
+                loadSession(sessionId)
+            } catch (e: Exception) {
+                _actionError.value =
+                    "Couldn't apply the suggestion. Check your connection and try again."
+            }
+        }
+    }
+
     fun deleteSession(sessionId: String) {
         viewModelScope.launch {
             try {
                 sessionRepository.deleteSession(sessionId)
                 _navigateBack.emit(Unit)
             } catch (e: Exception) {
-                _finishState.value = UiState.Error(e.message ?: "Failed to delete session")
+                _actionError.value = "Couldn't delete the session. Try again."
             }
         }
     }
@@ -312,7 +354,10 @@ class WorkoutViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                _finishState.value = UiState.Error(e.message ?: "Failed to finish workout")
+                // finishState is only read for its Loading flag — an Error left there was
+                // invisible, so a failed finish silently kept the workout open. Snackbar it.
+                _finishState.value = UiState.Idle
+                _actionError.value = "Couldn't finish the workout. Check your connection and try again."
             }
         }
     }

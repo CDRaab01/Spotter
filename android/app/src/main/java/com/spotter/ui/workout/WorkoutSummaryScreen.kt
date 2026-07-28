@@ -181,7 +181,7 @@ fun WorkoutSummaryScreen(
                     modifier = Modifier.weight(1f),
                     valueContent = {
                         DataText(
-                            text = "%02d:%02d".format(durationSeconds / 60, durationSeconds % 60),
+                            text = formatElapsed(durationSeconds),
                             style = SpotterTheme.dataType.dataMedium,
                         )
                     },
