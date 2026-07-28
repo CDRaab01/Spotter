@@ -29,6 +29,7 @@ import com.spotter.ui.cardio.CardioOverviewScreen
 import com.spotter.ui.cardio.CardioRunScreen
 import com.spotter.ui.cardio.FreeRunConfigScreen
 import com.spotter.ui.cardio.ManualCardioScreen
+import com.spotter.ui.exercise.ExerciseDetailScreen
 import com.spotter.ui.exercise.ExerciseLibraryScreen
 import com.spotter.ui.history.SessionDetailScreen
 import com.spotter.ui.history.SessionHistoryScreen
@@ -299,6 +300,13 @@ fun AppNavGraph(
             }
             composable(Screen.ExerciseLibrary.route) {
                 ExerciseLibraryScreen(navController = navController)
+            }
+            composable(
+                route = Screen.ExerciseDetail.route,
+                arguments = listOf(navArgument("exerciseId") { type = NavType.StringType }),
+            ) { backStack ->
+                val exerciseId = backStack.arguments?.getString("exerciseId") ?: ""
+                ExerciseDetailScreen(exerciseId = exerciseId, navController = navController)
             }
             composable(Screen.Cardio.route) {
                 CardioHomeScreen(navController = navController)

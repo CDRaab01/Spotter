@@ -111,6 +111,44 @@ class ExerciseRepositoryTest {
         assertFailsWith<HttpException> { repo.listAll() }
     }
 
+    // ── getExercise (detail, mirror-backed) ────────────────────────────────────
+
+    @Test
+    fun `getExercise online returns the server row and seeds the mirror`() = runTest {
+        val detailed = catalog[0].copy(
+            instructions = "Lie on the bench…",
+            secondaryMuscles = "triceps, front delts",
+        )
+        whenever(api.getExercise("bench-id")).thenReturn(detailed)
+
+        val result = repo.getExercise("bench-id")
+
+        assertEquals(detailed, result)
+        assertEquals("Lie on the bench…", dao.rows.getValue("bench-id").instructions)
+        assertEquals("triceps, front delts", dao.rows.getValue("bench-id").secondaryMuscles)
+    }
+
+    @Test
+    fun `getExercise offline falls back to the mirror row`() = runTest {
+        whenever(api.getExercise(any())).thenReturn(
+            catalog[0].copy(instructions = "Lie on the bench…"),
+        )
+        repo.getExercise("bench-id") // seed
+        whenever(api.getExercise(any())).thenAnswer { throw IOException("offline") }
+
+        val result = repo.getExercise("bench-id")
+
+        assertEquals("bench-id", result.id)
+        assertEquals("Lie on the bench…", result.instructions)
+    }
+
+    @Test
+    fun `getExercise offline with an unknown id keeps throwing`() = runTest {
+        whenever(api.getExercise(any())).thenAnswer { throw IOException("offline") }
+
+        assertFailsWith<IOException> { repo.getExercise("nope") }
+    }
+
     @Test
     fun `refreshCatalog seeds silently and reports whether the server was reached`() = runTest {
         whenever(api.searchExercises(any())).thenAnswer { throw IOException("offline") }
@@ -140,6 +178,8 @@ internal class FakeExerciseCatalogDao : ExerciseDao {
 
     override suspend fun getByIds(ids: List<String>): List<ExerciseEntity> =
         ids.mapNotNull { rows[it] }
+
+    override suspend fun getById(id: String): ExerciseEntity? = rows[id]
 
     override suspend fun getAll(): List<ExerciseEntity> = rows.values.sortedBy { it.name }
 }

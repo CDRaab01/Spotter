@@ -13,4 +13,6 @@ data class RoutineExerciseEntity(
     val isBodyweight: Boolean,
     val order: Int,
     val supersetGroup: Int? = null,
+    /** Per-exercise rest override in seconds; null = rep-range heuristic. */
+    val restSeconds: Int? = null,
 )

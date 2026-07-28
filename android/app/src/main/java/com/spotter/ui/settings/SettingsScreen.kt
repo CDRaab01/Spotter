@@ -77,6 +77,8 @@ fun SettingsScreen(
     val weightUnit by viewModel.weightUnit.collectAsState()
     val distanceUnit by viewModel.distanceUnit.collectAsState()
     val cadenceDays by viewModel.workoutCadenceDays.collectAsState()
+    val trackRpe by viewModel.trackRpe.collectAsState()
+    val autoStartRest by viewModel.autoStartRest.collectAsState()
     val nudgeEnabled by viewModel.workoutNudgeEnabled.collectAsState()
     val quietStartHour by viewModel.quietStartHour.collectAsState()
     val quietEndHour by viewModel.quietEndHour.collectAsState()
@@ -213,6 +215,23 @@ fun SettingsScreen(
                     selected = distanceUnit,
                     labelFor = { if (it == DistanceUnit.KM) "km" else "mi" },
                     onSelect = { viewModel.setDistanceUnit(it) },
+                )
+            }
+
+            SettingsSection("Workout") {
+                SwitchSettingRow(
+                    title = "Track RPE",
+                    subtitle = "Completed sets show a 1–10 effort entry (one decimal).",
+                    checked = trackRpe,
+                    onCheckedChange = { viewModel.setTrackRpe(it) },
+                )
+                Spacer(Modifier.height(8.dp))
+                SwitchSettingRow(
+                    title = "Auto-start rest timer",
+                    subtitle = "Completing a set starts the rest countdown. Off = a Start rest " +
+                        "button appears instead.",
+                    checked = autoStartRest,
+                    onCheckedChange = { viewModel.setAutoStartRest(it) },
                 )
             }
 
@@ -494,6 +513,30 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
         SectionHeader(title)
         Spacer(Modifier.height(8.dp))
         content()
+    }
+}
+
+/** A title + subtitle row with a trailing switch (the Reminders-toggle layout, reusable). */
+@Composable
+private fun SwitchSettingRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

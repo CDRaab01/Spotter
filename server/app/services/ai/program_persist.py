@@ -1,8 +1,10 @@
 """Persist an AI-suggested multi-day program.
 
 Creates one WorkoutRoutine per non-rest day, a WorkoutProgram linking them as
-ProgramDays, and activates it (clearing any other active program). Reuses the
-existing routine/program services so validation and bounds stay in one place.
+ProgramDays (carrying source/description and any weeks/deload_week
+periodization), and — unless ``activate=False`` — activates it (clearing any
+other active program). Reuses the existing routine/program services so
+validation and bounds stay in one place.
 
 Note: create_routine / create_program / update_program each commit independently,
 so this is not a single transaction. A mid-sequence failure can leave orphan AI
@@ -40,9 +42,21 @@ async def accept_program(
         day_ins.append(ProgramDayIn(routine_id=routine_id, label=day.label, order=i))
 
     program = await program_service.create_program(
-        db, user_id, ProgramCreate(name=req.name, days=day_ins)
+        db,
+        user_id,
+        ProgramCreate(
+            name=req.name,
+            days=day_ins,
+            source=req.source,
+            description=req.description,
+            weeks=req.weeks,
+            deload_week=req.deload_week,
+        ),
     )
-    # Activate the new program (clears other actives).
+    if not req.activate:
+        # Save-only: the currently active program (if any) stays untouched.
+        return program
+    # Activate the new program (clears other actives, stamps started_on).
     return await program_service.update_program(
         db, user_id, program.id, ProgramUpdate(is_active=True)
     )

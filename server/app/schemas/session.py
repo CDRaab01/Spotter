@@ -1,9 +1,13 @@
 import datetime
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.limits import REPS_BOUNDS, WEIGHT_BOUNDS_LB
+from app.limits import REPS_BOUNDS, RPE_BOUNDS, WEIGHT_BOUNDS_LB
+
+# Mirrors app.limits.SET_TYPES — Literal needs the values spelled out for static typing.
+SetType = Literal["normal", "warmup", "drop", "failure", "amrap"]
 
 
 class SessionCreate(BaseModel):
@@ -27,6 +31,8 @@ class SetLogCreate(BaseModel):
         default=None, ge=WEIGHT_BOUNDS_LB[0], le=WEIGHT_BOUNDS_LB[1]
     )
     completed: bool = False
+    rpe: float | None = Field(default=None, ge=RPE_BOUNDS[0], le=RPE_BOUNDS[1])
+    set_type: SetType = "normal"
 
 
 class SetLogUpdate(BaseModel):
@@ -35,6 +41,8 @@ class SetLogUpdate(BaseModel):
         default=None, ge=WEIGHT_BOUNDS_LB[0], le=WEIGHT_BOUNDS_LB[1]
     )
     completed: bool | None = None
+    rpe: float | None = Field(default=None, ge=RPE_BOUNDS[0], le=RPE_BOUNDS[1])
+    set_type: SetType | None = None
 
 
 class SetLogOut(BaseModel):
@@ -46,6 +54,8 @@ class SetLogOut(BaseModel):
     weight: float | None = None
     completed: bool = False
     completed_at: datetime.datetime | None = None
+    rpe: float | None = None
+    set_type: str = "normal"
     # Enriched fields — populated when the session has an associated plan
     exercise_name: str | None = None
     target_sets: int | None = None
@@ -72,6 +82,9 @@ class SessionOut(BaseModel):
     exercise_notes: dict[str, str] | None = None
     set_logs: list[SetLogOut] = []
     muscle_groups: list[MuscleGroupSummary] = []
+    # True when this session was seeded during its program's scheduled deload week
+    # (computed at read time — see program_service.is_deload_day).
+    is_deload: bool = False
 
 
 class ExerciseSummary(BaseModel):

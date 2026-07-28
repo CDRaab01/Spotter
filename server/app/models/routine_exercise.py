@@ -20,6 +20,8 @@ class RoutineExercise(Base):
     is_bodyweight: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
     superset_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Per-exercise rest between sets in seconds (bounds in app/limits.py); null = app default.
+    rest_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     routine = relationship("WorkoutRoutine", back_populates="routine_exercises", lazy="raise")
     exercise = relationship("Exercise", lazy="raise")

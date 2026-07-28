@@ -36,6 +36,18 @@ class ExerciseRepository @Inject constructor(
     }
 
     /**
+     * One exercise by id (`GET /exercises/{id}`), mirror-backed like [search]: an online read
+     * seeds the mirror (incl. instructions/secondary muscles for the detail screen); a
+     * connectivity failure falls back to the mirror row, which may predate the detail fields
+     * (they render as absent). An id the mirror doesn't know keeps throwing the IOException.
+     */
+    suspend fun getExercise(id: String): ExerciseOut = try {
+        api.getExercise(id).also { dao.upsertAll(listOf(it.toEntity())) }
+    } catch (e: IOException) {
+        dao.getById(id)?.toOut() ?: throw e
+    }
+
+    /**
      * Best-effort full-catalog refresh — the opportunistic seed run by the Home sync round and
      * the reconnect observer. Swallows every failure silently (it's a seed, not a feature) and
      * returns whether the server was reached, so callers may use it as a freshness signal.
@@ -46,8 +58,10 @@ class ExerciseRepository @Inject constructor(
 
 private fun ExerciseOut.toEntity() = ExerciseEntity(
     id = id, name = name, muscleGroup = muscleGroup, equipment = equipment,
+    instructions = instructions, secondaryMuscles = secondaryMuscles,
 )
 
 private fun ExerciseEntity.toOut() = ExerciseOut(
     id = id, name = name, muscleGroup = muscleGroup, equipment = equipment,
+    instructions = instructions, secondaryMuscles = secondaryMuscles,
 )

@@ -2,6 +2,7 @@ package com.spotter.ui.workout
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.MuscleGroupSummary
 import com.spotter.data.model.SessionOut
@@ -10,10 +11,13 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.SuggestedAdjustmentAction
+import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.SessionRepository
+import com.spotter.util.AppPreferences
 import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +26,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -45,10 +51,13 @@ object WorkoutSummaryStore {
 }
 
 @HiltViewModel
+@OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class WorkoutViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
+    private val exerciseRepository: ExerciseRepository,
     private val workoutTimer: WorkoutTimerController,
     private val time: TimeProvider,
+    appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val _session = MutableStateFlow<UiState<SessionOut>>(UiState.Loading)
@@ -91,6 +100,26 @@ class WorkoutViewModel @Inject constructor(
 
     private val _restTimerSeconds = MutableStateFlow<Int?>(null)
     val restTimerSeconds: StateFlow<Int?> = _restTimerSeconds.asStateFlow()
+
+    /** Show the compact RPE entry on completed rows? (Settings → Workout → Track RPE.) */
+    val trackRpe: StateFlow<Boolean> = appPreferences.trackRpe
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // Read at set-completion time to gate the automatic rest start. Eager so the first completed
+    // set already sees the persisted value.
+    private val autoStartRest: StateFlow<Boolean> = appPreferences.autoStartRest
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /**
+     * Rest queued by a completed set while auto-start is off — the panel shows a "Start rest"
+     * button for it instead of counting down. Cleared once started/dismissed/superseded.
+     */
+    private val _pendingRestDuration = MutableStateFlow<Int?>(null)
+    val pendingRestDuration: StateFlow<Int?> = _pendingRestDuration.asStateFlow()
+
+    // Per-exercise rest overrides from the session's routine (exerciseId -> seconds), loaded with
+    // the session; used instead of the rep-range heuristic when present.
+    private var restOverrides: Map<String, Int> = emptyMap()
 
     // Length of the rest the current countdown started from, so the UI ring can show
     // real progress (null while working).
@@ -150,6 +179,13 @@ class WorkoutViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            restOverrides = try {
+                sessionRepository.getRestSeconds(sessionId)
+            } catch (_: Exception) {
+                restOverrides
+            }
+        }
+        viewModelScope.launch {
             // Only show the spinner when there's nothing on screen yet — an ON_RESUME
             // reload (e.g. returning from the coach chat) must not flash over live data.
             if (_session.value !is UiState.Success) _session.value = UiState.Loading
@@ -182,7 +218,16 @@ class WorkoutViewModel @Inject constructor(
     fun toggleComplete(sessionId: String, setLog: SetLogOut, reps: Int, weightLbs: Double?) {
         val nowCompleted = !setLog.completed
         patchSet(setLog.id) { it.copy(completed = nowCompleted, reps = reps, weight = weightLbs ?: it.weight) }
-        if (nowCompleted) startRestTimer(setLog.targetReps, reps) else dismissRestTimer()
+        if (nowCompleted) {
+            if (autoStartRest.value) {
+                startRestTimer(setLog.targetReps, reps, setLog.exerciseId)
+            } else {
+                // Rest-by-feel mode: queue the duration; the panel offers "Start rest".
+                _pendingRestDuration.value = restDurationFor(setLog.targetReps, reps, setLog.exerciseId)
+            }
+        } else {
+            dismissRestTimer()
+        }
         viewModelScope.launch {
             try {
                 sessionRepository.updateSet(
@@ -212,6 +257,107 @@ class WorkoutViewModel @Inject constructor(
         val current = (_session.value as? UiState.Success)?.data ?: return
         val newLogs = current.setLogs.map { if (it.id == setId) transform(it) else it }
         _session.value = UiState.Success(current.copy(setLogs = newLogs))
+    }
+
+    /** Persists a set-type change (normal/warmup/drop/failure/amrap) from the row's type picker. */
+    fun setSetType(sessionId: String, setLog: SetLogOut, setType: String) {
+        patchSet(setLog.id) { it.copy(setType = setType) }
+        viewModelScope.launch {
+            try {
+                sessionRepository.updateSet(sessionId, setLog.id, SetLogUpdate(setType = setType))
+            } catch (_: Exception) {}
+        }
+    }
+
+    /** Persists an RPE entry (1.0–10.0, one decimal; null clears) for a completed set. */
+    fun setRpe(sessionId: String, setLog: SetLogOut, rpe: Double?) {
+        val clamped = rpe?.coerceIn(1.0, 10.0)
+        patchSet(setLog.id) { it.copy(rpe = clamped) }
+        viewModelScope.launch {
+            try {
+                sessionRepository.updateSet(sessionId, setLog.id, SetLogUpdate(rpe = clamped))
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Deletes one set (from the row's type picker). The screen disables this on an exercise's
+     * last set; the reload keeps set numbering display consistent with what the server kept.
+     */
+    fun deleteSet(sessionId: String, setLog: SetLogOut) {
+        viewModelScope.launch {
+            try {
+                sessionRepository.deleteSet(sessionId, setLog.id)
+                loadSession(sessionId)
+            } catch (e: Exception) {
+                _actionError.value = "Couldn't delete the set. Try again."
+            }
+        }
+    }
+
+    // ── Manual exercise management (mid-workout) ───────────────────────────────
+
+    /** Debounced query for the "Add exercise" picker (the CreateRoutine search pattern). */
+    val exerciseSearchQuery = MutableStateFlow("")
+
+    val exerciseSearchResults: StateFlow<List<ExerciseOut>> = exerciseSearchQuery
+        .debounce(300)
+        .flatMapLatest { q ->
+            flow {
+                try {
+                    emit(exerciseRepository.search(q))
+                } catch (e: Exception) {
+                    emit(emptyList())
+                }
+            }.catch { emit(emptyList<ExerciseOut>()) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Adds an exercise to the live session as [ADDED_EXERCISE_SETS] fresh sets via the existing
+     * add-set path (each POSTs when online, queues when not). Seeded from the exercise's
+     * bodyweight-ness: no starting load either way (the user logs the real one), reps default 8.
+     */
+    fun addExercise(sessionId: String, exercise: ExerciseOut) {
+        viewModelScope.launch {
+            try {
+                for (setNumber in 1..ADDED_EXERCISE_SETS) {
+                    sessionRepository.logSet(
+                        sessionId,
+                        SetLogCreate(
+                            exerciseId = exercise.id,
+                            setNumber = setNumber,
+                            reps = 8,
+                            weight = null,
+                            completed = false,
+                        ),
+                        displayName = exercise.name,
+                    )
+                }
+                loadSession(sessionId)
+            } catch (e: Exception) {
+                _actionError.value = "Couldn't add the exercise. Try again."
+            }
+        }
+    }
+
+    /**
+     * Removes an exercise from the live session by deleting its INCOMPLETE sets only — completed
+     * sets are immutable history (the adjustment-apply invariant) and keep the exercise's card
+     * with what was actually done.
+     */
+    fun removeExercise(sessionId: String, exerciseId: String) {
+        val current = (_session.value as? UiState.Success)?.data ?: return
+        val toDelete = current.setLogs.filter { it.exerciseId == exerciseId && !it.completed }
+        viewModelScope.launch {
+            try {
+                toDelete.forEach { sessionRepository.deleteSet(sessionId, it.id) }
+                loadSession(sessionId)
+            } catch (e: Exception) {
+                _actionError.value = "Couldn't remove the exercise. Try again."
+                loadSession(sessionId)
+            }
+        }
     }
 
     fun addSet(sessionId: String, exerciseId: String, lastSet: SetLogOut) {
@@ -246,23 +392,49 @@ class WorkoutViewModel @Inject constructor(
         }
     }
 
-    fun startRestTimer(targetReps: Int?, actualReps: Int? = null) {
+    fun startRestTimer(targetReps: Int?, actualReps: Int? = null, exerciseId: String? = null) {
+        val duration = restDurationFor(targetReps, actualReps, exerciseId)
+        // Reflect immediately for instant UI; the controller (single source) then drives the
+        // drift-free countdown, owns the wake-lock, and fires the end-of-rest cue even when
+        // backgrounded. No countdown loop lives here, so the ring can't drift out of sync.
+        _pendingRestDuration.value = null
+        _restTimerSeconds.value = duration
+        _restDurationSeconds.value = duration
+        workoutTimer.startRest(duration)
+    }
+
+    /**
+     * Rest length for a just-completed set. A routine-prescribed `rest_seconds` override is used
+     * verbatim (an explicit prescription is exact — no failure bump); otherwise the rep-range
+     * heuristic applies, +60s when the set fell short of target.
+     */
+    private fun restDurationFor(targetReps: Int?, actualReps: Int?, exerciseId: String?): Int {
+        exerciseId?.let { restOverrides[it] }?.let { return it }
         val base = when {
             targetReps == null || targetReps <= 5 -> 180
             targetReps <= 12 -> 90
             else -> 60
         }
         val failure = actualReps != null && targetReps != null && actualReps < targetReps
-        val duration = if (failure) base + 60 else base
-        // Reflect immediately for instant UI; the controller (single source) then drives the
-        // drift-free countdown, owns the wake-lock, and fires the end-of-rest cue even when
-        // backgrounded. No countdown loop lives here, so the ring can't drift out of sync.
+        return if (failure) base + 60 else base
+    }
+
+    /** Start the rest a completed set queued while auto-start was off. */
+    fun startPendingRest() {
+        val duration = _pendingRestDuration.value ?: return
+        _pendingRestDuration.value = null
         _restTimerSeconds.value = duration
         _restDurationSeconds.value = duration
         workoutTimer.startRest(duration)
     }
 
+    /** Nudge the running rest by [deltaSec] (±15s buttons); the controller floors at 5s. */
+    fun adjustRest(deltaSec: Int) {
+        workoutTimer.adjustRest(deltaSec)
+    }
+
     fun dismissRestTimer() {
+        _pendingRestDuration.value = null
         _restTimerSeconds.value = null
         _restDurationSeconds.value = null
         workoutTimer.dismissRest()
@@ -299,6 +471,11 @@ class WorkoutViewModel @Inject constructor(
                     "Couldn't apply the suggestion. Check your connection and try again."
             }
         }
+    }
+
+    companion object {
+        /** Fresh sets created when an exercise is added mid-workout. */
+        const val ADDED_EXERCISE_SETS = 3
     }
 
     fun deleteSession(sessionId: String) {

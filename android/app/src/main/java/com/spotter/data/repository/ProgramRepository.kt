@@ -145,7 +145,13 @@ class ProgramRepository @Inject constructor(
             val existing = programDao.getByServerId(p.id)
             if (existing != null) {
                 if (!existing.syncPending && !existing.pendingDelete) {
-                    programDao.upsert(existing.copy(name = p.name, isActive = p.isActive))
+                    programDao.upsert(
+                        existing.copy(
+                            name = p.name, isActive = p.isActive, source = p.source,
+                            description = p.description, weeks = p.weeks,
+                            deloadWeek = p.deloadWeek, startedOn = p.startedOn,
+                        )
+                    )
                     dayDao.deleteByProgram(existing.id)
                     dayDao.upsertAll(p.days.map { it.toEntity(existing.id) })
                 }
@@ -173,11 +179,18 @@ class ProgramRepository @Inject constructor(
     // ── Mapping ─────────────────────────────────────────────────────────────────
 
     private fun ProgramOut.toEntity() = WorkoutProgramEntity(
-        id = id, name = name, isActive = isActive, serverId = id, syncPending = false, pendingDelete = false,
+        id = id, name = name, isActive = isActive,
+        source = source, description = description, weeks = weeks,
+        deloadWeek = deloadWeek, startedOn = startedOn,
+        serverId = id, syncPending = false, pendingDelete = false,
     )
 
+    // current_week/is_deload_week stay at their defaults here — they are server-computed and
+    // deliberately not mirrored (see WorkoutProgramEntity).
     private fun WorkoutProgramEntity.toOut(days: List<ProgramDayEntity>) = ProgramOut(
         id = id, name = name, isActive = isActive,
+        source = source, description = description, weeks = weeks,
+        deloadWeek = deloadWeek, startedOn = startedOn,
         days = days.sortedBy { it.order }.map { it.toOut() },
     )
 

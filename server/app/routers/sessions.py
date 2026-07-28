@@ -21,6 +21,7 @@ from app.services.session_service import (
     add_set,
     create_session,
     delete_session,
+    delete_set_log,
     get_prior_bests,
     get_session,
     list_sessions,
@@ -87,6 +88,17 @@ async def update_set(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     return await update_set_log(db, current_user.id, session_id, set_id, req)
+
+
+@router.delete("/{session_id}/sets/{set_id}", status_code=204)
+async def delete_set(
+    session_id: uuid.UUID,
+    set_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Remove a set from an in-progress session (409 once the session is finished)."""
+    await delete_set_log(db, current_user.id, session_id, set_id)
 
 
 @router.delete("/{session_id}", status_code=204)

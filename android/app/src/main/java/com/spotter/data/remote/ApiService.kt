@@ -113,6 +113,13 @@ interface ApiService {
         @Body req: SetLogUpdate,
     ): SetLogOut
 
+    /** Deletes one set from an in-progress session (204). */
+    @DELETE("sessions/{id}/sets/{setId}")
+    suspend fun deleteSet(
+        @Path("id") id: String,
+        @Path("setId") setId: String,
+    )
+
     @DELETE("sessions/{id}")
     suspend fun deleteSession(@Path("id") id: String)
 
@@ -149,6 +156,9 @@ interface ApiService {
     // Exercises
     @GET("exercises")
     suspend fun searchExercises(@Query("search") search: String = ""): List<ExerciseOut>
+
+    @GET("exercises/{id}")
+    suspend fun getExercise(@Path("id") id: String): ExerciseOut
 
     // Users
     @GET("users/me")

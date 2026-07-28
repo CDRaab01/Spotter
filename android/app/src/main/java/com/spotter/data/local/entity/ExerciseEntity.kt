@@ -16,4 +16,6 @@ data class ExerciseEntity(
     val name: String,
     val muscleGroup: String?,
     val equipment: String?,
+    val instructions: String? = null,
+    val secondaryMuscles: String? = null, // comma-separated, mirrors ExerciseOut
 )

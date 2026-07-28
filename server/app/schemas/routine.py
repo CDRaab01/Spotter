@@ -3,7 +3,7 @@ import uuid
 
 from pydantic import BaseModel, Field
 
-from app.limits import REPS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
+from app.limits import REPS_BOUNDS, REST_SECONDS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
 
 
 class RoutineExerciseIn(BaseModel):
@@ -16,6 +16,9 @@ class RoutineExerciseIn(BaseModel):
     is_bodyweight: bool = False
     order: int = Field(default=0, ge=0)
     superset_group: int | None = Field(default=None, ge=0)
+    rest_seconds: int | None = Field(
+        default=None, ge=REST_SECONDS_BOUNDS[0], le=REST_SECONDS_BOUNDS[1]
+    )
 
 
 class RoutineCreate(BaseModel):

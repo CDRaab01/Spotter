@@ -199,23 +199,26 @@ class RoutineRepository @Inject constructor(
         routineId = routineId, exerciseId = exerciseId, exerciseName = exerciseName,
         targetSets = targetSets, targetReps = targetReps, targetWeight = targetWeight,
         isBodyweight = isBodyweight, order = order, supersetGroup = supersetGroup,
+        restSeconds = restSeconds,
     )
 
     private fun RoutineExerciseIn.toEntity(routineId: String) = RoutineExerciseEntity(
         routineId = routineId, exerciseId = exerciseId, exerciseName = null,
         targetSets = targetSets, targetReps = targetReps, targetWeight = targetWeight,
         isBodyweight = isBodyweight, order = order, supersetGroup = supersetGroup,
+        restSeconds = restSeconds,
     )
 
     private fun RoutineExerciseEntity.toIn() = RoutineExerciseIn(
         exerciseId = exerciseId, targetSets = targetSets, targetReps = targetReps,
         targetWeight = targetWeight, isBodyweight = isBodyweight, order = order,
-        supersetGroup = supersetGroup,
+        supersetGroup = supersetGroup, restSeconds = restSeconds,
     )
 
     private fun RoutineExerciseEntity.toOut() = RoutineExerciseOut(
         id = "$routineId:$exerciseId", exerciseId = exerciseId, targetSets = targetSets,
         targetReps = targetReps, targetWeight = targetWeight, isBodyweight = isBodyweight,
         order = order, exerciseName = exerciseName, supersetGroup = supersetGroup,
+        restSeconds = restSeconds,
     )
 }

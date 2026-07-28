@@ -68,6 +68,13 @@ class SettingsViewModel @Inject constructor(
     val distanceUnit: StateFlow<DistanceUnit> = appPreferences.distanceUnit
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DistanceUnit.MI)
 
+    /** Workout-mode toggles: RPE tracking (opt-in) + automatic rest start (default on). */
+    val trackRpe: StateFlow<Boolean> = appPreferences.trackRpe
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val autoStartRest: StateFlow<Boolean> = appPreferences.autoStartRest
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val workoutCadenceDays: StateFlow<Int> = appPreferences.workoutCadenceDays
         .stateIn(
             viewModelScope,
@@ -151,6 +158,14 @@ class SettingsViewModel @Inject constructor(
 
     fun setWorkoutCadenceDays(value: Int) {
         viewModelScope.launch { appPreferences.setWorkoutCadenceDays(value) }
+    }
+
+    fun setTrackRpe(value: Boolean) {
+        viewModelScope.launch { appPreferences.setTrackRpe(value) }
+    }
+
+    fun setAutoStartRest(value: Boolean) {
+        viewModelScope.launch { appPreferences.setAutoStartRest(value) }
     }
 
     /**

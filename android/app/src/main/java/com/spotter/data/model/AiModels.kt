@@ -36,6 +36,12 @@ data class SuggestedProgram(
 data class AcceptProgramRequest(
     val name: String,
     val days: List<SuggestedProgramDay>,
+    // Program-structure extensions (optional; the server defaults them the same way).
+    val weeks: Int? = null,
+    @SerialName("deload_week") val deloadWeek: Int? = null,
+    val description: String? = null,
+    val source: String = "ai",
+    val activate: Boolean = true,
 )
 
 /**

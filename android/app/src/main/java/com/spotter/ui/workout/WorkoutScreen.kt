@@ -21,12 +21,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +63,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
+import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SetLogOut
 import design.pulse.ui.components.DataText
@@ -93,11 +99,14 @@ fun WorkoutScreen(
     val workSeconds by viewModel.workSeconds.collectAsState()
     val exerciseNotes by viewModel.exerciseNotes.collectAsState()
     val priorBests by viewModel.priorBests.collectAsState()
+    val trackRpe by viewModel.trackRpe.collectAsState()
+    val pendingRestDuration by viewModel.pendingRestDuration.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val timerText = formatElapsed(elapsed)
     val isFinishing = finishState is UiState.Loading
 
     var showFinishDialog by remember { mutableStateOf(false) }
+    var showAddExercise by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(actionError) {
@@ -153,6 +162,25 @@ fun WorkoutScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showFinishDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showAddExercise) {
+        val query by viewModel.exerciseSearchQuery.collectAsState()
+        val results by viewModel.exerciseSearchResults.collectAsState()
+        AddExerciseDialog(
+            query = query,
+            results = results,
+            onQueryChange = { viewModel.exerciseSearchQuery.value = it },
+            onPick = { exercise ->
+                showAddExercise = false
+                viewModel.exerciseSearchQuery.value = ""
+                viewModel.addExercise(sessionId, exercise)
+            },
+            onDismiss = {
+                showAddExercise = false
+                viewModel.exerciseSearchQuery.value = ""
             },
         )
     }
@@ -243,7 +271,10 @@ fun WorkoutScreen(
                     restTimerSeconds = restTimerSeconds,
                     restDurationSeconds = restDurationSeconds,
                     workSeconds = workSeconds,
+                    pendingRestDuration = pendingRestDuration,
                     onSkip = { viewModel.dismissRestTimer() },
+                    onAdjust = { viewModel.adjustRest(it) },
+                    onStartPendingRest = { viewModel.startPendingRest() },
                 )
             }
 
@@ -267,10 +298,18 @@ fun WorkoutScreen(
                             Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                "No exercises yet.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "No exercises yet.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(SpotterTheme.spacing.md))
+                                PulseButton(
+                                    text = "+ Add exercise",
+                                    onClick = { showAddExercise = true },
+                                    tonal = true,
+                                )
+                            }
                         }
                     } else {
                         LazyColumn(
@@ -286,6 +325,7 @@ fun WorkoutScreen(
                                         note = exerciseNotes[exerciseId] ?: "",
                                         priorBest = priorBests[exerciseId],
                                         positionLabel = positionLabel,
+                                        trackRpe = trackRpe,
                                         onCommitValues = { setLog, reps, weight ->
                                             viewModel.editSet(sessionId, setLog, reps, weight)
                                         },
@@ -296,6 +336,13 @@ fun WorkoutScreen(
                                         onNoteSave = { note -> viewModel.saveExerciseNote(sessionId, exerciseId, note) },
                                         onApplySuggestion = {
                                             priorBests[exerciseId]?.let { viewModel.applyProgression(sessionId, it) }
+                                        },
+                                        onSetType = { setLog, type -> viewModel.setSetType(sessionId, setLog, type) },
+                                        onDeleteSet = { setLog -> viewModel.deleteSet(sessionId, setLog) },
+                                        onRpeCommit = { setLog, rpe -> viewModel.setRpe(sessionId, setLog, rpe) },
+                                        onRemoveExercise = { viewModel.removeExercise(sessionId, exerciseId) },
+                                        onOpenExercise = {
+                                            navController.navigate(Screen.ExerciseDetail.createRoute(exerciseId))
                                         },
                                     )
                                 }
@@ -319,6 +366,14 @@ fun WorkoutScreen(
                                     }
                                 }
                             }
+                            item(key = "add-exercise") {
+                                PulseButton(
+                                    text = "+ Add exercise",
+                                    onClick = { showAddExercise = true },
+                                    tonal = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                 }
@@ -331,15 +386,19 @@ fun WorkoutScreen(
 
 /**
  * The work/rest instrument. Resting: a prominent recovery-green ring draining with the
- * countdown, mono readout in the middle, and a skip control. Working: a slim strip with the
- * count-up in effort cyan.
+ * countdown, mono readout in the middle, ±15s nudges, and a skip control. Working: a slim
+ * strip with the count-up in effort cyan — plus a "Start rest" button when auto-start is off
+ * and a completed set has queued one ([pendingRestDuration]).
  */
 @Composable
 private fun RestInstrumentPanel(
     restTimerSeconds: Int?,
     restDurationSeconds: Int?,
     workSeconds: Int,
+    pendingRestDuration: Int?,
     onSkip: () -> Unit,
+    onAdjust: (Int) -> Unit,
+    onStartPendingRest: () -> Unit,
 ) {
     val pulse = SpotterTheme.pulse
     val resting = restTimerSeconds != null
@@ -386,15 +445,37 @@ private fun RestInstrumentPanel(
                         }
                     }
                     Spacer(Modifier.height(SpotterTheme.spacing.sm))
-                    PulseButton(
-                        text = "Skip rest",
-                        onClick = onSkip,
-                        tonal = true,
-                        compact = true,
-                        channel = pulse.recovery,
-                        onChannel = pulse.onRecovery,
-                        dimChannel = pulse.recoveryDim,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PulseButton(
+                            text = "−15s",
+                            onClick = { onAdjust(-15) },
+                            tonal = true,
+                            compact = true,
+                            channel = pulse.recovery,
+                            onChannel = pulse.onRecovery,
+                            dimChannel = pulse.recoveryDim,
+                        )
+                        Spacer(Modifier.width(SpotterTheme.spacing.sm))
+                        PulseButton(
+                            text = "Skip rest",
+                            onClick = onSkip,
+                            tonal = true,
+                            compact = true,
+                            channel = pulse.recovery,
+                            onChannel = pulse.onRecovery,
+                            dimChannel = pulse.recoveryDim,
+                        )
+                        Spacer(Modifier.width(SpotterTheme.spacing.sm))
+                        PulseButton(
+                            text = "+15s",
+                            onClick = { onAdjust(15) },
+                            tonal = true,
+                            compact = true,
+                            channel = pulse.recovery,
+                            onChannel = pulse.onRecovery,
+                            dimChannel = pulse.recoveryDim,
+                        )
+                    }
                 }
             } else {
                 Row(
@@ -418,6 +499,17 @@ private fun RestInstrumentPanel(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
+                    if (pendingRestDuration != null) {
+                        PulseButton(
+                            text = "Start rest",
+                            onClick = onStartPendingRest,
+                            tonal = true,
+                            compact = true,
+                            channel = pulse.recovery,
+                            onChannel = pulse.onRecovery,
+                            dimChannel = pulse.recoveryDim,
+                        )
+                    }
                 }
             }
         }
@@ -430,11 +522,17 @@ private fun ExerciseCard(
     note: String,
     priorBest: ExercisePrior?,
     positionLabel: String? = null,
+    trackRpe: Boolean = false,
     onCommitValues: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onToggleComplete: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
     onNoteSave: (String) -> Unit,
     onApplySuggestion: (() -> Unit)? = null,
+    onSetType: (SetLogOut, String) -> Unit = { _, _ -> },
+    onDeleteSet: (SetLogOut) -> Unit = {},
+    onRpeCommit: (SetLogOut, Double?) -> Unit = { _, _ -> },
+    onRemoveExercise: () -> Unit = {},
+    onOpenExercise: (() -> Unit)? = null,
 ) {
     val weightUnit = LocalWeightUnit.current
     val pulse = SpotterTheme.pulse
@@ -462,6 +560,45 @@ private fun ExerciseCard(
             onDismiss = { showPlateCalc = false },
         )
     }
+    // Set-type picker (also hosts deletion): opened from a row's set-number cell.
+    var typePickerFor by remember { mutableStateOf<SetLogOut?>(null) }
+    typePickerFor?.let { picked ->
+        SetTypeDialog(
+            setLog = picked,
+            canDelete = sets.size > 1, // every exercise keeps at least one set
+            onSelectType = { type ->
+                typePickerFor = null
+                if (type != picked.setType) onSetType(picked, type)
+            },
+            onDelete = {
+                typePickerFor = null
+                onDeleteSet(picked)
+            },
+            onDismiss = { typePickerFor = null },
+        )
+    }
+    var showMenu by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Remove $name?") },
+            text = {
+                Text(
+                    "Its remaining sets are removed from this workout. " +
+                        "Completed sets stay — they're history.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmRemove = false; onRemoveExercise() }) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     PanelCard(modifier = Modifier.fillMaxWidth()) {
         if (positionLabel != null) {
@@ -472,7 +609,15 @@ private fun ExerciseCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    name,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = if (onOpenExercise != null) {
+                        Modifier.clickable(onClick = onOpenExercise)
+                    } else {
+                        Modifier
+                    },
+                )
                 if (targetHeader.isNotEmpty()) {
                     DataText(
                         text = targetHeader,
@@ -553,6 +698,21 @@ private fun ExerciseCard(
                            else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "Exercise options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Remove exercise", color = MaterialTheme.colorScheme.error) },
+                        onClick = { showMenu = false; confirmRemove = true },
+                    )
+                }
+            }
             DataText(
                 text = "$done/${sets.size}",
                 style = SpotterTheme.dataType.numeral,
@@ -610,6 +770,9 @@ private fun ExerciseCard(
                 setLog = setLog,
                 onCommit = { reps, weight -> onCommitValues(setLog, reps, weight) },
                 onToggleComplete = { reps, weight -> onToggleComplete(setLog, reps, weight) },
+                onOpenTypePicker = { typePickerFor = setLog },
+                trackRpe = trackRpe,
+                onRpeCommit = { rpe -> onRpeCommit(setLog, rpe) },
             )
         }
         Row(
@@ -656,6 +819,65 @@ internal fun formatElapsed(totalSec: Int): String {
     val m = (totalSec % 3600) / 60
     val s = totalSec % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+/**
+ * The mid-workout "Add exercise" picker: a debounced search over the catalog (mirror-backed, so
+ * it works offline) — the CreateRoutine search pattern in dialog form. Picking adds the exercise
+ * with three fresh sets.
+ */
+@Composable
+private fun AddExerciseDialog(
+    query: String,
+    results: List<ExerciseOut>,
+    onQueryChange: (String) -> Unit,
+    onPick: (ExerciseOut) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add exercise") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    label = { Text("Search exercises") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(SpotterTheme.spacing.sm))
+                LazyColumn(modifier = Modifier.height(280.dp)) {
+                    items(results, key = { it.id }) { exercise ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(exercise) }
+                                .padding(
+                                    vertical = SpotterTheme.spacing.sm,
+                                    horizontal = SpotterTheme.spacing.xs,
+                                ),
+                        ) {
+                            Text(exercise.name, style = MaterialTheme.typography.bodyLarge)
+                            val subtitle = listOfNotNull(exercise.muscleGroup, exercise.equipment)
+                                .joinToString(" · ")
+                            if (subtitle.isNotEmpty()) {
+                                Text(
+                                    subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 internal fun progressionUi(p: ExercisePrior, formatWeight: (Double) -> String): ProgressionUi {

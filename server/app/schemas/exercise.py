@@ -8,4 +8,6 @@ class ExerciseOut(BaseModel):
     name: str
     muscle_group: str | None = None
     equipment: str | None = None
+    instructions: str | None = None
+    secondary_muscles: str | None = None
     model_config = {"from_attributes": True}

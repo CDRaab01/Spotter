@@ -52,6 +52,7 @@ async def get_exercise_progress(
             WorkoutSession.user_id == user_id,
             SetLog.exercise_id == exercise_id,
             SetLog.completed == True,  # noqa: E712
+            SetLog.set_type != "warmup",  # ramp-up sets never set a trend/PR
         )
         .group_by(WorkoutSession.date)
         .order_by(WorkoutSession.date)
@@ -91,6 +92,7 @@ async def get_personal_records(
             WorkoutSession.user_id == user_id,
             SetLog.completed == True,  # noqa: E712
             SetLog.weight.is_not(None),
+            SetLog.set_type != "warmup",  # ramp-up sets never set a PR
         )
         .order_by(Exercise.name)
     )

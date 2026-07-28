@@ -1,4 +1,5 @@
 import datetime
+import math
 import uuid
 from collections import defaultdict
 
@@ -12,7 +13,7 @@ from app.models.routine_exercise import RoutineExercise
 from app.models.set_log import SetLog
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
-from app.limits import clamp_weight
+from app.limits import DELOAD_SET_FACTOR, DELOAD_WEIGHT_FACTOR, clamp_weight
 from app.progression import (
     LOWER_BODY_GROUPS,
     SessionHistory,
@@ -31,9 +32,19 @@ from app.schemas.session import (
     SetLogOut,
     SetLogUpdate,
 )
+from app.services import program_service
 
 # Number of recent sessions per exercise the progression engine looks back over (stall/PR).
 _PROGRESSION_HISTORY_SESSIONS = 5
+
+
+def _deload_weight(weight: float | None) -> float | None:
+    """A deload-week seed load: weight * DELOAD_WEIGHT_FACTOR, rounded to the
+    nearest 2.5 lb (plate-friendly) and clamped into bounds. None (bodyweight)
+    stays None."""
+    if weight is None:
+        return None
+    return clamp_weight(round(weight * DELOAD_WEIGHT_FACTOR / 2.5) * 2.5)
 
 
 def suggest_next_weight(
@@ -90,15 +101,23 @@ async def create_session(
             .order_by(RoutineExercise.order)
         )
         planned_exercises = pe_result.scalars().all()
+        # Scheduled deload: when this routine's active program is in its deload week,
+        # seed fewer sets at a lighter load so the week self-programs.
+        is_deload = await program_service.is_deload_day(db, user_id, req.routine_id, req.date)
         for pe in planned_exercises:
-            for set_num in range(1, (pe.target_sets or 3) + 1):
+            target_sets = pe.target_sets or 3
+            weight = pe.target_weight
+            if is_deload:
+                target_sets = math.ceil(target_sets * DELOAD_SET_FACTOR)
+                weight = _deload_weight(weight)
+            for set_num in range(1, target_sets + 1):
                 db.add(
                     SetLog(
                         session_id=session.id,
                         exercise_id=pe.exercise_id,
                         set_number=set_num,
                         reps=pe.target_reps or 8,
-                        weight=pe.target_weight,
+                        weight=weight,
                         completed=False,
                     )
                 )
@@ -180,6 +199,8 @@ async def get_session(
                 weight=sl.weight,
                 completed=sl.completed,
                 completed_at=sl.completed_at,
+                rpe=sl.rpe,
+                set_type=sl.set_type,
                 exercise_name=ctx[0],
                 target_sets=ctx[1],
                 target_reps=ctx[2],
@@ -188,11 +209,12 @@ async def get_session(
             )
         )
 
-    # Aggregate completed sets by muscle group (plan sessions only)
+    # Aggregate completed sets by muscle group (plan sessions only). Warm-up sets are
+    # ramp-up work, not working sets — they never count toward sets or volume.
     muscle_group_sets: dict[str, int] = defaultdict(int)
     muscle_group_volume: dict[str, float] = defaultdict(float)
     for sl in s.set_logs:
-        if sl.completed:
+        if sl.completed and sl.set_type != "warmup":
             ctx = exercise_context.get(sl.exercise_id, (None, None, None, None, None, None))
             mg = ctx[4] if len(ctx) > 4 else None
             if mg:
@@ -209,6 +231,14 @@ async def get_session(
         for mg in sorted(muscle_group_sets)
     ]
 
+    # Computed at read time from the same helper create_session seeds with, so the
+    # flag stays correct even if the program's schedule is edited afterwards.
+    is_deload = (
+        await program_service.is_deload_day(db, user_id, s.routine_id, s.date)
+        if s.routine_id
+        else False
+    )
+
     return SessionOut(
         id=s.id,
         user_id=s.user_id,
@@ -221,6 +251,7 @@ async def get_session(
         exercise_notes=s.exercise_notes,
         set_logs=set_logs_out,
         muscle_groups=muscle_groups_out,
+        is_deload=is_deload,
     )
 
 
@@ -291,6 +322,8 @@ async def add_set(
         weight=sl.weight,
         completed=sl.completed,
         completed_at=sl.completed_at,
+        rpe=sl.rpe,
+        set_type=sl.set_type,
     )
 
 
@@ -328,6 +361,10 @@ async def update_set_log(
         sl.reps = req.reps
     if req.weight is not None:
         sl.weight = req.weight
+    if req.rpe is not None:
+        sl.rpe = req.rpe
+    if req.set_type is not None:
+        sl.set_type = req.set_type
     if req.completed is not None:
         sl.completed = req.completed
         if req.completed and sl.completed_at is None:
@@ -346,7 +383,47 @@ async def update_set_log(
         weight=sl.weight,
         completed=sl.completed,
         completed_at=sl.completed_at,
+        rpe=sl.rpe,
+        set_type=sl.set_type,
     )
+
+
+async def delete_set_log(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    set_id: uuid.UUID,
+) -> None:
+    session_result = await db.execute(
+        select(WorkoutSession).where(
+            WorkoutSession.id == session_id,
+            WorkoutSession.user_id == user_id,
+        )
+    )
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
+    # A finished session is immutable history (mirrors the adjustment-apply guard).
+    if session.status != "in_progress":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Session is not in progress"
+        )
+
+    set_result = await db.execute(
+        select(SetLog).where(
+            SetLog.id == set_id,
+            SetLog.session_id == session_id,
+        )
+    )
+    sl = set_result.scalar_one_or_none()
+    if not sl:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Set not found"
+        )
+    await db.delete(sl)
+    await db.commit()
 
 
 async def get_prior_bests(
@@ -397,7 +474,8 @@ async def get_prior_bests(
     for exercise_id in exercise_ids:
         # The most recent prior sessions that include this exercise (most recent first). We fetch
         # ALL their sets — completed AND incomplete — because a miss (an incomplete set) is exactly
-        # the stall/deload signal the engine reasons over.
+        # the stall/deload signal the engine reasons over. Warm-up sets are excluded throughout:
+        # an unticked or light ramp-up set must never read as a stalled/completed working set.
         sess_rows = await db.execute(
             select(WorkoutSession.id, WorkoutSession.date)
             .join(SetLog, SetLog.session_id == WorkoutSession.id)
@@ -405,6 +483,7 @@ async def get_prior_bests(
                 WorkoutSession.user_id == user_id,
                 WorkoutSession.id != session_id,
                 SetLog.exercise_id == exercise_id,
+                SetLog.set_type != "warmup",
             )
             .group_by(WorkoutSession.id, WorkoutSession.date)
             .order_by(WorkoutSession.date.desc())
@@ -417,7 +496,11 @@ async def get_prior_bests(
         sids = [s[0] for s in recent_sessions]
         set_rows = await db.execute(
             select(SetLog)
-            .where(SetLog.session_id.in_(sids), SetLog.exercise_id == exercise_id)
+            .where(
+                SetLog.session_id.in_(sids),
+                SetLog.exercise_id == exercise_id,
+                SetLog.set_type != "warmup",
+            )
             .order_by(SetLog.set_number)
         )
         sets_by_session: dict[uuid.UUID, list[SetLog]] = defaultdict(list)
@@ -457,6 +540,8 @@ async def get_prior_bests(
                             weight=sl.weight,
                             completed=sl.completed,
                             completed_at=sl.completed_at,
+                            rpe=sl.rpe,
+                            set_type=sl.set_type,
                         )
                         for sl in completed
                     ],

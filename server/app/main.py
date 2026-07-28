@@ -7,7 +7,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.config import settings
 from app.limiter import limiter
-from app.routers import ai, auth, calendar, cardio, exercises, export, metrics, routines, progress, programs, sessions, suite_auth, users, workouts
+from app.routers import ai, auth, calendar, cardio, exercises, export, insights, metrics, routines, progress, programs, sessions, suite_auth, users, workouts
 
 # Single source for the human-facing version, reused by GET /version below.
 APP_VERSION = "1.1.2"
@@ -88,6 +88,7 @@ app.include_router(programs.router)
 app.include_router(cardio.router)
 app.include_router(workouts.router)
 app.include_router(export.router)
+app.include_router(insights.router)
 
 
 @app.get("/health", tags=["health"])

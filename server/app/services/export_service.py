@@ -7,13 +7,16 @@ shared reference data, not user-owned, so it is excluded (routines/sets referenc
 Read-only, own-session auth.
 """
 
+import csv
 import datetime
+import io
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.body_metric import BodyMetric
+from app.models.exercise import Exercise
 from app.models.cardio_session import CardioSession
 from app.models.program_day import ProgramDay
 from app.models.routine_exercise import RoutineExercise
@@ -93,3 +96,45 @@ async def build_export(db: AsyncSession, user) -> dict:
             for c in await _all(db, select(CardioSession).where(CardioSession.user_id == user.id))
         ],
     }
+
+
+async def build_sets_csv(db: AsyncSession, user_id: uuid.UUID) -> str:
+    """Every set log the user owns as a flat CSV (newest session first) — the
+    spreadsheet-friendly companion to the JSON export. One row per set; the
+    exercise appears by name so the file is readable without the catalog."""
+    result = await db.execute(
+        select(
+            WorkoutSession.date,
+            Exercise.name,
+            SetLog.set_number,
+            SetLog.set_type,
+            SetLog.reps,
+            SetLog.weight,
+            SetLog.rpe,
+            SetLog.completed,
+        )
+        .join(WorkoutSession, SetLog.session_id == WorkoutSession.id)
+        .join(Exercise, SetLog.exercise_id == Exercise.id)
+        .where(WorkoutSession.user_id == user_id)
+        .order_by(WorkoutSession.date.desc(), Exercise.name, SetLog.set_number)
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        ["date", "exercise", "set_number", "set_type", "reps", "weight", "rpe", "completed"]
+    )
+    for date, name, set_number, set_type, reps, weight, rpe, completed in result.all():
+        writer.writerow(
+            [
+                date.isoformat(),
+                name,
+                set_number,
+                set_type,
+                reps,
+                "" if weight is None else weight,
+                "" if rpe is None else rpe,
+                str(completed).lower(),
+            ]
+        )
+    return buffer.getvalue()

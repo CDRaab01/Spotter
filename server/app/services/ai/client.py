@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.limits import (
     MAX_ADJUSTMENT_ACTIONS,
+    PROGRAM_WEEKS_BOUNDS,
     REPS_BOUNDS,
     SETS_BOUNDS,
     clamp_int,
@@ -43,34 +44,13 @@ from app.services.ai.prompts import build_messages, validate_request, validate_r
 logger = logging.getLogger(__name__)
 
 
-async def chat(
-    req: ChatRequest, db: AsyncSession, user_id: uuid.UUID | None = None
-) -> ChatResponse:
-    last_user = next(
-        (m.content for m in reversed(req.messages) if m.role == "user"), ""
-    )
-    # Hard-reject only the NEW turn. Prior user turns are screened too — injection can
-    # be embedded in earlier history entries — but a blocked one is dropped from the
-    # history instead of failing the request: clients resend the whole transcript, so
-    # rejecting on history would permanently 422 every conversation that ever
-    # contained a blocked phrase. Dropped turns never reach the model either way.
-    error = validate_request(last_user)
-    if error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
-        )
+async def lm_completion(messages: list[dict], temperature: float = 0.7) -> str:
+    """POST ``messages`` to LM Studio and return the raw reply text.
 
-    history = [
-        m.model_dump()
-        for m in req.messages[:-1]
-        if not (m.role == "user" and validate_request(m.content))
-    ]
-    user_context = await _merged_context(
-        db, user_id, req.user_context, req.current_session_id
-    )
-    exercise_catalog = await build_exercise_catalog(db)
-    messages = build_messages(history, last_user, user_context, exercise_catalog)
-
+    The single LM transport for chat, the post-workout debrief, and the weekly
+    recap, so the error mapping lives in one place: HTTP error status → 502,
+    timeout → 504, unreachable → 503, malformed body → 502.
+    """
     async with httpx.AsyncClient(timeout=settings.lm_studio_timeout) as client:
         try:
             resp = await client.post(
@@ -78,7 +58,7 @@ async def chat(
                 json={
                     "model": settings.lm_studio_model,
                     "messages": messages,
-                    "temperature": 0.7,
+                    "temperature": temperature,
                 },
             )
             resp.raise_for_status()
@@ -110,6 +90,38 @@ async def chat(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="LM Studio returned a malformed response",
         )
+    return raw_reply
+
+
+async def chat(
+    req: ChatRequest, db: AsyncSession, user_id: uuid.UUID | None = None
+) -> ChatResponse:
+    last_user = next(
+        (m.content for m in reversed(req.messages) if m.role == "user"), ""
+    )
+    # Hard-reject only the NEW turn. Prior user turns are screened too — injection can
+    # be embedded in earlier history entries — but a blocked one is dropped from the
+    # history instead of failing the request: clients resend the whole transcript, so
+    # rejecting on history would permanently 422 every conversation that ever
+    # contained a blocked phrase. Dropped turns never reach the model either way.
+    error = validate_request(last_user)
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=error
+        )
+
+    history = [
+        m.model_dump()
+        for m in req.messages[:-1]
+        if not (m.role == "user" and validate_request(m.content))
+    ]
+    user_context = await _merged_context(
+        db, user_id, req.user_context, req.current_session_id
+    )
+    exercise_catalog = await build_exercise_catalog(db)
+    messages = build_messages(history, last_user, user_context, exercise_catalog)
+
+    raw_reply = await lm_completion(messages)
     # Exactly one suggestion type per reply: adjustment (only meaningful with a live
     # session in context) wins over program, which wins over a single plan.
     suggested_adjustment = (
@@ -285,7 +297,16 @@ async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram
     # Need at least one day that actually trains something.
     if not any(d.exercises for d in days):
         return None
-    return SuggestedProgram(name=draft.name, days=days)
+
+    # Periodization fields are untrusted model output: clamp weeks into bounds and
+    # drop deload_week entirely unless it lands inside the (clamped) mesocycle.
+    weeks = clamp_int(draft.weeks, PROGRAM_WEEKS_BOUNDS) if draft.weeks is not None else None
+    deload_week = draft.deload_week
+    if weeks is None or deload_week is None or not (1 <= deload_week <= weeks):
+        deload_week = None
+    return SuggestedProgram(
+        name=draft.name, days=days, weeks=weeks, deload_week=deload_week
+    )
 
 
 async def _extract_adjustment(

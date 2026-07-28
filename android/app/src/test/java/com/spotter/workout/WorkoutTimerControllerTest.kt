@@ -73,10 +73,67 @@ class WorkoutTimerControllerTest {
         assertTrue(store.cleared)
     }
 
+    // ── adjustRest (±15s nudges) ───────────────────────────────────────────────
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `adjustRest extends the remaining time and the display duration`() = runTest {
+        val time = object : TimeProvider {
+            override fun nowMs(): Long = 1_000_000L
+            override fun elapsedRealtimeMs(): Long = testScheduler.currentTime
+        }
+        val store = FakeRestStore(null)
+        val controller = WorkoutTimerController(mock(), time, backgroundScope, store)
+        controller.startRest(90)
+
+        controller.adjustRest(15)
+
+        assertEquals(105, controller.restState.value?.remainingSec)
+        assertEquals(105, controller.restState.value?.durationSec)
+        // The persisted anchor moved too, so a process-death restore resumes the adjusted rest.
+        assertEquals(1_000_000L + 105_000L, store.saved?.endEpochMs)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `adjustRest shrinks but floors at the 5s minimum`() = runTest {
+        val time = object : TimeProvider {
+            override fun nowMs(): Long = 1_000_000L
+            override fun elapsedRealtimeMs(): Long = testScheduler.currentTime
+        }
+        val controller = WorkoutTimerController(mock(), time, backgroundScope, FakeRestStore(null))
+        controller.startRest(90)
+
+        controller.adjustRest(-15)
+        assertEquals(75, controller.restState.value?.remainingSec)
+
+        controller.startRest(10)
+        controller.adjustRest(-15) // would be -5 → floored, never straight to the cue
+        assertEquals(WorkoutTimerController.MIN_REST_SEC, controller.restState.value?.remainingSec)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `adjustRest while not resting is a no-op`() = runTest {
+        val time = object : TimeProvider {
+            override fun nowMs(): Long = 1_000_000L
+            override fun elapsedRealtimeMs(): Long = testScheduler.currentTime
+        }
+        val store = FakeRestStore(null)
+        val controller = WorkoutTimerController(mock(), time, backgroundScope, store)
+
+        controller.adjustRest(15)
+
+        assertNull(controller.restState.value)
+        assertNull(store.saved)
+    }
+
     private class FakeRestStore(private var pending: PendingRest?) : RestTimerStore {
         var cleared = false
+        var saved: PendingRest? = null
         override fun save(endEpochMs: Long, durationSec: Int) {
             pending = PendingRest(endEpochMs, durationSec)
+            saved = pending
         }
         override fun read(): PendingRest? = pending
         override fun clear() {

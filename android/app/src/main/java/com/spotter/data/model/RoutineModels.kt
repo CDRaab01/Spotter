@@ -15,6 +15,8 @@ data class RoutineExerciseIn(
     @SerialName("is_bodyweight") val isBodyweight: Boolean = false,
     val order: Int = 0,
     @SerialName("superset_group") val supersetGroup: Int? = null,
+    /** Per-exercise rest override in seconds (15–600); null = use the rep-range heuristic. */
+    @SerialName("rest_seconds") val restSeconds: Int? = null,
 )
 
 @Serializable
@@ -35,6 +37,7 @@ data class RoutineExerciseOut(
     val order: Int = 0,
     @SerialName("exercise_name") val exerciseName: String? = null,
     @SerialName("superset_group") val supersetGroup: Int? = null,
+    @SerialName("rest_seconds") val restSeconds: Int? = null,
 )
 
 @Serializable
