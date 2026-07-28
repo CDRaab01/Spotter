@@ -241,7 +241,11 @@ the manifest is load-bearing (see CLAUDE.md suite section).
 3. Clamp model output, reject client input — both against `app/limits.py`.
 4. Timers derive from monotonic anchors; fonts are static per-weight instances (variable fonts
    render wrong on real devices).
-5. Non-medical scope: presets/prompts advise professional clearance, never diagnose.
+5. Non-medical scope: presets/prompts advise professional clearance, never diagnose. The
+   pregnancy/postpartum section in `prompts.py` is the sharpest case — it redirects symptoms to a
+   doctor or pelvic floor physiotherapist and never estimates healing timelines or judges
+   readiness. Extending it means adding *exercise selection and referrals*, never clinical
+   judgement. Guarded by `tests/test_ai_postpartum.py` and the preset contraindication test.
 6. **Warm-up sets are not training data.** `set_type == "warmup"` is excluded from volume,
    progression inputs, est-1RM trend and PR detection — that exclusion is the entire point of
    the set-type concept, so any new computation over sets must filter it too.

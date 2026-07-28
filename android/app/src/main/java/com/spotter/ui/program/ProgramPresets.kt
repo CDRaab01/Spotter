@@ -293,33 +293,90 @@ object ProgramPresets {
                 restDay(),
             ),
         ),
+        // Postpartum comes in two stages rather than one flat program: coming back is
+        // progressive, and a single "rebuild" block either starts too hard or stays too easy.
+        // Stage 1 deliberately contains no crunches, twists, or long anti-extension holds
+        // (planks, hollow holds) — those load the abdominal wall and pelvic floor hardest, which
+        // is exactly what this stage is not for. They belong to a later stage, symptom-free.
         PresetProgram(
             id = "postpartum_rebuild",
-            displayName = "Postpartum Rebuild",
-            description = "A gentle return to training after giving birth — core- and " +
-                "pelvic-floor-friendly, no crunches and no heavy lifting. Two sessions a " +
-                "week with rest between. Start only after your doctor clears exercise " +
-                "(often around 6 weeks), and progress by how you feel.",
+            displayName = "Postpartum — First Weeks Back",
+            description = "Stage 1 of coming back after giving birth: short, gentle, mostly " +
+                "bodyweight sessions built around hips, glutes, and supported pulling (which " +
+                "is what carrying and feeding a baby actually demands). No crunches, twists, " +
+                "planks, or heavy lifting. Two sessions a week, about 20 minutes each — a " +
+                "short session done beats a long one skipped.\n\nStart only once your doctor " +
+                "or midwife has cleared you to exercise; that timing is theirs to give, not " +
+                "this app's. If you notice leaking, heaviness or bulging in the pelvis, your " +
+                "abdomen doming along the midline, pain (including around a C-section scar), " +
+                "or bleeding that restarts, stop and speak to your doctor or a pelvic floor " +
+                "physiotherapist — that referral exists and is worth asking for. Move up to " +
+                "\"Postpartum — Rebuilding Strength\" when this feels genuinely easy.",
             days = listOf(
                 PresetDay(
                     "Foundations",
                     listOf(
                         PresetExercise("Glute Bridge", 3, 12, isBodyweight = true),
                         PresetExercise("Bodyweight Squat", 3, 10, isBodyweight = true),
-                        PresetExercise("Step-Up", 2, 10, isBodyweight = true),
-                        PresetExercise("Plank", 3, 1, isBodyweight = true),
+                        PresetExercise("Seated Cable Row", 3, 12, weight = 25.0),
+                        PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
+                    ),
+                ),
+                restDay(),
+                restDay(),
+                PresetDay(
+                    "Gentle Full Body",
+                    listOf(
+                        PresetExercise("Step-Up", 3, 10, isBodyweight = true),
+                        PresetExercise("Hip Thrust", 3, 12, isBodyweight = true),
+                        PresetExercise("Lat Pulldown", 3, 12, weight = 40.0),
+                        PresetExercise("Dumbbell Row", 2, 10, weight = 10.0),
+                    ),
+                ),
+                restDay(),
+                restDay(),
+                restDay(),
+            ),
+        ),
+        PresetProgram(
+            id = "postpartum_strength",
+            displayName = "Postpartum — Rebuilding Strength",
+            description = "Stage 2, for when the first weeks back feel easy and you have no " +
+                "symptoms: light loaded strength three days a week, still supported and still " +
+                "free of crunches, twists, and max-effort lifting. Hips and glutes lead, " +
+                "pulling outweighs pressing, and the hinge comes back light.\n\nKeep " +
+                "progressing by how your body responds rather than by the calendar, and hold " +
+                "here as long as you like. If leaking, pelvic heaviness or bulging, abdominal " +
+                "doming, pain, or renewed bleeding show up, stop and check in with your " +
+                "doctor or a pelvic floor physiotherapist before adding more load.",
+            days = listOf(
+                PresetDay(
+                    "Lower + Glutes",
+                    listOf(
+                        PresetExercise("Goblet Squat", 3, 10, weight = 20.0),
+                        PresetExercise("Hip Thrust", 3, 12, weight = 45.0),
+                        PresetExercise("Dumbbell Reverse Lunge", 2, 10, weight = 10.0),
                         PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
                     ),
                 ),
                 restDay(),
                 PresetDay(
-                    "Light Strength",
+                    "Upper (supported)",
                     listOf(
-                        PresetExercise("Goblet Squat", 3, 10, weight = 15.0),
-                        PresetExercise("Seated Cable Row", 3, 12, weight = 30.0),
-                        PresetExercise("Dumbbell Shoulder Press", 3, 10, weight = 10.0),
-                        PresetExercise("Dumbbell Row", 2, 10, weight = 15.0),
-                        PresetExercise("Cable Glute Kickback", 2, 12, weight = 10.0),
+                        PresetExercise("Chest-Supported Row", 3, 10, weight = 25.0),
+                        PresetExercise("Dumbbell Bench Press", 3, 10, weight = 15.0),
+                        PresetExercise("Lat Pulldown", 3, 12, weight = 50.0),
+                        PresetExercise("Face Pull", 3, 15, weight = 25.0),
+                    ),
+                ),
+                restDay(),
+                PresetDay(
+                    "Full Body",
+                    listOf(
+                        PresetExercise("Dumbbell Romanian Deadlift", 3, 10, weight = 20.0),
+                        PresetExercise("Seated Cable Row", 3, 12, weight = 35.0),
+                        PresetExercise("Dumbbell Shoulder Press", 2, 10, weight = 10.0),
+                        PresetExercise("Glute Bridge", 2, 15, isBodyweight = true),
                     ),
                 ),
                 restDay(),

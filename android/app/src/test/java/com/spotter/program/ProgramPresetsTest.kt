@@ -38,6 +38,54 @@ class ProgramPresetsTest {
         "Ab Wheel Rollout",
     )
 
+    /**
+     * Movements that load the abdominal wall and pelvic floor hardest. They are fine in the
+     * general presets and deliberately absent from the pregnancy/postpartum ones: spinal-flexion
+     * and rotation core work, long anti-extension holds, and anything requiring a hard breath
+     * hold. This is exercise *selection*, not medical advice — the presets themselves tell the
+     * user to get cleared and to see a pelvic floor physiotherapist about symptoms.
+     */
+    private val abdominalAndPelvicFloorLoading = setOf(
+        "Crunch", "Bicycle Crunch", "Cable Crunch", "Russian Twist", "Hanging Leg Raise",
+        "Ab Wheel Rollout", "Mountain Climber", "Plank", "Hollow Hold",
+        "Conventional Deadlift", "Barbell Back Squat", "Barbell Front Squat", "Good Morning",
+        "Overhead Press", "Pull-Up", "Chin-Up", "Dip",
+    )
+
+    @Test
+    fun `pregnancy and postpartum presets avoid abdominal and pelvic-floor loading`() {
+        val guarded = ProgramPresets.all.filter {
+            it.id.startsWith("postpartum") || it.id.startsWith("prenatal")
+        }
+        assertTrue(guarded.isNotEmpty(), "expected pregnancy/postpartum presets to exist")
+        guarded.forEach { preset ->
+            preset.days.flatMap { it.exercises }.forEach { ex ->
+                assertTrue(
+                    ex.name !in abdominalAndPelvicFloorLoading,
+                    "${preset.displayName} prescribes '${ex.name}', which loads the abdominal " +
+                        "wall or pelvic floor harder than these presets intend",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `postpartum presets tell the user to get cleared and name pelvic floor physio`() {
+        val postpartum = ProgramPresets.all.filter { it.id.startsWith("postpartum") }
+        assertTrue(postpartum.isNotEmpty(), "expected postpartum presets to exist")
+        postpartum.forEach { preset ->
+            val text = preset.description.lowercase()
+            assertTrue(
+                "pelvic floor physiotherapist" in text,
+                "${preset.displayName} must name the pelvic floor physio referral",
+            )
+            assertTrue(
+                "doctor" in text || "midwife" in text,
+                "${preset.displayName} must defer to the user's clinician",
+            )
+        }
+    }
+
     @Test
     fun `every preset exercise references a seeded exercise name`() {
         ProgramPresets.all.forEach { preset ->

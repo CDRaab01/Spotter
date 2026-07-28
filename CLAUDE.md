@@ -38,7 +38,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, set **deletion**, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, per-set **type** (normal/warm-up/drop/failure/AMRAP — tap the set number) and optional **RPE**, adding/removing an exercise mid-session, and a rest timer with ±15s, an auto-start toggle and per-exercise overrides. Must work offline. (There is no structural "edit mode" — editing is inline per field plus the add/remove actions.)
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
-5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, plus special-case presets: Knee-Friendly, Prenatal third-trimester, Postpartum Rebuild, Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
+5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, plus special-case presets: Knee-Friendly, Prenatal third-trimester, **Postpartum — First Weeks Back** and **Postpartum — Rebuilding Strength** (a staged pair), Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
 6. **Exercise library** — searchable list of seeded exercises (`/exercises`), reachable from **Settings → Library & data** (and from any workout card's exercise name). Each entry opens a detail screen: form instructions, primary/secondary muscles, equipment, a weight/est-1RM history chart and personal records.
 7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
 
@@ -854,3 +854,55 @@ revisions**); Android **369 unit tests green** + `:app:assembleDebug`. On-device
 - Manual editing of a program's periodization after accept (set at accept time only), and the
   audit's smaller polish list (resume-strip midnight filter, deep-link `launchSingleTop`,
   cleartext in release).
+
+## Postpartum return-to-training round (2026-07-28)
+
+Made the app genuinely usable by someone coming back to training after giving birth. Server
+**300 pytest green** + `ruff check app` clean; Android **371 unit tests green**.
+
+**The real gap wasn't the presets — it was the coach.** A "Postpartum Rebuild" preset had shipped
+since 2026-06-10, but `prompts.py` contained **zero** postpartum, pregnancy, or pelvic-floor
+content. Ask the coach "I just had a baby, build me a program" and it treated her as a generic
+beginner: 5–6 exercises, 30–60 minutes, crunches and heavy compounds on the table. The preset was
+safe; the app's flagship surface — and the most likely first touchpoint — was not.
+
+- **[AI guardrail/prompt change] New "Pregnancy and Postpartum — Treat as a Primary Constraint"
+  section** in `prompts.py`. It stays inside the app's non-medical scope (exercise selection +
+  referral, never diagnosis):
+  - **Clearance is the clinician's to give, never the model's** — no healing-timeline estimates,
+    no "you're ready", no second-guessing a doctor or midwife.
+  - **Stop-and-refer symptoms** (leaking, pelvic heaviness/bulging, abdominal doming or coning,
+    pain incl. around a C-section incision, renewed bleeding) → stop that movement and see a
+    doctor or **pelvic floor physiotherapist**, named explicitly because most people don't know
+    that referral exists. The model must not program around them or explain what they mean.
+  - **C-section is abdominal surgery** — extra conservatism, surgeon's guidance wins.
+  - **Early exercise selection**: prefer hips/glutes, supported pulling, controlled range and
+    split stance; avoid spinal-flexion/rotation core work, long anti-extension holds, Valsalva-
+    heavy and maximal lifting, and impact until well re-established and symptom-free.
+  - **Session sizing explicitly overrides the 5–6 exercise / 30–60 minute rule** → 3–4 exercises,
+    20–30 minutes, 2–3×/week, and never guilt-trip a short or missed session.
+  - The same posture is wired into **live in-workout adjustments**: a postpartum symptom is never
+    answered with a lighter load — it's a removal plus a referral.
+- **Presets restructured into two stages** (coming back is progressive; one flat program either
+  starts too hard or stays too easy): **"Postpartum — First Weeks Back"** (2×/week, ~20 min,
+  mostly bodyweight, hips + supported pulling) → **"Postpartum — Rebuilding Strength"** (3×/week,
+  light loaded, hinge reintroduced). Both descriptions defer to her clinician and name the pelvic
+  floor physio referral.
+- **Dropped the plank from the early preset.** It sat in a program advertising itself as
+  "core- and pelvic-floor-friendly, no crunches" — a long high-load anti-extension hold is
+  exactly what that stage is not for. (It was also encoded `3 × 1`, rendering as a 1-rep set.)
+- **New guardrail tests.** `ProgramPresetsTest` now asserts the pregnancy/postpartum presets
+  contain none of a contraindicated-movement list and that every postpartum description defers to
+  a clinician and names the physio referral — so nobody can later "helpfully" add a crunch back.
+  `tests/test_ai_postpartum.py` pins the prompt content, the session-size override, the
+  live-adjustment referral rule, and — importantly — that messages like "I'm postpartum and
+  leaking a bit when I squat" are **not** blocked as out-of-scope, which would silently make the
+  coach useless for exactly this user.
+
+**Test-hygiene fix (unrelated, found while verifying):** `tests/test_suite_auth.py` used fixed
+emails with `assert count == 0`, so the suite only passed against a virgin database and reported
+two false failures on any re-run. Now uses a unique address per run; the suite passes twice in a
+row against the same DB.
+
+**Not done, deliberately:** nothing here estimates recovery timelines, judges readiness, or
+interprets symptoms — that's her doctor's and pelvic floor physio's job, and the app says so.
