@@ -28,7 +28,7 @@ object EveningNudge {
     /**
      * @param enabled the (shared) opt-in Settings toggle.
      * @param notificationsAllowed OS-level notification permission/switch is on.
-     * @param nowHour the local hour the worker is running (quiet-hours check).
+     * @param nowMinuteOfDay minutes since local midnight, for the quiet-hours check.
      * @param isWorkoutDayToday the active program schedules a (non-rest) workout for today.
      * @param trainedToday a strength or cardio session is completed (or in progress) today.
      * @param currentStreak [com.spotter.util.StreakCalculator.currentStreak] at fire time.
@@ -42,9 +42,9 @@ object EveningNudge {
     fun decide(
         enabled: Boolean,
         notificationsAllowed: Boolean,
-        nowHour: Int,
-        quietStartHour: Int,
-        quietEndHour: Int,
+        nowMinuteOfDay: Int,
+        quietStartMinuteOfDay: Int,
+        quietEndMinuteOfDay: Int,
         isWorkoutDayToday: Boolean,
         trainedToday: Boolean,
         currentStreak: Int,
@@ -54,7 +54,7 @@ object EveningNudge {
     ): Decision {
         if (!enabled) return Decision.Skip("disabled")
         if (!notificationsAllowed) return Decision.Skip("notifications-denied")
-        if (WorkoutNudge.isQuietHour(nowHour, quietStartHour, quietEndHour)) {
+        if (WorkoutNudge.isQuietTime(nowMinuteOfDay, quietStartMinuteOfDay, quietEndMinuteOfDay)) {
             return Decision.Skip("quiet-hours")
         }
         if (trainedToday) return Decision.Skip("already-trained-today")

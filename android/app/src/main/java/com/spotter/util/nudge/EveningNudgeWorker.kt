@@ -69,9 +69,11 @@ class EveningNudgeWorker @AssistedInject constructor(
         val enabled = appPreferences.workoutNudgeEnabled.first()
         val notificationsAllowed = NotificationManagerCompat.from(applicationContext)
             .areNotificationsEnabled()
-        val quietStart = appPreferences.quietStartHour.first()
-        val quietEnd = appPreferences.quietEndHour.first()
-        val nowHour = LocalTime.now().hour
+        // Quiet hours are user-set to the minute, so compare at minute resolution.
+        val quietStart = appPreferences.quietStartTime.first()
+        val quietEnd = appPreferences.quietEndTime.first()
+        val now = LocalTime.now()
+        val nowMinuteOfDay = now.hour * 60 + now.minute
         val today = LocalDate.now()
 
         val sessions = sessionDao.getAll()
@@ -135,9 +137,9 @@ class EveningNudgeWorker @AssistedInject constructor(
         return EveningNudge.decide(
             enabled = enabled,
             notificationsAllowed = notificationsAllowed,
-            nowHour = nowHour,
-            quietStartHour = quietStart,
-            quietEndHour = quietEnd,
+            nowMinuteOfDay = nowMinuteOfDay,
+            quietStartMinuteOfDay = quietStart.minuteOfDay,
+            quietEndMinuteOfDay = quietEnd.minuteOfDay,
             isWorkoutDayToday = isWorkoutDayToday,
             trainedToday = trainedToday,
             currentStreak = currentStreak,

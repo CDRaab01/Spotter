@@ -1062,3 +1062,66 @@ evening nudge worker). Fixed to `ZoneId.systemDefault()`; manual entries' noon-U
 still buckets correctly for any offset within ±11h. This also **retires the documented
 "CardioScheduleTest is timezone-sensitive" flake** — the test's midnight-UTC fixtures were
 the same bug in miniature; they now encode local midnight and round-trip exactly in any zone.
+
+## Settings overhaul + configurable nudge times (2026-08-11)
+
+On-device screenshots showed Settings failing four ways at once, all of them consequences of
+hand-rolled rows: the nudge description ran **underneath** its toggle, the quiet-hours stepper
+pair measured ~406dp into a ~329dp card so the trailing `+` clipped off-screen, training-profile
+chips broke *inside* words ("Intermediat/e"), and the copy read "A 8 AM". Android **463 unit
+tests green** + `assembleDebug`. Server untouched.
+
+### The rows now come from Pulse (v1.1.0)
+`PulseSwitchRow` / `PulseSettingRow` / `PulseTimeRow` / `PulseStepperRow` were promoted into the
+shared library (Pulse PR #17) — four consumers had four spellings of the same rows, and Plate's
+and Magpie's `HourStepper` were byte-identical. Pulse now sets a **48dp minimum row height**.
+Spotter's private re-implementations of `ProfileHeader` and `SettingsSection` — which Pulse had
+*extracted from Spotter* and Spotter never adopted back — are deleted.
+
+### Stateless split (the reason the defects shipped)
+`SettingsScreen.kt` is now nav + one-shot effects only (~230 lines, was 972); everything it
+renders is `SettingsContent.kt` — `SettingsUiState` / `SettingsActions`, both fully defaulted,
+plus one `*Block` per group. **The old `settings_*` Roborazzi baselines rendered a hand-built
+lookalike that shared no code with the real screen**, so they could never have caught any of
+this. The scenes now drive the real `SettingsContent`, plus two new ones covering exactly the
+regressions (`settings_reminders_*`, `settings_profile_*`).
+
+### Nudge times are user-settable
+Morning reminder and evening streak-saver each get a tap-to-open Material 3 time picker, as do
+both ends of the quiet window; `NUDGE_HOUR`/`EVENING_NUDGE_HOUR` become *defaults*. **Minutes are
+persisted, not rounded** — the picker always shows them, and storing only the hour would display
+a time the app doesn't honour; `WorkoutNudge.isQuietTime` works in minutes-since-midnight with the
+hour-only overload delegating, so the existing nudge tests stay green verbatim.
+**The scheduling subtlety that made this non-trivial:** WorkManager's `KEEP` policy treats an
+existing periodic work as satisfying the request and silently drops the new initial delay, so
+moving a reminder would appear to work and then keep firing at the old time. `sync()` now reduces
+the schedule to a signature — unchanged ⇒ `KEEP` (still self-heals a dropped work, without
+resetting the running 24h window), changed ⇒ `CANCEL_AND_REENQUEUE` — and `SpotterApp` observes
+enabled+both times together via `combine`.
+
+### Section regroup (13 → 9)
+Workout (absorbs the lone-stepper "Schedule") · Reminders · Programs · Training profile ·
+Library & data (absorbs "Export data") · Appearance & units · Connections (Health Connect +
+server URL) · Account · About. Training profile moved **down** from first: it's the only long
+form, and leading with it pushed every tap-only section below the fold. **About keeps its own
+section deliberately** — CLAUDE.md and `deploy/README.md` both name "Settings → About" as the
+deploy-verification step.
+
+### Chips
+`ChoiceRow` → `FlowRow` (`@OptIn(ExperimentalLayoutApi::class)`, the idiom already used in Plate/
+Cookbook/Magpie on this BOM). The old version faked flow layout with `chunked(perRow)` +
+`weight(1f)`, forcing equal content-independent widths — which is what broke "Intermediate"
+mid-word. Its KDoc had explicitly justified rejecting flow layout; that reasoning is reversed and
+rewritten in place.
+
+### Test-coverage note
+`SettingsViewModelTest.setup()` never stubbed `trackRpe`, `autoStartRest`, `workoutNudgeEnabled`
+or the quiet-hours flows — construction survived only because `stateIn(WhileSubscribed)` defers
+collection, so the first test to read one would have NPE'd. Stubbed now, with cases added for
+every previously-untested setter (nudge times incl. minutes, quiet window atomicity, RPE,
+auto-rest, theme, units).
+
+### Known cosmetic, pre-existing
+Selected `FilterChip`s render in M3's `secondaryContainer` (green) rather than Spotter's blue —
+unchanged by this round (the old chips used the same defaults), but it reads off-brand next to the
+blue primary button. Worth a look if the training-profile form gets another pass.

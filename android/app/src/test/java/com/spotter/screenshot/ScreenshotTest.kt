@@ -50,7 +50,17 @@ import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.spotter.R
+import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.SetLogOut
+import com.spotter.data.model.UserOut
+import com.spotter.data.model.VersionOut
+import com.spotter.ui.settings.RemindersBlock
+import com.spotter.ui.settings.SettingsActions
+import com.spotter.ui.settings.SettingsContent
+import com.spotter.ui.settings.SettingsUiState
+import com.spotter.ui.settings.TrainingProfileBlock
+import com.spotter.util.UiState
+import com.spotter.util.UserProfile
 import com.spotter.ui.components.BrandLogo
 import design.pulse.ui.components.DataText
 import com.spotter.ui.components.EmptyState
@@ -122,6 +132,10 @@ class ScreenshotTest {
     @Test fun calendar_dark() = capture("calendar_dark", dark = true) { CalendarScene() }
     @Test fun settings_light() = capture("settings_light", dark = false) { SettingsScene() }
     @Test fun settings_dark() = capture("settings_dark", dark = true) { SettingsScene() }
+    @Test fun settings_reminders_light() = capture("settings_reminders_light", dark = false) { SettingsRemindersScene() }
+    @Test fun settings_reminders_dark() = capture("settings_reminders_dark", dark = true) { SettingsRemindersScene() }
+    @Test fun settings_profile_light() = capture("settings_profile_light", dark = false) { SettingsProfileScene() }
+    @Test fun settings_profile_dark() = capture("settings_profile_dark", dark = true) { SettingsProfileScene() }
     @Test fun summary_pr_dark() = capture("summary_pr_dark", dark = true) { SummaryScene(prCount = 2, perfect = false) }
     @Test fun shell_dark() = capture("shell_dark", dark = true) { ShellScene() }
     @Test fun coach_adjustment_dark() = capture("coach_adjustment_dark", dark = true) { CoachAdjustmentScene() }
@@ -587,61 +601,65 @@ private fun IconMask(shape: androidx.compose.ui.graphics.Shape, size: androidx.c
     }
 }
 
+/**
+ * Fixture state for the real Settings screen. Previously this scene hand-built a *lookalike*
+ * Settings screen, so the baselines couldn't catch anything that actually shipped — the
+ * text-under-the-toggle and clipped-stepper defects both lived in code no screenshot rendered.
+ */
+internal fun settingsFixture(
+    nudgeEnabled: Boolean = false,
+    profileFilled: Boolean = true,
+): SettingsUiState = SettingsUiState(
+    user = UiState.Success(
+        UserOut(id = "u1", name = "Casey Raab", email = "casey@spotter.app"),
+    ),
+    appVersion = "1.1.2 (44601)",
+    serverVersion = UiState.Success(
+        VersionOut(name = "Spotter API", version = "1.1.2", commit = "44fe4b4", builtAt = ""),
+    ),
+    nudgeEnabled = nudgeEnabled,
+    programs = listOf(
+        WorkoutProgramEntity(
+            id = "p1", serverId = "p1", name = "Push / Pull / Legs", isActive = true,
+        ),
+        WorkoutProgramEntity(id = "p2", serverId = "p2", name = "Full Body", isActive = false),
+    ),
+    profileDraft = if (profileFilled) {
+        UserProfile(
+            experience = "INTERMEDIATE",
+            goal = "MUSCLE",
+            equipment = "Barbell, rack, dumbbells to 50lb",
+            ageGroup = "35_44",
+        )
+    } else {
+        UserProfile()
+    },
+)
+
 @Composable
 internal fun SettingsScene() {
-    val pulse = SpotterTheme.pulse
+    SettingsContent(state = settingsFixture(), actions = SettingsActions())
+}
+
+/** The Reminders group with the nudges on — the four time rows are the regression this guards. */
+@Composable
+internal fun SettingsRemindersScene() {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        PanelCard(Modifier.fillMaxWidth()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(52.dp).background(pulse.effortDim, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) { Text("C", style = MaterialTheme.typography.titleLarge, color = pulse.effort) }
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text("Casey Raab", style = MaterialTheme.typography.titleMedium)
-                    Text("casey@spotter.app", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        PanelCard(Modifier.fillMaxWidth()) {
-            SectionHeader("Appearance")
-            Spacer(Modifier.height(8.dp))
-            Text("Theme", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("System", "Light", "Dark").forEachIndexed { i, t ->
-                    FilterChip(selected = i == 2, onClick = {}, label = { Text(t) })
-                }
-            }
-        }
-        PanelCard(Modifier.fillMaxWidth()) {
-            SectionHeader("Units")
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("lbs", "kg").forEachIndexed { i, t ->
-                    FilterChip(selected = i == 0, onClick = {}, label = { Text(t) })
-                }
-            }
-        }
-        PanelCard(Modifier.fillMaxWidth()) {
-            SectionHeader("Account")
-            Spacer(Modifier.height(8.dp))
-            // Tonal error treatment (mirrors the real SettingsScreen): white on the saturated error
-            // red is only ~3:1; errorContainer/onErrorContainer is legible (11:1) and still reads
-            // as destructive.
-            Button(
-                onClick = {},
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                ),
-            ) { Text("Sign out") }
-        }
+        RemindersBlock(settingsFixture(nudgeEnabled = true), SettingsActions())
+    }
+}
+
+/** The training-profile form — guards the chip group that used to break labels mid-word. */
+@Composable
+internal fun SettingsProfileScene() {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        TrainingProfileBlock(settingsFixture(), SettingsActions())
     }
 }
 

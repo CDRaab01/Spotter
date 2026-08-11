@@ -19,6 +19,15 @@ enum class DarkModePreference { SYSTEM, LIGHT, DARK }
 enum class WeightUnit { LBS, KG }
 enum class DistanceUnit { MI, KM }
 
+/**
+ * A local wall-clock time of day. Minutes are carried, not rounded away: the settings time picker
+ * always shows them, so storing only the hour would display a time the app doesn't actually honour.
+ */
+data class TimeOfDay(val hour: Int, val minute: Int = 0) {
+    /** Minutes since local midnight — the comparable form the quiet-hours window works in. */
+    val minuteOfDay: Int get() = hour.coerceIn(0, 23) * 60 + minute.coerceIn(0, 59)
+}
+
 data class UserProfile(
     val experience: String = "",
     val goal: String = "",
@@ -47,10 +56,10 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         /** Default workout cadence (train every N days) when the user hasn't set one. */
         const val DEFAULT_CADENCE_DAYS = 2
 
-        /** Hour of day (local) the workout-morning nudge fires. */
+        /** Default hour (local) the workout-morning nudge fires; the user can move it. */
         const val NUDGE_HOUR = 8
 
-        /** Hour of day (local) the evening streak-saver/comeback nudge fires. */
+        /** Default hour (local) the evening streak-saver/comeback nudge fires; user-settable. */
         const val EVENING_NUDGE_HOUR = 18
 
         /** Default quiet-hours window (nudge is suppressed if its fire time falls inside). */
@@ -78,6 +87,84 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val HEALTH_CONNECT_ENABLED = booleanPreferencesKey("pref_health_connect_enabled")
         private val PROFILE_SYNC_PENDING = booleanPreferencesKey("pref_profile_sync_pending")
         private val COMEBACK_NUDGE_ANCHOR = stringPreferencesKey("pref_comeback_nudge_anchor")
+        private val MORNING_NUDGE_HOUR = intPreferencesKey("pref_morning_nudge_hour")
+        private val MORNING_NUDGE_MINUTE = intPreferencesKey("pref_morning_nudge_minute")
+        private val EVENING_NUDGE_HOUR_KEY = intPreferencesKey("pref_evening_nudge_hour")
+        private val EVENING_NUDGE_MINUTE = intPreferencesKey("pref_evening_nudge_minute")
+        private val QUIET_START_MINUTE = intPreferencesKey("pref_quiet_start_minute")
+        private val QUIET_END_MINUTE = intPreferencesKey("pref_quiet_end_minute")
+        private val NUDGE_SCHEDULE_SIGNATURE = stringPreferencesKey("pref_nudge_schedule_signature")
+    }
+
+    /** When the morning workout reminder fires (default 8:00). */
+    val morningNudgeTime: Flow<TimeOfDay> = context.dataStore.data.map { prefs ->
+        TimeOfDay(
+            (prefs[MORNING_NUDGE_HOUR] ?: NUDGE_HOUR).coerceIn(0, 23),
+            (prefs[MORNING_NUDGE_MINUTE] ?: 0).coerceIn(0, 59),
+        )
+    }
+
+    /** When the evening streak-saver/comeback nudge fires (default 18:00). */
+    val eveningNudgeTime: Flow<TimeOfDay> = context.dataStore.data.map { prefs ->
+        TimeOfDay(
+            (prefs[EVENING_NUDGE_HOUR_KEY] ?: EVENING_NUDGE_HOUR).coerceIn(0, 23),
+            (prefs[EVENING_NUDGE_MINUTE] ?: 0).coerceIn(0, 59),
+        )
+    }
+
+    val quietStartTime: Flow<TimeOfDay> = context.dataStore.data.map { prefs ->
+        TimeOfDay(
+            (prefs[QUIET_START_HOUR] ?: DEFAULT_QUIET_START_HOUR).coerceIn(0, 23),
+            (prefs[QUIET_START_MINUTE] ?: 0).coerceIn(0, 59),
+        )
+    }
+
+    val quietEndTime: Flow<TimeOfDay> = context.dataStore.data.map { prefs ->
+        TimeOfDay(
+            (prefs[QUIET_END_HOUR] ?: DEFAULT_QUIET_END_HOUR).coerceIn(0, 23),
+            (prefs[QUIET_END_MINUTE] ?: 0).coerceIn(0, 59),
+        )
+    }
+
+    suspend fun setMorningNudgeTime(time: TimeOfDay) {
+        context.dataStore.edit { prefs ->
+            prefs[MORNING_NUDGE_HOUR] = time.hour.coerceIn(0, 23)
+            prefs[MORNING_NUDGE_MINUTE] = time.minute.coerceIn(0, 59)
+        }
+    }
+
+    suspend fun setEveningNudgeTime(time: TimeOfDay) {
+        context.dataStore.edit { prefs ->
+            prefs[EVENING_NUDGE_HOUR_KEY] = time.hour.coerceIn(0, 23)
+            prefs[EVENING_NUDGE_MINUTE] = time.minute.coerceIn(0, 59)
+        }
+    }
+
+    /**
+     * Writes the whole quiet window in one edit. Both ends move together on purpose — a half-written
+     * window (new start, old end) is a window that suppresses the wrong nudges.
+     */
+    suspend fun setQuietWindow(start: TimeOfDay, end: TimeOfDay) {
+        context.dataStore.edit { prefs ->
+            prefs[QUIET_START_HOUR] = start.hour.coerceIn(0, 23)
+            prefs[QUIET_START_MINUTE] = start.minute.coerceIn(0, 59)
+            prefs[QUIET_END_HOUR] = end.hour.coerceIn(0, 23)
+            prefs[QUIET_END_MINUTE] = end.minute.coerceIn(0, 59)
+        }
+    }
+
+    /**
+     * The last nudge schedule the scheduler actually enqueued, as an opaque string. The scheduler
+     * compares against it to tell "nothing changed, leave the running work alone" from "the user
+     * moved a time, tear the work down and re-enqueue" — WorkManager's KEEP policy would otherwise
+     * silently ignore the new fire time. See [com.spotter.util.nudge.WorkoutNudgeScheduler].
+     */
+    val nudgeScheduleSignature: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[NUDGE_SCHEDULE_SIGNATURE]
+    }
+
+    suspend fun setNudgeScheduleSignature(value: String) {
+        context.dataStore.edit { it[NUDGE_SCHEDULE_SIGNATURE] = value }
     }
 
     /**
@@ -247,11 +334,9 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         context.dataStore.edit { it[WORKOUT_NUDGE_ENABLED] = value }
     }
 
+    /** Hour-only quiet window — delegates to [setQuietWindow] so both ends still move atomically. */
     suspend fun setQuietHours(startHour: Int, endHour: Int) {
-        context.dataStore.edit { prefs ->
-            prefs[QUIET_START_HOUR] = startHour.coerceIn(0, 23)
-            prefs[QUIET_END_HOUR] = endHour.coerceIn(0, 23)
-        }
+        setQuietWindow(TimeOfDay(startHour), TimeOfDay(endHour))
     }
 
     /** Adds (non-null id) or removes (null) the active cardio program from the schedule. */

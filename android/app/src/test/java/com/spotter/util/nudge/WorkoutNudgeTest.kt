@@ -21,9 +21,10 @@ class WorkoutNudgeTest {
     ) = WorkoutNudge.decide(
         enabled = enabled,
         notificationsAllowed = notificationsAllowed,
-        nowHour = nowHour,
-        quietStartHour = quietStartHour,
-        quietEndHour = quietEndHour,
+        // The cases below are written in whole hours; decide() works in minutes since midnight.
+        nowMinuteOfDay = nowHour * 60,
+        quietStartMinuteOfDay = quietStartHour * 60,
+        quietEndMinuteOfDay = quietEndHour * 60,
         isWorkoutDayToday = isWorkoutDayToday,
         alreadyTrainedToday = alreadyTrainedToday,
         dayLabel = dayLabel,
