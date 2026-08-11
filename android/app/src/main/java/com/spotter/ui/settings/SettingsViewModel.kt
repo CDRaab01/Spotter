@@ -18,6 +18,7 @@ import com.spotter.health.HealthConnectManager
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
+import com.spotter.util.TimeOfDay
 import com.spotter.util.TokenStore
 import com.spotter.util.UiState
 import com.spotter.util.UserProfile
@@ -110,6 +111,35 @@ class SettingsViewModel @Inject constructor(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
             AppPreferences.DEFAULT_QUIET_END_HOUR,
+        )
+
+    /** The user-settable nudge times and the quiet window, at minute resolution. */
+    val morningNudgeTime: StateFlow<TimeOfDay> = appPreferences.morningNudgeTime
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            TimeOfDay(AppPreferences.NUDGE_HOUR),
+        )
+
+    val eveningNudgeTime: StateFlow<TimeOfDay> = appPreferences.eveningNudgeTime
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            TimeOfDay(AppPreferences.EVENING_NUDGE_HOUR),
+        )
+
+    val quietStartTime: StateFlow<TimeOfDay> = appPreferences.quietStartTime
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            TimeOfDay(AppPreferences.DEFAULT_QUIET_START_HOUR),
+        )
+
+    val quietEndTime: StateFlow<TimeOfDay> = appPreferences.quietEndTime
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            TimeOfDay(AppPreferences.DEFAULT_QUIET_END_HOUR),
         )
 
     private val _serverUrlMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
@@ -281,11 +311,25 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Toggles the workout-morning nudge. The actual WorkManager (re)schedule is driven by
-     * [com.spotter.SpotterApp], which observes this preference — so flipping it here is enough.
+     * Toggles the workout nudges. The actual WorkManager (re)schedule is driven by
+     * [com.spotter.SpotterApp], which observes this preference (and the two times below) — so
+     * writing the preference here is enough.
      */
     fun setWorkoutNudgeEnabled(value: Boolean) {
         viewModelScope.launch { appPreferences.setWorkoutNudgeEnabled(value) }
+    }
+
+    fun setMorningNudgeTime(time: TimeOfDay) {
+        viewModelScope.launch { appPreferences.setMorningNudgeTime(time) }
+    }
+
+    fun setEveningNudgeTime(time: TimeOfDay) {
+        viewModelScope.launch { appPreferences.setEveningNudgeTime(time) }
+    }
+
+    /** Both ends of the quiet window move together — see [AppPreferences.setQuietWindow]. */
+    fun setQuietWindow(start: TimeOfDay, end: TimeOfDay) {
+        viewModelScope.launch { appPreferences.setQuietWindow(start, end) }
     }
 
     fun setQuietHours(startHour: Int, endHour: Int) {

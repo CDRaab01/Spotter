@@ -21,12 +21,20 @@ object WorkoutNudge {
      * end-exclusive). Handles a window that wraps midnight (start > end). An empty window
      * (start == end) is treated as "no quiet hours".
      */
-    fun isQuietHour(hour: Int, quietStartHour: Int, quietEndHour: Int): Boolean {
-        if (quietStartHour == quietEndHour) return false
-        return if (quietStartHour < quietEndHour) {
-            hour in quietStartHour until quietEndHour
+    fun isQuietHour(hour: Int, quietStartHour: Int, quietEndHour: Int): Boolean =
+        isQuietTime(hour * 60, quietStartHour * 60, quietEndHour * 60)
+
+    /**
+     * The minute-resolution form of [isQuietHour] — all three arguments are minutes since local
+     * midnight. Quiet hours are user-set to the minute, so the check has to be too; the hour-only
+     * overload above delegates here.
+     */
+    fun isQuietTime(nowMinuteOfDay: Int, startMinuteOfDay: Int, endMinuteOfDay: Int): Boolean {
+        if (startMinuteOfDay == endMinuteOfDay) return false
+        return if (startMinuteOfDay < endMinuteOfDay) {
+            nowMinuteOfDay in startMinuteOfDay until endMinuteOfDay
         } else {
-            hour >= quietStartHour || hour < quietEndHour
+            nowMinuteOfDay >= startMinuteOfDay || nowMinuteOfDay < endMinuteOfDay
         }
     }
 
@@ -39,8 +47,8 @@ object WorkoutNudge {
     /**
      * @param enabled the opt-in Settings toggle.
      * @param notificationsAllowed OS-level notification permission/switch is on.
-     * @param nowHour the local hour the worker is running (for the quiet-hours check).
-     * @param quietStartHour / [quietEndHour] the quiet-hours window.
+     * @param nowMinuteOfDay minutes since local midnight, for the quiet-hours check.
+     * @param quietStartMinuteOfDay / [quietEndMinuteOfDay] the quiet-hours window, same units.
      * @param isWorkoutDayToday the active program schedules a (non-rest) workout for today.
      * @param alreadyTrainedToday a session is already completed or in progress today.
      * @param dayLabel / [routineName] copy inputs for the scheduled day.
@@ -48,9 +56,9 @@ object WorkoutNudge {
     fun decide(
         enabled: Boolean,
         notificationsAllowed: Boolean,
-        nowHour: Int,
-        quietStartHour: Int,
-        quietEndHour: Int,
+        nowMinuteOfDay: Int,
+        quietStartMinuteOfDay: Int,
+        quietEndMinuteOfDay: Int,
         isWorkoutDayToday: Boolean,
         alreadyTrainedToday: Boolean,
         dayLabel: String?,
@@ -58,7 +66,9 @@ object WorkoutNudge {
     ): Decision {
         if (!enabled) return Decision.Skip("disabled")
         if (!notificationsAllowed) return Decision.Skip("notifications-denied")
-        if (isQuietHour(nowHour, quietStartHour, quietEndHour)) return Decision.Skip("quiet-hours")
+        if (isQuietTime(nowMinuteOfDay, quietStartMinuteOfDay, quietEndMinuteOfDay)) {
+            return Decision.Skip("quiet-hours")
+        }
         if (!isWorkoutDayToday) return Decision.Skip("not-a-workout-day")
         if (alreadyTrainedToday) return Decision.Skip("already-trained-today")
 

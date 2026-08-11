@@ -14,6 +14,7 @@ import com.spotter.ui.settings.SettingsViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
 import com.spotter.util.DistanceUnit
+import com.spotter.util.TimeOfDay
 import com.spotter.util.TokenStore
 import com.spotter.util.UiState
 import com.spotter.util.UserProfile
@@ -74,6 +75,18 @@ class SettingsViewModelTest {
         whenever(appPreferences.workoutCadenceDays).thenReturn(flowOf(2))
         whenever(appPreferences.serverUrl).thenReturn(flowOf("http://10.0.2.2:8000/"))
         whenever(appPreferences.healthConnectEnabled).thenReturn(flowOf(false))
+        // These five were never stubbed: the VM survives without them only because
+        // stateIn(WhileSubscribed) defers touching the upstream until something collects, so the
+        // first test to read one of these flows would NPE on the mock.
+        whenever(appPreferences.trackRpe).thenReturn(flowOf(false))
+        whenever(appPreferences.autoStartRest).thenReturn(flowOf(true))
+        whenever(appPreferences.workoutNudgeEnabled).thenReturn(flowOf(false))
+        whenever(appPreferences.quietStartHour).thenReturn(flowOf(21))
+        whenever(appPreferences.quietEndHour).thenReturn(flowOf(7))
+        whenever(appPreferences.morningNudgeTime).thenReturn(flowOf(TimeOfDay(8, 0)))
+        whenever(appPreferences.eveningNudgeTime).thenReturn(flowOf(TimeOfDay(18, 0)))
+        whenever(appPreferences.quietStartTime).thenReturn(flowOf(TimeOfDay(21, 0)))
+        whenever(appPreferences.quietEndTime).thenReturn(flowOf(TimeOfDay(7, 0)))
         whenever(programRepository.programs).thenReturn(flowOf(emptyList()))
         wheneverBlocking { profileRepository.current() }.thenReturn(UserProfile())
         whenever(healthConnectManager.permissions).thenReturn(healthPermissions)
@@ -431,5 +444,66 @@ class SettingsViewModelTest {
         verify(appPreferences).setHealthConnectEnabled(false)
         // No permission round-trip needed to turn something off.
         verify(healthConnectManager, never()).hasPermissions()
+    }
+
+    // ── Reminders + preference setters ────────────────────────────────────────
+    // None of these had coverage before the settings overhaul, which is also why the missing
+    // flow stubs in setup() went unnoticed for so long.
+
+    @Test
+    fun `setWorkoutNudgeEnabled writes the preference`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+        viewModel.setWorkoutNudgeEnabled(true)
+        advanceTimeBy(200)
+        verify(appPreferences).setWorkoutNudgeEnabled(true)
+    }
+
+    @Test
+    fun `nudge times persist the minute, not just the hour`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+
+        viewModel.setMorningNudgeTime(TimeOfDay(7, 45))
+        viewModel.setEveningNudgeTime(TimeOfDay(19, 15))
+        advanceTimeBy(200)
+
+        verify(appPreferences).setMorningNudgeTime(TimeOfDay(7, 45))
+        verify(appPreferences).setEveningNudgeTime(TimeOfDay(19, 15))
+    }
+
+    @Test
+    fun `setQuietWindow moves both ends in one write`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+
+        viewModel.setQuietWindow(TimeOfDay(22, 30), TimeOfDay(6, 45))
+        advanceTimeBy(200)
+
+        // Both ends together: a half-written window suppresses the wrong nudges.
+        verify(appPreferences).setQuietWindow(TimeOfDay(22, 30), TimeOfDay(6, 45))
+    }
+
+    @Test
+    fun `workout toggles delegate to preferences`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+
+        viewModel.setTrackRpe(true)
+        viewModel.setAutoStartRest(false)
+        advanceTimeBy(200)
+
+        verify(appPreferences).setTrackRpe(true)
+        verify(appPreferences).setAutoStartRest(false)
+    }
+
+    @Test
+    fun `appearance and unit setters delegate to preferences`() = runTest(testDispatcher) {
+        viewModel = createViewModel()
+
+        viewModel.setDarkMode(DarkModePreference.DARK)
+        viewModel.setWeightUnit(WeightUnit.KG)
+        viewModel.setDistanceUnit(DistanceUnit.KM)
+        advanceTimeBy(200)
+
+        verify(appPreferences).setDarkMode(DarkModePreference.DARK)
+        verify(appPreferences).setWeightUnit(WeightUnit.KG)
+        verify(appPreferences).setDistanceUnit(DistanceUnit.KM)
     }
 }

@@ -264,6 +264,14 @@ counters.
   (`res/xml/shortcuts.xml`: Start workout / Log weight / Coach). Each fires a
   `spotter://shortcut/<target>` VIEW intent parked on a `ShortcutBus`; because the app gates on
   auth before the main graph, a shortcut is honoured *after* sign-in rather than dropped.
+- `ui/settings/` — **`SettingsScreen.kt` is nav + one-shot effects only; everything it renders is
+  the stateless `SettingsContent.kt`** (`SettingsUiState` / `SettingsActions`, both fully defaulted,
+  plus one `*Block` composable per group). The split exists so the screenshot tests and the Sift
+  audit drive the *real* screen — the old baselines rendered a hand-built lookalike, which is why
+  none of them caught the text-under-the-toggle or clipped-stepper defects that shipped. Rows come
+  from Pulse (`PulseSwitchRow`/`PulseSettingRow`/`PulseTimeRow`/`PulseStepperRow`); the in-tree
+  copies of `ProfileHeader`/`SettingsSection` are gone. Nine groups, tap-only sections first and the
+  one long form (Training profile) below them.
 - `util/nudge/` — the opt-in local reminder system, three kinds behind one Settings toggle
   (`WorkoutNudgeScheduler` enqueues two daily WorkManager workers): the morning
   `WorkoutNudgeWorker` (~8:00 "workout day today"), and the evening `EveningNudgeWorker`
@@ -276,7 +284,15 @@ counters.
   re-checked at fire time so a stale schedule can't nag. Streak math lives in the pure
   `util/StreakCalculator`, shared with Home's stats so the notification's number is the
   Home screen's number.
-- `data/export/` — Settings → Export data. Streams `GET /export` (JSON) and `GET /export/sets.csv`
+  **Both nudge times and the quiet window are user-set to the minute** (2026-08-11), which changes
+  how scheduling works: `sync()` reduces (enabled, morning, evening) to a signature and only
+  re-enqueues when it changes. WorkManager's `KEEP` policy treats an existing work as satisfying
+  the request and silently drops a new initial delay, so moving a reminder from 8:00 to 7:00 would
+  otherwise appear to work and keep firing at 8:00 — unchanged ⇒ `KEEP` (a no-op that still
+  self-heals a dropped work without resetting the running 24h window), changed ⇒
+  `CANCEL_AND_REENQUEUE`. Quiet-hours checks moved to minutes-since-midnight
+  (`WorkoutNudge.isQuietTime`, with the hour-only overload delegating).
+- `data/export/` — Settings → Library & data. Streams `GET /export` (JSON) and `GET /export/sets.csv`
   into `cacheDir/exports/` and hands the file to the share sheet via FileProvider. Filename
   parsing (`ExportFilenames`) is pure and table-tested, including RFC 5987 `filename*` and
   path-traversal sanitising.

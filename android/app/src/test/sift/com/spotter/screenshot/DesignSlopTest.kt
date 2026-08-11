@@ -35,6 +35,7 @@ class SpotterDesignSlopTest : DesignSlopSuite(
         register("onboarding") { OnboardingScene() }
         register("coach_adjustment") { CoachAdjustmentScene() }
         register("settings") { SettingsScene() }
+        register("settings_reminders") { SettingsRemindersScene() }
         register("calendar") { CalendarScene() }
         register("shell") { ShellScene() }
     }

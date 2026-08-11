@@ -13,6 +13,8 @@ import com.spotter.widget.WidgetUpdater
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -41,9 +43,18 @@ class SpotterApp : Application(), Configuration.Provider {
         widgetUpdater.register()
         // Adopt the server URL the Dragonfly hub manages, if it's installed and same-signed.
         suiteConfigReader.sync()
-        // Keep the workout-morning nudge scheduled to match the opt-in preference.
+        // Keep the nudges scheduled to match the opt-in preference AND the user's chosen times —
+        // all three together, since moving a time has to re-enqueue the work, not just re-run it.
         appScope.launch {
-            appPreferences.workoutNudgeEnabled.collectLatest { nudgeScheduler.sync(it) }
+            combine(
+                appPreferences.workoutNudgeEnabled,
+                appPreferences.morningNudgeTime,
+                appPreferences.eveningNudgeTime,
+            ) { enabled, morning, evening -> Triple(enabled, morning, evening) }
+                .distinctUntilChanged()
+                .collectLatest { (enabled, morning, evening) ->
+                    nudgeScheduler.sync(enabled, morning, evening)
+                }
         }
     }
 }
