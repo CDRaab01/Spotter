@@ -86,6 +86,83 @@ class ProgramPresetsTest {
         }
     }
 
+    // ── Return-to-lifting pair ────────────────────────────────────────────────
+
+    private val returning get() = ProgramPresets.all.filter { it.id.startsWith("returning") }
+
+    @Test
+    fun `returning presets are a staged pair and stage 1 names stage 2`() {
+        assertEquals(2, returning.size, "expected exactly two returning-stage presets")
+        val (stage1, stage2) = returning
+        assertTrue(
+            stage2.displayName in stage1.description,
+            "${stage1.displayName} must point the user at ${stage2.displayName}",
+        )
+    }
+
+    @Test
+    fun `returning descriptions carry the start-light coaching`() {
+        returning.forEach { preset ->
+            val text = preset.description.lowercase()
+            assertTrue("old numbers" in text, "${preset.displayName} must reframe old numbers")
+            assertTrue("tendons" in text, "${preset.displayName} must explain the tendon lag")
+        }
+        val (stage1, stage2) = returning
+        assertTrue(
+            "soreness" in stage1.description.lowercase(),
+            "stage 1 must warn about first-session soreness — it's why returners quit",
+        )
+        val graduation = stage2.description.lowercase()
+        assertTrue(
+            "full body (beginner)" in graduation && "stronglifts" in graduation,
+            "stage 2 must name the mainstream programs to graduate into",
+        )
+    }
+
+    @Test
+    fun `returning loads ramp strictly upward toward full body`() {
+        val (stage1, stage2) = returning
+        val fullBody = ProgramPresets.byId("full_body")!!
+        fun weights(preset: PresetProgram): Map<String, Double> =
+            preset.days.flatMap { it.exercises }
+                .filter { it.weight != null }
+                .associate { it.name to it.weight!! }
+
+        val w1 = weights(stage1)
+        val w2 = weights(stage2)
+        val wFull = weights(fullBody)
+
+        (w1.keys intersect w2.keys).forEach { name ->
+            assertTrue(
+                w1.getValue(name) < w2.getValue(name),
+                "'$name' must get heavier from stage 1 (${w1[name]}) to stage 2 (${w2[name]})",
+            )
+        }
+        (w1.keys intersect wFull.keys).forEach { name ->
+            assertTrue(
+                w1.getValue(name) < wFull.getValue(name),
+                "'$name' in stage 1 (${w1[name]}) must start below Full Body (${wFull[name]}) — " +
+                    "tendons lag muscle memory",
+            )
+        }
+        (w2.keys intersect wFull.keys).forEach { name ->
+            assertTrue(
+                w2.getValue(name) < wFull.getValue(name),
+                "'$name' in stage 2 (${w2[name]}) should still sit below Full Body (${wFull[name]})",
+            )
+        }
+    }
+
+    @Test
+    fun `returning stage 1 trains at most 3-and-a-half times a week`() {
+        val stage1 = returning.first()
+        val perWeek = stage1.trainingDays.size * 7.0 / stage1.days.size
+        assertTrue(
+            perWeek <= 3.5,
+            "${stage1.displayName} prescribes $perWeek sessions a week — too much for a restart",
+        )
+    }
+
     @Test
     fun `every preset exercise references a seeded exercise name`() {
         ProgramPresets.all.forEach { preset ->

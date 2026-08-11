@@ -10,8 +10,13 @@ import com.spotter.data.local.entity.ProgramDayEntity
 import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
+import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.BodyMetricCreate
+import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.InsightsOut
+import com.spotter.data.model.ProgramOut
+import com.spotter.data.model.SuggestedProgram
+import com.spotter.data.model.SuggestedProgramDay
 import com.spotter.data.model.RoutineOut
 import com.spotter.data.model.StalledExercise
 import com.spotter.data.model.SessionSummary
@@ -30,6 +35,7 @@ import com.spotter.ui.cardio.CardioPrograms
 import com.spotter.ui.home.HomeViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.UiState
+import com.spotter.util.UserProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
@@ -45,6 +51,7 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeast
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -568,4 +575,31 @@ class HomeViewModelTest {
         val greeting = viewModel.greeting.value
         assertTrue(greeting.endsWith(", Sonic"), "expected first name suffix, got: $greeting")
     }
+
+    @Test
+    fun `generateInitialRoutine forwards periodization on first-run auto-accept`() =
+        runTest(testDispatcher) {
+            whenever(appPreferences.userProfile).thenReturn(flowOf(UserProfile()))
+            wheneverBlocking { aiRepository.chat(any()) }.thenReturn(
+                ChatResponse(
+                    reply = "Here you go.",
+                    suggestedProgram = SuggestedProgram(
+                        name = "Starter",
+                        days = listOf(SuggestedProgramDay(label = "Day 1")),
+                        weeks = 4,
+                        deloadWeek = 4,
+                    ),
+                )
+            )
+            wheneverBlocking { aiRepository.acceptProgram(any()) }
+                .thenReturn(ProgramOut(id = "p1", name = "Starter", isActive = true))
+
+            viewModel.generateInitialRoutine()
+            advanceUntilIdle()
+
+            val captor = argumentCaptor<AcceptProgramRequest>()
+            verify(aiRepository).acceptProgram(captor.capture())
+            assertEquals(4, captor.firstValue.weeks)
+            assertEquals(4, captor.firstValue.deloadWeek)
+        }
 }

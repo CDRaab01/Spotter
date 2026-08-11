@@ -2,6 +2,7 @@ package com.spotter.ai
 
 import com.spotter.data.local.dao.ChatMessageDao
 import com.spotter.data.local.entity.ChatMessageEntity
+import com.spotter.data.model.AcceptProgramRequest
 import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.PendingSuggestions
 import com.spotter.data.model.RoutineExerciseIn
@@ -42,7 +43,9 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -306,6 +309,30 @@ class AiChatViewModelTest {
         assertNull(viewModel.pendingProgram.value)
         assertEquals(listOf("PPL"), saved)
         job.cancel()
+    }
+
+    @Test
+    fun `saveProgram forwards the coach's periodization to accept`() = runTest(testDispatcher) {
+        val program = SuggestedProgram(
+            name = "PPL",
+            days = listOf(SuggestedProgramDay(label = "Push", exercises = emptyList())),
+            weeks = 6,
+            deloadWeek = 6,
+        )
+        whenever(aiRepository.chat(any()))
+            .thenReturn(ChatResponse(reply = "split", suggestedProgram = program))
+        whenever(aiRepository.acceptProgram(any()))
+            .thenReturn(ProgramOut(id = "prog-1", name = "PPL", isActive = true))
+
+        viewModel.send("ppl")
+        advanceTimeBy(200)
+        viewModel.saveProgram()
+        advanceTimeBy(200)
+
+        val captor = argumentCaptor<AcceptProgramRequest>()
+        verify(aiRepository).acceptProgram(captor.capture())
+        assertEquals(6, captor.firstValue.weeks)
+        assertEquals(6, captor.firstValue.deloadWeek)
     }
 
     @Test

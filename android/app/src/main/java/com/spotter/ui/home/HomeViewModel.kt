@@ -33,6 +33,7 @@ import com.spotter.ui.cardio.CardioSchedule
 import com.spotter.util.AppPreferences
 import com.spotter.util.ProjectionDay
 import com.spotter.util.SessionAnchor
+import com.spotter.util.StreakCalculator
 import com.spotter.util.UiState
 import com.spotter.util.UpcomingWorkout
 import com.spotter.util.WorkoutProjection
@@ -230,18 +231,8 @@ class HomeViewModel @Inject constructor(
                 val restDayDates = computeRestDayDates(today)
 
                 // Streak: consecutive workout days, skipping scheduled rest days.
-                // Anchor at today when trained or resting today; else yesterday (grace day).
-                var day = when {
-                    completedDates.contains(today) -> today
-                    restDayDates.contains(today) -> today
-                    else -> today.minusDays(1)
-                }
-                var streak = 0
-                while (completedDates.contains(day) || restDayDates.contains(day)) {
-                    if (!restDayDates.contains(day)) streak++
-                    day = day.minusDays(1)
-                }
-                _streak.value = streak
+                // (Shared with the evening nudge worker via StreakCalculator.)
+                _streak.value = StreakCalculator.currentStreak(today, completedDates, restDayDates)
 
                 // Active minutes: sum of completed-session durations within the current
                 // week (Monday → today).
@@ -463,7 +454,12 @@ class HomeViewModel @Inject constructor(
                     // to clobber. This gives new users a scheduled program out of the box,
                     // created silently here (never written to chat history).
                     aiRepository.acceptProgram(
-                        AcceptProgramRequest(name = program.name, days = program.days)
+                        AcceptProgramRequest(
+                            name = program.name,
+                            days = program.days,
+                            weeks = program.weeks,
+                            deloadWeek = program.deloadWeek,
+                        )
                     )
                     // Pull the new program AND its per-day routines into the local cache, or
                     // Home keeps showing the empty "ask the coach" prompt (which pushes the

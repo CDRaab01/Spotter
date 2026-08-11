@@ -6,7 +6,7 @@ import com.spotter.ui.cardio.CardioPrograms
 import com.spotter.ui.cardio.CardioSchedule
 import org.junit.Test
 import java.time.LocalDate
-import java.time.ZoneOffset
+import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -21,8 +21,12 @@ class CardioScheduleTest {
         programId = CardioPrograms.C25K_ID,
         weekNumber = week,
         dayNumber = day,
-        startedAt = date.atStartOfDay().toInstant(ZoneOffset.UTC).toString(),
-        completedAt = date.atStartOfDay().toInstant(ZoneOffset.UTC).toString(),
+        // Local midnight, not UTC: CardioFormat.parseDate resolves instants to the DEVICE-LOCAL
+        // day (matching how sessions are stamped in production), so a midnight-UTC fixture
+        // parsed to "yesterday" in any zone west of Greenwich — this was the whole
+        // timezone-sensitivity of this test.
+        startedAt = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toString(),
+        completedAt = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toString(),
         status = CardioStatus.COMPLETED,
         totalElapsedSec = 600,
     )

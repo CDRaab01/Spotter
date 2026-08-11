@@ -50,6 +50,9 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         /** Hour of day (local) the workout-morning nudge fires. */
         const val NUDGE_HOUR = 8
 
+        /** Hour of day (local) the evening streak-saver/comeback nudge fires. */
+        const val EVENING_NUDGE_HOUR = 18
+
         /** Default quiet-hours window (nudge is suppressed if its fire time falls inside). */
         const val DEFAULT_QUIET_START_HOUR = 21
         const val DEFAULT_QUIET_END_HOUR = 7
@@ -74,6 +77,22 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val AUTO_START_REST = booleanPreferencesKey("pref_auto_start_rest")
         private val HEALTH_CONNECT_ENABLED = booleanPreferencesKey("pref_health_connect_enabled")
         private val PROFILE_SYNC_PENDING = booleanPreferencesKey("pref_profile_sync_pending")
+        private val COMEBACK_NUDGE_ANCHOR = stringPreferencesKey("pref_comeback_nudge_anchor")
+    }
+
+    /**
+     * The comeback-nudge latch (ISO date, null = never fired): the last completed-session
+     * date at the moment a comeback nudge was posted. While the user's last completed date
+     * still equals this, the current miss episode has already been nudged — training again
+     * moves the date and thereby re-arms the nudge for the next lapse. See
+     * [com.spotter.util.nudge.EveningNudgeWorker].
+     */
+    val comebackNudgeAnchor: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[COMEBACK_NUDGE_ANCHOR]
+    }
+
+    suspend fun setComebackNudgeAnchor(value: String) {
+        context.dataStore.edit { it[COMEBACK_NUDGE_ANCHOR] = value }
     }
 
     /**

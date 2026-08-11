@@ -182,6 +182,87 @@ object ProgramPresets {
                 restDay(),
             ),
         ),
+        // Coming back after a months-to-years layoff is staged like postpartum: one flat
+        // "restart" program either begins too hard or stays too easy. Stage 1 runs deliberately
+        // lighter than Full Body (Beginner) on every shared lift — strength returns much faster
+        // than tendons and connective tissue regain load tolerance, and the first-session DOMS
+        // is the #1 reason returners quit — then stage 2 ramps volume and load back toward the
+        // standard starting weights and hands off to the mainstream programs.
+        PresetProgram(
+            id = "returning_restart",
+            displayName = "Back After a Break — Restart",
+            description = "Stage 1 of coming back after months or years away: light full-body " +
+                "sessions every other day, two sets per lift, deliberately easier than you can " +
+                "handle. Your old numbers are a memory, not a target — strength returns fast, " +
+                "but tendons and connective tissue need much longer than muscle, and they don't " +
+                "warn you before they complain. Expect serious soreness a day or two after the " +
+                "first session no matter how light it feels; that soreness is the number-one " +
+                "reason returners quit, so underdo it on purpose. Progression will feel quick — " +
+                "let the in-app weight suggestions drive it. Move up to \"Back After a Break — " +
+                "Ramp Up\" when the soreness is routine and these weights feel genuinely light.",
+            days = listOf(
+                PresetDay(
+                    "Full Body A",
+                    listOf(
+                        PresetExercise("Barbell Back Squat", 2, 8, weight = 65.0),
+                        PresetExercise("Bench Press", 2, 8, weight = 65.0),
+                        PresetExercise("Barbell Row", 2, 8, weight = 65.0),
+                        PresetExercise("Glute Bridge", 2, 12, isBodyweight = true),
+                        PresetExercise("Standing Calf Raise", 2, 15, isBodyweight = true),
+                    ),
+                ),
+                restDay(),
+                PresetDay(
+                    "Full Body B",
+                    listOf(
+                        PresetExercise("Goblet Squat", 2, 10, weight = 25.0),
+                        PresetExercise("Overhead Press", 2, 8, weight = 45.0),
+                        PresetExercise("Romanian Deadlift", 2, 8, weight = 65.0),
+                        PresetExercise("Lat Pulldown", 2, 10, weight = 60.0),
+                        PresetExercise("Face Pull", 2, 15, weight = 20.0),
+                    ),
+                ),
+                restDay(),
+            ),
+        ),
+        PresetProgram(
+            id = "returning_ramp",
+            displayName = "Back After a Break — Ramp Up",
+            description = "Stage 2: normal volume again — three sets, six lifts, loads " +
+                "stepping back toward the standard starting weights. Keep letting the " +
+                "suggested-weight progression pull you up; it will still feel fast, and that's " +
+                "muscle memory doing its job — just keep a rep in the tank on the squat and " +
+                "hinge while your tendons finish catching up. When this feels routine, pick " +
+                "Full Body (Beginner), StrongLifts 5×5, or Upper / Lower and train as normal. " +
+                "Your old numbers will come back sooner than you think — let them arrive " +
+                "rather than chasing them.",
+            days = listOf(
+                PresetDay(
+                    "Full Body A",
+                    listOf(
+                        PresetExercise("Barbell Back Squat", 3, 8, weight = 85.0),
+                        PresetExercise("Bench Press", 3, 8, weight = 85.0),
+                        PresetExercise("Barbell Row", 3, 8, weight = 85.0),
+                        PresetExercise("Dumbbell Lateral Raise", 3, 12, weight = 10.0),
+                        PresetExercise("Dumbbell Curl", 3, 12, weight = 15.0),
+                        PresetExercise("Standing Calf Raise", 3, 15, isBodyweight = true),
+                    ),
+                ),
+                restDay(),
+                PresetDay(
+                    "Full Body B",
+                    listOf(
+                        PresetExercise("Romanian Deadlift", 3, 8, weight = 85.0),
+                        PresetExercise("Overhead Press", 3, 8, weight = 55.0),
+                        PresetExercise("Leg Press", 3, 10, weight = 135.0),
+                        PresetExercise("Lat Pulldown", 3, 10, weight = 70.0),
+                        PresetExercise("Face Pull", 3, 15, weight = 25.0),
+                        PresetExercise("Dumbbell Overhead Tricep Extension", 3, 12, weight = 20.0),
+                    ),
+                ),
+                restDay(),
+            ),
+        ),
         PresetProgram(
             id = "dumbbell_only",
             displayName = "Dumbbell Only",

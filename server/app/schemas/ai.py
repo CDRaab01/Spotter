@@ -4,7 +4,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.limits import PROGRAM_WEEKS_BOUNDS, REPS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
+from app.limits import (
+    MAX_PROGRAM_DAYS,
+    PROGRAM_DAY_LABEL_MAX_LEN,
+    PROGRAM_NAME_MAX_LEN,
+    PROGRAM_WEEKS_BOUNDS,
+    REPS_BOUNDS,
+    SETS_BOUNDS,
+    WEIGHT_BOUNDS_LB,
+)
 from app.schemas.program import _check_deload_week
 from app.schemas.routine import RoutineExerciseIn
 from app.schemas.user import (
@@ -70,7 +78,7 @@ class AiProgramDraft(BaseModel):
 
 
 class SuggestedProgramDay(BaseModel):
-    label: str
+    label: str = Field(min_length=1, max_length=PROGRAM_DAY_LABEL_MAX_LEN)
     exercises: list[RoutineExerciseIn] = []  # resolved + clamped; empty = rest day
     order: int = 0
 
@@ -88,8 +96,8 @@ class AcceptProgramRequest(BaseModel):
     """Client echoes back the suggested program it showed; the server re-validates
     bounds via RoutineExerciseIn (and the weeks/deload_week Field + validator
     below) before persisting."""
-    name: str
-    days: list[SuggestedProgramDay]
+    name: str = Field(min_length=1, max_length=PROGRAM_NAME_MAX_LEN)
+    days: list[SuggestedProgramDay] = Field(max_length=MAX_PROGRAM_DAYS)
     weeks: int | None = Field(
         default=None, ge=PROGRAM_WEEKS_BOUNDS[0], le=PROGRAM_WEEKS_BOUNDS[1]
     )

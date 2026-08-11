@@ -39,4 +39,22 @@ class WorkoutNudgeSchedulerTest {
         val delay = WorkoutNudgeScheduler.nextRunDelayMillis(at(2026, 7, 16, 23, 59), targetHour = 8)
         assert(delay >= 0)
     }
+
+    @Test
+    fun `evening target hour schedules the 18h slot`() {
+        // 12:00 -> 18:00 today = 6 hours.
+        val delay = WorkoutNudgeScheduler.nextRunDelayMillis(
+            at(2026, 7, 16, 12, 0), targetHour = WorkoutNudgeScheduler.EVENING_TARGET_HOUR,
+        )
+        assertEquals(6L * 60 * 60 * 1000, delay)
+    }
+
+    @Test
+    fun `after the evening slot schedules tomorrow evening`() {
+        // 20:00 -> 18:00 next day = 22 hours.
+        val delay = WorkoutNudgeScheduler.nextRunDelayMillis(
+            at(2026, 7, 16, 20, 0), targetHour = WorkoutNudgeScheduler.EVENING_TARGET_HOUR,
+        )
+        assertEquals(22L * 60 * 60 * 1000, delay)
+    }
 }

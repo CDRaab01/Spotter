@@ -4,7 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.limits import PROGRAM_WEEKS_BOUNDS
+from app.limits import (
+    MAX_PROGRAM_DAYS,
+    PROGRAM_DAY_LABEL_MAX_LEN,
+    PROGRAM_NAME_MAX_LEN,
+    PROGRAM_WEEKS_BOUNDS,
+)
 
 ProgramSource = Literal["manual", "preset", "ai"]
 
@@ -22,7 +27,7 @@ def _check_deload_week(weeks: int | None, deload_week: int | None) -> None:
 
 class ProgramDayIn(BaseModel):
     routine_id: uuid.UUID | None = None
-    label: str
+    label: str = Field(min_length=1, max_length=PROGRAM_DAY_LABEL_MAX_LEN)
     order: int = 0
 
 
@@ -35,8 +40,8 @@ class ProgramDayOut(BaseModel):
 
 
 class ProgramCreate(BaseModel):
-    name: str
-    days: list[ProgramDayIn] = []
+    name: str = Field(min_length=1, max_length=PROGRAM_NAME_MAX_LEN)
+    days: list[ProgramDayIn] = Field(default_factory=list, max_length=MAX_PROGRAM_DAYS)
     source: ProgramSource = "manual"
     description: str | None = None
     weeks: int | None = Field(
@@ -51,7 +56,7 @@ class ProgramCreate(BaseModel):
 
 
 class ProgramUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=PROGRAM_NAME_MAX_LEN)
     is_active: bool | None = None
     source: ProgramSource | None = None
     description: str | None = None
@@ -67,7 +72,7 @@ class ProgramUpdate(BaseModel):
 
 
 class ProgramDaysUpdate(BaseModel):
-    days: list[ProgramDayIn]
+    days: list[ProgramDayIn] = Field(max_length=MAX_PROGRAM_DAYS)
 
 
 class ProgramOut(BaseModel):

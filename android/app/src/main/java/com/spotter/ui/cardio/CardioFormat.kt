@@ -3,7 +3,7 @@ package com.spotter.ui.cardio
 import com.spotter.data.model.CardioPhase
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -23,9 +23,17 @@ object CardioFormat {
         return "$mins min${if (mins == 1) "" else "s"}"
     }
 
+    /**
+     * The **device-local** calendar day of an ISO instant. Every caller compares the result to a
+     * local date (LocalDate.now(), streak/week windows, the resume-banner today-filter), so
+     * parsing in UTC put an evening session on tomorrow's date for anyone west of Greenwich —
+     * runs started after 8pm Eastern couldn't be resumed and their streak credit shifted a day.
+     * Manual entries anchor at noon UTC on the chosen day (CardioRepository), which still lands
+     * on the intended local day for any offset within ±11h.
+     */
     fun parseDate(iso: String?): LocalDate? = iso?.let {
         try {
-            Instant.parse(it).atZone(ZoneOffset.UTC).toLocalDate()
+            Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalDate()
         } catch (_: Exception) {
             null
         }
