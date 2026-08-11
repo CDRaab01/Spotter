@@ -258,7 +258,12 @@ class AiChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = aiRepository.acceptProgram(
-                    AcceptProgramRequest(name = program.name, days = program.days)
+                    AcceptProgramRequest(
+                        name = program.name,
+                        days = program.days,
+                        weeks = program.weeks,
+                        deloadWeek = program.deloadWeek,
+                    )
                 )
                 // Pull the new program + its routines into the local cache so Home/Calendar
                 // immediately reflect the now-active program.

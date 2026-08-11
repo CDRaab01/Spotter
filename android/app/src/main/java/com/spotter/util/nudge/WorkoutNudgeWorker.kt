@@ -1,17 +1,10 @@
 package com.spotter.util.nudge
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.spotter.MainActivity
 import com.spotter.data.local.dao.ProgramDayDao
 import com.spotter.data.local.dao.WorkoutProgramDao
 import com.spotter.data.local.dao.WorkoutSessionDao
@@ -49,7 +42,7 @@ class WorkoutNudgeWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val decision = runCatching { evaluate() }.getOrElse { return Result.success() }
         if (decision is WorkoutNudge.Decision.Show) {
-            postNotification(decision.title, decision.text)
+            NudgeNotifications.post(applicationContext, NOTIFICATION_ID, decision.title, decision.text)
         }
         return Result.success()
     }
@@ -109,47 +102,8 @@ class WorkoutNudgeWorker @AssistedInject constructor(
         )
     }
 
-    private fun postNotification(title: String, text: String) {
-        ensureChannel()
-        val tap = PendingIntent.getActivity(
-            applicationContext,
-            NOTIFICATION_ID,
-            Intent(applicationContext, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setContentIntent(tap)
-            .build()
-        // areNotificationsEnabled() was checked in evaluate(); guard again for lint/race safety.
-        val manager = NotificationManagerCompat.from(applicationContext)
-        if (manager.areNotificationsEnabled()) {
-            runCatching { manager.notify(NOTIFICATION_ID, notification) }
-        }
-    }
-
-    private fun ensureChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = applicationContext
-                .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Workout reminders",
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply { description = "Morning nudge on days you have a workout scheduled" }
-            manager.createNotificationChannel(channel)
-        }
-    }
-
     companion object {
-        const val CHANNEL_ID = "spotter_nudge"
+        const val CHANNEL_ID = NudgeNotifications.CHANNEL_ID
         const val NOTIFICATION_ID = 1003
     }
 }

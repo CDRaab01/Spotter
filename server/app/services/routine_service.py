@@ -66,8 +66,10 @@ async def get_user_routines(db: AsyncSession, user_id: uuid.UUID) -> list[Routin
 
 
 async def create_routine(
-    db: AsyncSession, user_id: uuid.UUID, req: RoutineCreate
+    db: AsyncSession, user_id: uuid.UUID, req: RoutineCreate, commit: bool = True
 ) -> RoutineOut:
+    """Create a routine with its exercises. ``commit=False`` only flushes, letting
+    a caller (accept_program) batch several writes into one transaction."""
     await _verify_exercises_exist(db, req.exercises)
     routine = WorkoutRoutine(user_id=user_id, name=req.name, source=req.source)
     db.add(routine)
@@ -75,7 +77,10 @@ async def create_routine(
     for ex in req.exercises:
         re = RoutineExercise(routine_id=routine.id, **ex.model_dump())
         db.add(re)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     result = await db.execute(
         select(WorkoutRoutine)
         .where(WorkoutRoutine.id == routine.id)

@@ -14,35 +14,48 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Schedules (or cancels) the once-a-day [WorkoutNudgeWorker]. Driven by the opt-in preference from
- * [com.spotter.SpotterApp] on start and by the Settings toggle. The work is a daily periodic task
- * whose initial delay lands on the next local [targetHour]; the worker itself re-checks every guard
- * (enabled, permission, quiet hours, is-today-a-workout-day) so a stale schedule can never nag.
+ * Schedules (or cancels) the daily nudge workers — the morning [WorkoutNudgeWorker] and the
+ * evening [EveningNudgeWorker] (streak-saver/comeback) — behind the single opt-in preference,
+ * driven from [com.spotter.SpotterApp] on start and by the Settings toggle. Each work is a
+ * daily periodic task whose initial delay lands on the next local target hour; the workers
+ * themselves re-check every guard (enabled, permission, quiet hours, schedule state) at fire
+ * time so a stale schedule can never nag.
  */
 @Singleton
 class WorkoutNudgeScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    /** Enqueue the daily nudge when [enabled], otherwise cancel any existing schedule. */
+    /** Enqueue the daily nudges when [enabled], otherwise cancel any existing schedules. */
     fun sync(enabled: Boolean) {
         val wm = WorkManager.getInstance(context)
         if (!enabled) {
             wm.cancelUniqueWork(WORK_NAME)
+            wm.cancelUniqueWork(EVENING_WORK_NAME)
             return
         }
-        val delayMs = nextRunDelayMillis(ZonedDateTime.now(), targetHour = TARGET_HOUR)
-        val request = PeriodicWorkRequestBuilder<WorkoutNudgeWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+        val now = ZonedDateTime.now()
+        val morning = PeriodicWorkRequestBuilder<WorkoutNudgeWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(nextRunDelayMillis(now, targetHour = TARGET_HOUR), TimeUnit.MILLISECONDS)
+            .build()
+        val evening = PeriodicWorkRequestBuilder<EveningNudgeWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(
+                nextRunDelayMillis(now, targetHour = EVENING_TARGET_HOUR), TimeUnit.MILLISECONDS,
+            )
             .build()
         // KEEP so an already-scheduled daily nudge isn't reset to a fresh 24h window on every launch.
-        wm.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+        wm.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, morning)
+        wm.enqueueUniquePeriodicWork(EVENING_WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, evening)
     }
 
     companion object {
         const val WORK_NAME = "workout_morning_nudge"
+        const val EVENING_WORK_NAME = "workout_evening_nudge"
 
-        /** Local hour the nudge should fire (~8:00). */
+        /** Local hour the morning nudge should fire (~8:00). */
         val TARGET_HOUR: Int = com.spotter.util.AppPreferences.NUDGE_HOUR
+
+        /** Local hour the evening streak-saver/comeback nudge should fire (~18:00). */
+        val EVENING_TARGET_HOUR: Int = com.spotter.util.AppPreferences.EVENING_NUDGE_HOUR
 
         /**
          * Milliseconds from [now] until the next occurrence of [targetHour]:00 local time. If it is

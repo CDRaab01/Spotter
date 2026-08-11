@@ -346,8 +346,12 @@ private fun SuggestedProgramCard(
             text = program.name,
             style = MaterialTheme.typography.titleSmall,
         )
+        val periodization = program.weeks?.let { weeks ->
+            val deload = program.deloadWeek?.let { ", deload wk $it" } ?: ""
+            " · $weeks-week block$deload"
+        } ?: ""
         Text(
-            text = "${program.days.size}-day program",
+            text = "${program.days.size}-day program$periodization",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

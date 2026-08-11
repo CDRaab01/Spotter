@@ -11,8 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.limits import (
     MAX_ADJUSTMENT_ACTIONS,
+    MAX_PROGRAM_DAYS,
+    PROGRAM_DAY_LABEL_MAX_LEN,
+    PROGRAM_NAME_MAX_LEN,
     PROGRAM_WEEKS_BOUNDS,
     REPS_BOUNDS,
+    ROUTINE_NAME_MAX_LEN,
     SETS_BOUNDS,
     clamp_int,
     clamp_weight,
@@ -339,7 +343,10 @@ async def _extract_plan(raw_reply: str, db: AsyncSession) -> SuggestedRoutine | 
     resolved = await _resolve_exercises(draft.exercises, db)
     if not resolved:
         return None
-    return SuggestedRoutine(name=draft.name, exercises=resolved)
+    # Clamp the untrusted name so the eventual POST /routines can't be rejected
+    # for length (same philosophy as the value clamps above).
+    name = (draft.name.strip() or "AI Routine")[:ROUTINE_NAME_MAX_LEN]
+    return SuggestedRoutine(name=name, exercises=resolved)
 
 
 async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram | None:
@@ -354,15 +361,18 @@ async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram
         return None
 
     days: list[SuggestedProgramDay] = []
-    for i, day in enumerate(draft.days):
+    for i, day in enumerate(draft.days[:MAX_PROGRAM_DAYS]):
         was_rest = len(day.exercises) == 0
         resolved = await _resolve_exercises(day.exercises, db)
         # Keep genuine rest days (no exercises to begin with); drop days whose
         # exercises all failed to resolve (mirrors plan behavior).
         if not resolved and not was_rest:
             continue
+        # Clamp the untrusted label into the schema cap (blank → positional name)
+        # so the day survives SuggestedProgramDay validation and the later accept.
+        label = (day.label.strip() or f"Day {i + 1}")[:PROGRAM_DAY_LABEL_MAX_LEN]
         days.append(
-            SuggestedProgramDay(label=day.label, exercises=resolved, order=i)
+            SuggestedProgramDay(label=label, exercises=resolved, order=i)
         )
 
     # Need at least one day that actually trains something.
@@ -375,8 +385,9 @@ async def _extract_program(raw_reply: str, db: AsyncSession) -> SuggestedProgram
     deload_week = draft.deload_week
     if weeks is None or deload_week is None or not (1 <= deload_week <= weeks):
         deload_week = None
+    name = (draft.name.strip() or "AI Program")[:PROGRAM_NAME_MAX_LEN]
     return SuggestedProgram(
-        name=draft.name, days=days, weeks=weeks, deload_week=deload_week
+        name=name, days=days, weeks=weeks, deload_week=deload_week
     )
 
 

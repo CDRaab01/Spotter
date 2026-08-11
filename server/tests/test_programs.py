@@ -225,6 +225,127 @@ async def test_get_next_day_skips_rest_day(auth_client, exercise):
     assert resp.json()["routine_id"] == routine_id
 
 
+# ── Day routine ownership ─────────────────────────────────────────────────────
+
+async def test_create_program_with_nonexistent_routine_returns_422(auth_client):
+    resp = await auth_client.post(
+        "/programs",
+        json={
+            "name": "Bad",
+            "days": [{"routine_id": str(uuid.uuid4()), "label": "Push", "order": 0}],
+        },
+    )
+    assert resp.status_code == 422
+
+
+async def test_create_program_with_other_users_routine_returns_422(auth_client, client, exercise):
+    # auth_client and client share the underlying HTTP client; swapping the
+    # Authorization header switches the acting user.
+    routine_id = await _make_routine(auth_client, str(exercise.id))
+
+    uid = uuid.uuid4().hex[:8]
+    reg = await client.post(
+        "/auth/register",
+        json={"name": "User2", "email": f"u2_{uid}@test.com", "password": "Testpass123!"},
+    )
+    client.headers["Authorization"] = f"Bearer {reg.json()['access_token']}"
+
+    resp = await client.post(
+        "/programs",
+        json={"name": "Steal", "days": [{"routine_id": routine_id, "label": "Push", "order": 0}]},
+    )
+    assert resp.status_code == 422
+
+
+async def test_replace_days_with_nonexistent_routine_returns_422(auth_client, exercise):
+    routine_id = await _make_routine(auth_client, str(exercise.id))
+    create = await auth_client.post(
+        "/programs",
+        json={"name": "Prog", "days": [{"routine_id": routine_id, "label": "Day A", "order": 0}]},
+    )
+    prog_id = create.json()["id"]
+
+    resp = await auth_client.put(
+        f"/programs/{prog_id}/days",
+        json={"days": [{"routine_id": str(uuid.uuid4()), "label": "Ghost", "order": 0}]},
+    )
+    assert resp.status_code == 422
+    # The original days survive the rejected replace.
+    days = (await auth_client.get(f"/programs/{prog_id}")).json()["days"]
+    assert [d["label"] for d in days] == ["Day A"]
+
+
+async def test_replace_days_with_other_users_routine_returns_422(auth_client, client, exercise):
+    routine_id = await _make_routine(auth_client, str(exercise.id))
+
+    uid = uuid.uuid4().hex[:8]
+    reg = await client.post(
+        "/auth/register",
+        json={"name": "User3", "email": f"u3_{uid}@test.com", "password": "Testpass123!"},
+    )
+    client.headers["Authorization"] = f"Bearer {reg.json()['access_token']}"
+
+    create = await client.post("/programs", json={"name": "Mine", "days": []})
+    prog_id = create.json()["id"]
+    resp = await client.put(
+        f"/programs/{prog_id}/days",
+        json={"days": [{"routine_id": routine_id, "label": "Push", "order": 0}]},
+    )
+    assert resp.status_code == 422
+
+
+async def test_create_all_rest_day_program_still_allowed(auth_client):
+    resp = await auth_client.post(
+        "/programs",
+        json={
+            "name": "Recovery Week",
+            "days": [
+                {"routine_id": None, "label": "Rest 1", "order": 0},
+                {"routine_id": None, "label": "Rest 2", "order": 1},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+
+
+# ── Length / count caps ───────────────────────────────────────────────────────
+
+async def test_program_name_over_255_returns_422(auth_client):
+    resp = await auth_client.post("/programs", json={"name": "x" * 256, "days": []})
+    assert resp.status_code == 422
+
+
+async def test_program_name_at_255_is_accepted(auth_client):
+    resp = await auth_client.post("/programs", json={"name": "x" * 255, "days": []})
+    assert resp.status_code == 201
+
+
+async def test_empty_program_name_returns_422(auth_client):
+    resp = await auth_client.post("/programs", json={"name": "", "days": []})
+    assert resp.status_code == 422
+
+
+async def test_day_label_over_100_returns_422(auth_client):
+    resp = await auth_client.post(
+        "/programs",
+        json={"name": "Prog", "days": [{"label": "y" * 101, "order": 0}]},
+    )
+    assert resp.status_code == 422
+
+
+async def test_more_than_14_days_returns_422(auth_client):
+    days = [{"label": f"Day {i}", "order": i} for i in range(15)]
+    resp = await auth_client.post("/programs", json={"name": "Too Long", "days": days})
+    assert resp.status_code == 422
+
+
+async def test_14_days_is_accepted(auth_client):
+    days = [{"label": f"Day {i}", "order": i} for i in range(14)]
+    resp = await auth_client.post("/programs", json={"name": "Two Weeks", "days": days})
+    assert resp.status_code == 201
+    assert len(resp.json()["days"]) == 14
+
+
 # ── Access control ────────────────────────────────────────────────────────────
 
 async def test_cannot_access_other_users_program(auth_client, client):

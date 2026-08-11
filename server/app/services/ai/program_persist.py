@@ -6,16 +6,17 @@ periodization), and — unless ``activate=False`` — activates it (clearing any
 other active program). Reuses the existing routine/program services so
 validation and bounds stay in one place.
 
-Note: create_routine / create_program / update_program each commit independently,
-so this is not a single transaction. A mid-sequence failure can leave orphan AI
-routines; the caller surfaces the error and the user can retry. A fully atomic
-batch path is a possible follow-up.
+The whole accept is ONE transaction: every service call runs with
+``commit=False`` (flush-only) and a single commit lands at the end, so a
+mid-sequence failure rolls back on session close and can never leave orphan
+AI routines behind.
 """
 
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.limits import ROUTINE_NAME_MAX_LEN
 from app.schemas.ai import AcceptProgramRequest
 from app.schemas.routine import RoutineCreate
 from app.schemas.program import ProgramCreate, ProgramDayIn, ProgramOut, ProgramUpdate
@@ -33,10 +34,13 @@ async def accept_program(
                 db,
                 user_id,
                 RoutineCreate(
-                    name=f"{req.name} — {day.label}",
+                    # Truncate: name (≤255) + label (≤100) can compose past the
+                    # routine name column's 255 — a 500 without the slice.
+                    name=f"{req.name} — {day.label}"[:ROUTINE_NAME_MAX_LEN],
                     source="ai",
                     exercises=day.exercises,
                 ),
+                commit=False,
             )
             routine_id = routine.id
         day_ins.append(ProgramDayIn(routine_id=routine_id, label=day.label, order=i))
@@ -52,11 +56,12 @@ async def accept_program(
             weeks=req.weeks,
             deload_week=req.deload_week,
         ),
+        commit=False,
     )
-    if not req.activate:
-        # Save-only: the currently active program (if any) stays untouched.
-        return program
-    # Activate the new program (clears other actives, stamps started_on).
-    return await program_service.update_program(
-        db, user_id, program.id, ProgramUpdate(is_active=True)
-    )
+    if req.activate:
+        # Activate the new program (clears other actives, stamps started_on).
+        program = await program_service.update_program(
+            db, user_id, program.id, ProgramUpdate(is_active=True), commit=False
+        )
+    await db.commit()
+    return program

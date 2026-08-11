@@ -374,10 +374,12 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Workout-morning nudge", style = MaterialTheme.typography.bodyLarge)
+                        Text("Workout nudges", style = MaterialTheme.typography.bodyLarge)
                         Text(
                             "A ${formatHour(com.spotter.util.AppPreferences.NUDGE_HOUR)} reminder on " +
-                                "days your program schedules a workout. Never on rest days.",
+                                "workout days, a ${formatHour(com.spotter.util.AppPreferences.EVENING_NUDGE_HOUR)} " +
+                                "streak-saver if the day is slipping, and a one-off comeback nudge " +
+                                "after a few missed days. Never on rest days.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -38,7 +38,7 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 2. **Workout mode** — per-exercise list with a target header (e.g. `8×115lb`, `3×8 BW`). Each set is a tap-to-complete control showing its reps; tapping marks it done (filled vs. dim states). Weight is logged per set beneath it and can differ across sets. Supports a "+" to add sets, set **deletion**, bodyweight ("BW") exercises (no weight), a running session timer, per-exercise notes, per-set **type** (normal/warm-up/drop/failure/AMRAP — tap the set number) and optional **RPE**, adding/removing an exercise mid-session, and a rest timer with ±15s, an auto-start toggle and per-exercise overrides. Must work offline. (There is no structural "edit mode" — editing is inline per field plus the add/remove actions.)
 3. **Calendar** — view/track scheduled and completed workouts by date.
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
-5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, plus special-case presets: Knee-Friendly, Prenatal third-trimester, **Postpartum — First Weeks Back** and **Postpartum — Rebuilding Strength** (a staged pair), Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
+5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, **Back After a Break — Restart** and **Back After a Break — Ramp Up** (a staged returner pair, 2026-08-10), plus special-case presets: Knee-Friendly, Prenatal third-trimester, **Postpartum — First Weeks Back** and **Postpartum — Rebuilding Strength** (a staged pair), Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
 6. **Exercise library** — searchable list of seeded exercises (`/exercises`), reachable from **Settings → Library & data** (and from any workout card's exercise name). Each entry opens a detail screen: form instructions, primary/secondary muscles, equipment, a weight/est-1RM history chart and personal records.
 7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
 
@@ -961,3 +961,104 @@ If that's wanted, it should be a confirm card like every other AI write.
 see the questionnaire. Much less harmful now that Settings can edit the profile and the server
 copy repopulates on sign-in, but the root behaviour stands — fixing it means touching the auth
 flow, which is the riskiest possible place for this.
+
+## Program-creation fixes + evening motivation nudges (2026-08-10)
+
+Two streams from the program-creation review: the critical correctness fixes, and two new
+opt-in local notifications. Server **371 pytest green** (migrated scratch DB) + `ruff check
+app` clean; Android unit suite + `assembleDebug` green.
+
+### Program-creation fixes
+- **[HIGH][Android] AI periodization now round-trips.** `SuggestedProgram` gained
+  `weeks`/`deload_week` and both accept call sites (coach Save-Program card, first-run
+  auto-generate) forward them — the client used to drop them silently, so the whole
+  deload/mesocycle feature (server-side since migration `0015`) was unreachable via the coach,
+  its only author. The Save Program card subtitle now shows the block ("3-day program ·
+  6-week block, deload wk 6") so the user sees what they're accepting.
+- **[HIGH][Server] `accept_program` is one transaction.** `create_routine` /
+  `create_program` / `update_program` take `commit: bool = True`; accept passes
+  `commit=False` (flush-only) and lands a single commit at the end, so a mid-sequence
+  failure rolls back instead of stranding orphan `source="ai"` routines (retry used to
+  duplicate them). Also truncates the composed routine name (`"{program} — {label}"` could
+  hit 358 chars vs the 255 column → 500).
+- **[MED][Server] Program days validate routine ownership** (`_verify_routines_owned`):
+  a nonexistent or another user's `routine_id` in `POST /programs` / `PUT /programs/{id}/days`
+  is a clean 422 (was: silent foreign link or FK 500). Audit item `AUDIT-2026-07.md:198`.
+- **[MED][Server] Length/count caps**: `PROGRAM_NAME_MAX_LEN=255`,
+  `PROGRAM_DAY_LABEL_MAX_LEN=100`, `ROUTINE_NAME_MAX_LEN=255`, `MAX_PROGRAM_DAYS=14` in
+  `limits.py`, enforced via `Field` caps on the program/AI/routine write schemas (422, not a
+  DB error); the AI extraction layer truncates names/labels and slices the day list instead
+  of dropping the program (clamp-not-reject, as everywhere else).
+- **Doc drift fixed:** `database.py` has no `DB_NULLPOOL` switch (the env var is a no-op);
+  conftest's session-scoped event loop is what actually prevents the cross-loop asyncpg
+  errors. ARCHITECTURE.md corrected.
+
+### Evening motivation nudges (Android-only, local, opt-in)
+Behind the existing single Reminders toggle, a second daily WorkManager worker
+(`EveningNudgeWorker`, ~18:00) joins the morning nudge, evaluating two mutually-exclusive
+kinds via pure `EveningNudge.decide` (same conventions as `WorkoutNudge`: quiet hours,
+fire-time re-checks, Context-free copy):
+- **Streak-saver** (id 1004): today is a scheduled workout day, nothing logged by evening,
+  and there's a live streak — "Your N-day streak is on the line." Streak math extracted from
+  HomeViewModel into pure `util/StreakCalculator` (shared, so the notification's number is
+  Home's number; `HomeViewModelTest` pins behavior-identical extraction).
+- **Comeback** (id 1005): fires once per lapse when 2–3 scheduled workout days were missed
+  (`StreakCalculator.consecutiveMissedWorkoutDays`, rest-day-aware for calendar programs,
+  slot arithmetic for cadence programs; a never-trained or long-lapsed user falls outside
+  the window). Latched per miss episode via `AppPreferences.comebackNudgeAnchor` (the
+  last-completed date at posting) — training again re-arms it. Magpie-style alert latching.
+- Notification plumbing deduplicated into `NudgeNotifications` (one channel
+  `spotter_nudge`); scheduler now enqueues/cancels both unique works. Tests:
+  `EveningNudgeTest`, `StreakCalculatorTest`, extended `WorkoutNudgeSchedulerTest`.
+
+### Deliberately not in this round (from the review, still open)
+Manual program-builder UX rework (name-only dialog → routine-dropdown scavenger hunt), full
+exercise detail in the AI preview card, unsaved-changes guard on ProgramDetail, persisting
+`program_day_id` on `WorkoutSession` (the `get_next_day` heuristic stands), per-kind
+notification channels/configurable nudge hours, and cardio/strength program unification.
+
+## Return-to-lifting round (2026-08-10)
+
+The program-content review's top gap: the months-scale returner — the most common and most
+injury-prone lifter — had no path (constraint presets only, no coach guidance). Mirrors the
+postpartum pattern: staged presets + a prompt section + guardrail tests for both. Server
+**368 pytest green** + ruff clean; Android unit suite green (449).
+
+- **Presets:** "Back After a Break — Restart" (`returning_restart`) → "Back After a Break —
+  Ramp Up" (`returning_ramp`), placed after Full Body in the mainstream block. Stage 1: full
+  body every other day, 5 lifts × 2 sets, bar-plus-a-little loads (squat/bench/row 65,
+  OHP 45 — strictly below Full Body's on every shared lift, because tendons regain load
+  tolerance far slower than muscle memory returns strength). Stage 2: 6 lifts × 3 sets,
+  loads one step below Full Body; description graduates to Full Body / StrongLifts /
+  Upper-Lower by name. Descriptions carry the returner coaching (old numbers are a memory,
+  the tendon lag, the first-session DOMS warning — the #1 reason returners quit). Guardrail
+  tests (`ProgramPresetsTest`) pin the staged handoff, the coaching phrases, a
+  **relationship-based load ramp** (stage1 < stage2 < Full Body on shared lifts — no
+  brittle absolutes), and stage 1's ≤3.5/week frequency.
+- **[AI prompt change] "Returning After a Layoff — Months or More"** in `prompts.py`:
+  a stated months+ layoff is a primary programming input; restart at ~50–60% of remembered
+  loads ("program for the tendons, not the ego"); ~2 working sets first 1–2 weeks; warn about
+  delayed soreness *before* it happens; ride the fast re-acquisition progression with a rep
+  in reserve; never guilt the layoff. Its session-sizing paragraph says "**relaxes** the
+  session-size rule" — deliberately distinct from the postpartum "**overrides**" phrasing;
+  `test_ai_returning.py` pins both directions (`count("overrides ...") == 1`) so an edit
+  can't alias the two prescriptions. Scoped against the existing Adaptive-Coaching
+  "~70% for illness/short time off" rule so the model never holds two restart fractions.
+  **Deliberately NOT an Intake Protocol item** — intake asks only for missing profile facts,
+  and a standing "when did you last train?" would interrogate every user forever; the
+  section's conditional ask covers the real case.
+- Prompt tests (`tests/test_ai_returning.py`, mirrors the postpartum file): guidance present
+  and reaches the model via `build_messages`, restart fraction pinned, realistic returner
+  messages (`"my bench used to be 225 but I've been off for a year"`) not blocked by
+  `validate_request`, replies survive `validate_response`, mocked end-to-end `/ai/chat`.
+
+### Drive-by fix found by the suite: cardio dates parsed in UTC, not local
+Running the suite in the evening (8pm EDT = past midnight UTC) exposed a real bug, not a
+flake: `CardioFormat.parseDate` resolved ISO instants to the **UTC** calendar day while every
+caller compares against **local** dates — so for anyone west of Greenwich, a cardio run
+started after ~8pm couldn't be resumed (`ActiveCardioStore`'s today-filter missed it) and an
+evening run's streak/stats credit landed on tomorrow (`HomeViewModel`, `CardioSchedule`, the
+evening nudge worker). Fixed to `ZoneId.systemDefault()`; manual entries' noon-UTC anchor
+still buckets correctly for any offset within ±11h. This also **retires the documented
+"CardioScheduleTest is timezone-sensitive" flake** — the test's midnight-UTC fixtures were
+the same bug in miniature; they now encode local midnight and round-trip exactly in any zone.

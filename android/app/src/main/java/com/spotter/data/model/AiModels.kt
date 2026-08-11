@@ -30,6 +30,10 @@ data class SuggestedProgramDay(
 data class SuggestedProgram(
     val name: String,
     val days: List<SuggestedProgramDay>,
+    // Periodization the coach authored (already clamped server-side). Must be echoed
+    // back on accept or the whole deload/mesocycle feature is silently dropped.
+    val weeks: Int? = null,
+    @SerialName("deload_week") val deloadWeek: Int? = null,
 )
 
 @Serializable

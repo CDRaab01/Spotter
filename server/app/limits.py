@@ -25,6 +25,17 @@ SET_TYPES = ("normal", "warmup", "drop", "failure", "amrap")
 # Program periodization (mesocycle length + scheduled deload week).
 PROGRAM_WEEKS_BOUNDS = (1, 52)
 
+# Name/label caps mirror the DB column sizes (String(255)/String(100)) so an
+# oversized value 422s at the schema instead of surfacing as a DB error. The AI
+# extraction layer truncates to these rather than dropping the program.
+PROGRAM_NAME_MAX_LEN = 255
+PROGRAM_DAY_LABEL_MAX_LEN = 100
+ROUTINE_NAME_MAX_LEN = 255
+
+# Cap on days per program. The largest real program is a 7-day split; 14 leaves
+# room for a two-week alternating cycle without admitting absurd payloads.
+MAX_PROGRAM_DAYS = 14
+
 # Per-exercise rest between sets (seconds).
 REST_SECONDS_BOUNDS = (15, 600)
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.program_day import ProgramDay
 from app.models.workout_program import WorkoutProgram
+from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
 from app.schemas.program import (
     ProgramCreate,
@@ -56,6 +57,30 @@ async def is_deload_day(
     return current_week(program.started_on, program.weeks, on_date) == program.deload_week
 
 
+async def _verify_routines_owned(
+    db: AsyncSession, user_id: uuid.UUID, days: list
+) -> None:
+    """Ensure every non-null routine_id in ``days`` is a routine owned by the caller.
+
+    Without this, a foreign or random UUID either links another user's routine into
+    the program or trips the FK constraint as a 500; both become a clean 422.
+    """
+    ids = {d.routine_id for d in days if d.routine_id is not None}
+    if not ids:
+        return
+    found = await db.execute(
+        select(WorkoutRoutine.id).where(
+            WorkoutRoutine.id.in_(ids), WorkoutRoutine.user_id == user_id
+        )
+    )
+    missing = ids - {row[0] for row in found.all()}
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Routine not found",
+        )
+
+
 async def _to_out(program: WorkoutProgram) -> ProgramOut:
     day_outs = []
     for day in program.days:
@@ -101,8 +126,11 @@ async def list_programs(db: AsyncSession, user_id: uuid.UUID) -> list[ProgramOut
 
 
 async def create_program(
-    db: AsyncSession, user_id: uuid.UUID, req: ProgramCreate
+    db: AsyncSession, user_id: uuid.UUID, req: ProgramCreate, commit: bool = True
 ) -> ProgramOut:
+    """Create a program with its days. ``commit=False`` only flushes, letting a
+    caller (accept_program) batch several writes into one transaction."""
+    await _verify_routines_owned(db, user_id, req.days)
     program = WorkoutProgram(
         user_id=user_id,
         name=req.name,
@@ -115,7 +143,10 @@ async def create_program(
     await db.flush()
     for d in req.days:
         db.add(ProgramDay(program_id=program.id, **d.model_dump()))
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return await get_program(db, user_id, program.id)
 
 
@@ -134,7 +165,11 @@ async def get_program(
 
 
 async def update_program(
-    db: AsyncSession, user_id: uuid.UUID, program_id: uuid.UUID, req: ProgramUpdate
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    program_id: uuid.UUID,
+    req: ProgramUpdate,
+    commit: bool = True,
 ) -> ProgramOut:
     result = await db.execute(
         select(WorkoutProgram).where(
@@ -171,7 +206,10 @@ async def update_program(
                 program.started_on = datetime.date.today()
         program.is_active = req.is_active
 
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return await get_program(db, user_id, program_id)
 
 
@@ -201,6 +239,8 @@ async def replace_days(
     program = result.scalar_one_or_none()
     if not program:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program not found")
+
+    await _verify_routines_owned(db, user_id, req.days)
 
     for day in list(program.days):
         await db.delete(day)

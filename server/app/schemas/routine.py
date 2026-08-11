@@ -3,7 +3,13 @@ import uuid
 
 from pydantic import BaseModel, Field
 
-from app.limits import REPS_BOUNDS, REST_SECONDS_BOUNDS, SETS_BOUNDS, WEIGHT_BOUNDS_LB
+from app.limits import (
+    REPS_BOUNDS,
+    REST_SECONDS_BOUNDS,
+    ROUTINE_NAME_MAX_LEN,
+    SETS_BOUNDS,
+    WEIGHT_BOUNDS_LB,
+)
 
 
 class RoutineExerciseIn(BaseModel):
@@ -22,7 +28,7 @@ class RoutineExerciseIn(BaseModel):
 
 
 class RoutineCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=ROUTINE_NAME_MAX_LEN)
     source: str = "manual"
     exercises: list[RoutineExerciseIn] = []
 

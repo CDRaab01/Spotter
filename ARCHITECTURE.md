@@ -27,7 +27,9 @@ logic, one service per domain) → `app/models/` (SQLAlchemy 2.0 async) with `ap
 `get_cross_app_user`), `limiter.py` (slowapi), `limits.py` (canonical numeric bounds — see
 Guardrails), `progression.py` (pure progressive-overload engine — double progression / deload /
 e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `config.py`
-(pydantic-settings), `database.py` (asyncpg engine; NullPool under tests via `DB_NULLPOOL`).
+(pydantic-settings), `database.py` (asyncpg engine). Note: despite older notes, there is **no
+`DB_NULLPOOL` switch in `database.py`** — the env var is a no-op; what actually prevents the
+cross-event-loop asyncpg errors under pytest is conftest's session-scoped event loop.
 
 ### Domain map (router → service → models)
 
@@ -101,13 +103,24 @@ session pre-fills at the new load.
 
 Bounds are enforced twice by design: Pydantic `Field(ge/le)` on write schemas rejects bad client
 input (422); the extraction layer clamps bad model output. Both source from `app/limits.py`.
+The same split covers lengths (2026-08-10): program/routine names and day labels carry
+`max_length` caps mirroring the DB columns (`PROGRAM_NAME_MAX_LEN` etc., plus
+`MAX_PROGRAM_DAYS=14`), and the extractors truncate rather than drop. Two service invariants
+added the same day: **program days validate routine ownership** (`_verify_routines_owned` — a
+foreign or unknown `routine_id` 422s instead of linking or 500ing), and **`accept_program` is
+one transaction** — `create_routine`/`create_program`/`update_program` take `commit=False`
+(flush-only) and a single commit lands at the end, so a mid-sequence failure can no longer
+strand orphan `source="ai"` routines. The composed routine name (`"{program} — {label}"`) is
+truncated to 255 on accept.
 
 ### Migrations & tests
 
 Alembic (12 revisions), auto-applied on container boot (`docker-entrypoint.sh`). 27 pytest files
 (~220 tests) cover routers, the guardrail/extraction layer (LLM mocked), bounds, and cross-app
 auth. Local run: throwaway DB + `DATABASE_URL` on **127.0.0.1** + `DB_NULLPOOL=1` (see CLAUDE.md
-"Local pytest recipe"). Known flake: `CardioScheduleTest` (Android) is timezone-sensitive.
+"Local pytest recipe"). (The old `CardioScheduleTest` timezone flake was fixed 2026-08-10 —
+`CardioFormat.parseDate` now resolves instants to the device-local day, which was also a real
+evening-session bug, not just a test problem.)
 
 ## Android (`android/`, package `com.spotter`)
 
@@ -210,10 +223,19 @@ counters.
   derives the advertised frequency from the day list, so the description can't drift from the
   schedule again. A training day whose exercises all fail to resolve is **dropped**, never sent
   empty — an empty day now *means* rest.
+  **Staged pairs** (2026-08-10): like the postpartum pair, "Back After a Break — Restart /
+  Ramp Up" is a two-stage returner path whose stage-1 loads sit strictly below stage 2, which
+  sits strictly below Full Body (tendons regain load tolerance slower than muscle memory
+  returns strength) — that monotonic ramp is pinned by a relationship-based guardrail test,
+  not absolute numbers. The returner pair is deliberately **mainstream, not medical**: no
+  clearance language, unlike the constraint presets.
 - `ui/program/Periodization.kt` — pure `programWeek`/`weekLabel` over the mirrored `startedOn`.
   The server's `current_week`/`is_deload_week` are deliberately **not** mirrored (they're
   time-derived, so a cached copy would be stale by definition); the client recomputes them from
-  the same formula instead.
+  the same formula instead. **The accept paths must echo `weeks`/`deload_week`** (fixed
+  2026-08-10): `SuggestedProgram` carries them and both accept call sites (coach card,
+  first-run auto-generate) forward them — before that the client silently dropped them, making
+  the whole deload/mesocycle feature unreachable via the coach, its only author.
 - `ui/history/SessionTemplate.kt` — pure derivation for "repeat this workout" / "save as routine"
   (a completed session → `RoutineExerciseIn`s), table-tested.
 - `ui/exercise/ExerciseDetailScreen.kt` — form instructions + muscles from the catalog mirror
@@ -242,9 +264,18 @@ counters.
   (`res/xml/shortcuts.xml`: Start workout / Log weight / Coach). Each fires a
   `spotter://shortcut/<target>` VIEW intent parked on a `ShortcutBus`; because the app gates on
   auth before the main graph, a shortcut is honoured *after* sign-in rather than dropped.
-- `util/nudge/` — an opt-in workout-morning reminder (`WorkoutNudgeScheduler` enqueues a
-  WorkManager `WorkoutNudgeWorker`); it re-checks enabled/permission/quiet-hours/is-today-a-
-  workout-day at fire time so a stale schedule can't nag.
+- `util/nudge/` — the opt-in local reminder system, three kinds behind one Settings toggle
+  (`WorkoutNudgeScheduler` enqueues two daily WorkManager workers): the morning
+  `WorkoutNudgeWorker` (~8:00 "workout day today"), and the evening `EveningNudgeWorker`
+  (~18:00) which evaluates the **streak-saver** ("your N-day streak is on the line" when
+  today's scheduled workout hasn't happened) and the **comeback** (one gentle nudge after
+  2–3 missed workout days, latched per miss episode via `AppPreferences.comebackNudgeAnchor`
+  so it can never nag twice for the same lapse — training again re-arms it). Decision rules
+  are pure (`WorkoutNudge` / `EveningNudge`), notification plumbing is shared
+  (`NudgeNotifications`), and every guard (enabled/permission/quiet-hours/schedule state) is
+  re-checked at fire time so a stale schedule can't nag. Streak math lives in the pure
+  `util/StreakCalculator`, shared with Home's stats so the notification's number is the
+  Home screen's number.
 - `data/export/` — Settings → Export data. Streams `GET /export` (JSON) and `GET /export/sets.csv`
   into `cacheDir/exports/` and hands the file to the share sheet via FileProvider. Filename
   parsing (`ExportFilenames`) is pure and table-tested, including RFC 5987 `filename*` and
