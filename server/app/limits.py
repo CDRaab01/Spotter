@@ -47,6 +47,11 @@ DELOAD_SET_FACTOR = 0.6
 # Cap on actions in one AI live-workout adjustment (extraction truncates, apply rejects).
 MAX_ADJUSTMENT_ACTIONS = 6
 
+# Movement-family seeding (app/movement_families.py): how far back, relative to the
+# session date, completed working sets on related lifts count as evidence for a
+# session's starting load. Older history is a memory, not a prescription.
+FAMILY_EVIDENCE_DAYS = 90
+
 
 def clamp_int(value: int, bounds: tuple[int, int]) -> int:
     lo, hi = bounds

@@ -1125,3 +1125,48 @@ auto-rest, theme, units).
 Selected `FilterChip`s render in M3's `secondaryContainer` (green) rather than Spotter's blue —
 unchanged by this round (the old chips used the same defaults), but it reads off-brand next to the
 blue primary button. Worth a look if the training-profile form gets another pass.
+
+## Related lifts progress together — movement-family seeding (2026-09-18)
+
+**Reported as "a row at 10 lb in one workout but ~100 in another that hits the same muscle."**
+Not a display or unit bug for a lb user: `target_weight` is authored per `RoutineExercise`
+(presets hand-write each load — the postpartum preset literally prescribes `Dumbbell Row @ 10`
+while four presets put `Barbell Row @ 95`; AI programs estimate from an ≤8-lift summary), it is
+seeded verbatim into every set, and `progression.py` is strictly per `exercise_id`. Nothing
+related Barbell Row ↔ Dumbbell Row ↔ Seated Cable Row anywhere. Server **400 pytest green**
+(368 + 32 new, twice against the same DB) + `ruff check app` clean; Android unit suite + `compileDebugKotlin` green.
+
+- **New `app/movement_families.py`** (pure, `progression.py`'s contract): a curated table of
+  44 weighted catalog lifts in eight families (horizontal/vertical push, horizontal/vertical
+  pull, hinge, squat, curl, triceps), each with a **ratio** to the family's reference lift
+  (dumbbells per-hand), a **`source` flag**, and a plate increment. `derive_weight` converts
+  the user's history to est-1RM (reps capped at 12), takes each member's most recent session,
+  the strongest reference across members, scales to the target, solves back for its rep
+  prescription, floors to the increment, clamps. 37 lifts are deliberately excluded: every
+  bodyweight movement and isolation/machine-geometry work with no free-weight anchor.
+- **`session_service.create_session` seeds `max(prescription, derived)`** from completed,
+  non-warm-up sets within `FAMILY_EVIDENCE_DAYS` (90, `limits.py`) before the session date —
+  one extra query per family-bearing session. Never below the prescription (a deliberately
+  light returner/postpartum program is never inflated *down*), never written to the routine
+  (the prescription still advances only via the Apply chip). Now **ARCHITECTURE.md invariant #8**.
+- **Three rules that fell out of review, each pinned by a test:** *completed-only evidence* —
+  the seeds are uncompleted rows, so counting them would let a derived load feed itself
+  (`test_uncompleted_seeded_sets_are_not_evidence` deletes the real evidence and checks the
+  seed falls back); *e1RM normalisation* — a 5×5 bench must not seed a 3×10 close-grip at
+  5-rep loads; *source gating* — a low ratio is conservative for a target but inflationary
+  for a source (Leg Press 400 ≠ squat 267), so machine/cable members never seed siblings.
+- **Android:** `SessionRepository.reconcileNewSession` now adopts the server's seeded
+  `reps`/`weight` into the fresh local shells and `createSession` returns them (it used to copy
+  only ids, so the seed only showed after the follow-up GET); the offline drain still maps ids
+  only — an offline session may already hold completed sets. `WorkoutScreen`'s target header,
+  warm-up ramp and plate calculator read the first set's seeded weight over the prescription so
+  the card describes the session, not the routine. Tests: two `SessionRepositoryTest` cases +
+  `buildTargetHeader` cases in `ProgressionUiTest`.
+- **Drive-by (kg users only):** `DraftExerciseRow` (create + edit routine) showed the raw lb
+  value under a "kg" label and stored typed kg as lb, ratcheting every kg user's targets down
+  ~2.2× per edit. Now uses the `fieldValue`/`parseToLbs` pair `SetLogRow` already uses.
+- **Accepted gaps:** offline-created sessions keep the prescription until the next online read;
+  a deliberate routine-level deload (user lowers a target after stalling) is overridden by the
+  lift's own recent history — the in-workout set edit and the engine's stall→deload chip are the
+  escape hatches; if that bites, the fix is a per-routine opt-out flag, not a ratio tweak.
+

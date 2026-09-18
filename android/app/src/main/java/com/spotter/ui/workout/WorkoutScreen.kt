@@ -547,8 +547,11 @@ private fun ExerciseCard(
     var noteText by remember(note) { mutableStateOf(note) }
     val focusManager = LocalFocusManager.current
 
-    // Weight to warm up into: planned target, else the AI suggestion / last load.
-    val workingWeight = first.targetWeight
+    // Weight to warm up into: the seeded set load (the server may have lifted it above the
+    // routine prescription from related-lift history), else the prescription, else the
+    // AI suggestion / last load.
+    val workingWeight = first.weight
+        ?: first.targetWeight
         ?: priorBest?.suggestedWeight
         ?: priorBest?.weight
     var showWarmUp by remember { mutableStateOf(false) }
@@ -797,13 +800,19 @@ private fun ExerciseCard(
     }
 }
 
-private fun buildTargetHeader(set: SetLogOut, weightUnit: WeightUnit): String {
+/**
+ * The card's target line. The load shown is the first set's seeded weight when the routine
+ * prescribes one — the server may seed above the prescription from related-lift history
+ * (ARCHITECTURE.md invariant #8), and the header must describe the session, not the routine.
+ * A null prescription still reads as bodyweight even if a set carries a weight.
+ */
+internal fun buildTargetHeader(set: SetLogOut, weightUnit: WeightUnit): String {
     val targetSets = set.targetSets ?: return ""
     val targetReps = set.targetReps ?: return ""
     return if (set.targetWeight == null) {
         "$targetSets × $targetReps  BW"
     } else {
-        "$targetSets × $targetReps @ ${weightUnit.formatWeight(set.targetWeight)}"
+        "$targetSets × $targetReps @ ${weightUnit.formatWeight(set.weight ?: set.targetWeight)}"
     }
 }
 

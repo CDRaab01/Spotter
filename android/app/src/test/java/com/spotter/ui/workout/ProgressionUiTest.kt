@@ -1,6 +1,8 @@
 package com.spotter.ui.workout
 
 import com.spotter.data.model.ExercisePrior
+import com.spotter.data.model.SetLogOut
+import com.spotter.util.WeightUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -58,5 +60,24 @@ class ProgressionUiTest {
         val ui = progressionUi(prior("bodyweight", null, "Bodyweight — add reps before adding load."), fmt)
         assertEquals("Bodyweight — add reps before adding load.", ui.suggestionText)
         assertNull(ui.e1rmText)
+    }
+
+    // ── target header ─────────────────────────────────────────────────────────
+
+    private fun seeded(weight: Double?, targetWeight: Double?) = SetLogOut(
+        id = "s1", sessionId = "x", exerciseId = "e1", setNumber = 1, reps = 8,
+        weight = weight, targetSets = 3, targetReps = 8, targetWeight = targetWeight,
+    )
+
+    @Test
+    fun header_shows_the_seeded_set_load_over_the_routine_prescription() {
+        // Server seeded 40 lb from related-lift history; the routine still says 10.
+        assertEquals("3 × 8 @ 40 lb", buildTargetHeader(seeded(40.0, 10.0), WeightUnit.LBS))
+    }
+
+    @Test
+    fun header_falls_back_to_the_prescription_and_keeps_bodyweight() {
+        assertEquals("3 × 8 @ 10 lb", buildTargetHeader(seeded(null, 10.0), WeightUnit.LBS))
+        assertEquals("3 × 8  BW", buildTargetHeader(seeded(40.0, null), WeightUnit.LBS))
     }
 }
