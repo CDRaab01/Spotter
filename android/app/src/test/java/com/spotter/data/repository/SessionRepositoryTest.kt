@@ -9,6 +9,8 @@ import com.spotter.data.local.entity.ExerciseEntity
 import com.spotter.data.local.entity.RoutineExerciseEntity
 import com.spotter.data.local.entity.SetLogEntity
 import com.spotter.data.local.entity.WorkoutSessionEntity
+import com.spotter.data.model.SessionCreate
+import com.spotter.data.model.SessionOut
 import com.spotter.data.model.SessionUpdate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
@@ -31,6 +33,7 @@ import retrofit2.Response
 import java.io.IOException
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -82,6 +85,53 @@ class SessionRepositoryTest {
         reps = reps, weight = weight, completed = completed, completedAt = null,
         serverId = serverId,
     )
+
+    private fun routineExercise(exerciseId: String, targetWeight: Double?) = RoutineExerciseEntity(
+        routineId = "r1", exerciseId = exerciseId, exerciseName = exerciseId,
+        targetSets = 2, targetReps = 8, targetWeight = targetWeight, isBodyweight = false, order = 0,
+    )
+
+    private fun serverSet(sessionId: String, exerciseId: String, setNumber: Int, weight: Double?) = SetLogOut(
+        id = "srv-$exerciseId-$setNumber", sessionId = sessionId, exerciseId = exerciseId,
+        setNumber = setNumber, reps = 8, weight = weight,
+    )
+
+    @Test
+    fun `createSession adopts the server's seeded weights into the local shells`() = runTest {
+        // The routine prescribes a Dumbbell Row at 10 lb; the server seeds 40 from related-lift
+        // history. The shells must take the server's load, not keep the prescription.
+        whenever(tokenStore.getUserId()).thenReturn("u1")
+        whenever(routineDao.getById("r1")).thenReturn(null)
+        whenever(routineExerciseDao.getByRoutineId("r1")).thenReturn(listOf(routineExercise("dbrow", 10.0)))
+        whenever(api.createSession(any())).thenReturn(
+            SessionOut(
+                id = "srv-s", userId = "u1", routineId = "r1", date = "2026-09-18", status = "in_progress",
+                setLogs = listOf(serverSet("srv-s", "dbrow", 1, 40.0), serverSet("srv-s", "dbrow", 2, 40.0)),
+            )
+        )
+
+        val out = repo.createSession(SessionCreate(routineId = "r1", date = "2026-09-18"))
+
+        assertEquals(listOf(40.0, 40.0), out.setLogs.map { it.weight })
+        assertEquals(listOf(10.0, 10.0), out.setLogs.map { it.targetWeight })  // the prescription stays visible
+        val upserts = argumentCaptor<SetLogEntity>()
+        verify(setLogDao, org.mockito.kotlin.times(2)).upsert(upserts.capture())
+        assertTrue(upserts.allValues.all { it.weight == 40.0 && it.serverId != null && !it.syncPending })
+    }
+
+    @Test
+    fun `createSession offline keeps the prescription and stays sync-pending`() = runTest {
+        whenever(tokenStore.getUserId()).thenReturn("u1")
+        whenever(routineDao.getById("r1")).thenReturn(null)
+        whenever(routineExerciseDao.getByRoutineId("r1")).thenReturn(listOf(routineExercise("dbrow", 10.0)))
+        whenever(api.createSession(any())).thenAnswer { throw IOException("offline") }
+
+        val out = repo.createSession(SessionCreate(routineId = "r1", date = "2026-09-18"))
+
+        assertEquals(listOf(10.0, 10.0), out.setLogs.map { it.weight })
+        assertNull(out.setLogs.first().id.takeIf { it.startsWith("srv-") })
+        verify(setLogDao, never()).upsert(any())
+    }
 
     @Test
     fun `finishing offline computes the muscle-group breakdown from the mirror`() = runTest {

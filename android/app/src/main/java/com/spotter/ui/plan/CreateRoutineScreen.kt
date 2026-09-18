@@ -48,6 +48,8 @@ import androidx.navigation.NavController
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import com.spotter.ui.theme.LocalWeightUnit
+import com.spotter.ui.theme.fieldValue
+import com.spotter.ui.theme.parseToLbs
 import com.spotter.ui.theme.formatWeightLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,8 +201,12 @@ internal fun DraftExerciseRow(
 ) {
     var setsText by remember(draft.exerciseId) { mutableStateOf(draft.targetSets.toString()) }
     var repsText by remember(draft.exerciseId) { mutableStateOf(draft.targetReps.toString()) }
+    // Stored weights are canonical lb; the field shows and parses the user's unit (the same
+    // fieldValue/parseToLbs pair SetLogRow uses). Reading the raw lb under a "kg" label and
+    // storing typed kg as lb ratcheted every kg user's targets down on each edit.
+    val weightUnit = LocalWeightUnit.current
     var weightText by remember(draft.exerciseId) {
-        mutableStateOf(draft.targetWeight?.toString() ?: "")
+        mutableStateOf(draft.targetWeight?.let { weightUnit.fieldValue(it) } ?: "")
     }
 
     PanelCard(modifier = Modifier.fillMaxWidth(), contentPadding = 12.dp) {
@@ -253,9 +259,9 @@ internal fun DraftExerciseRow(
                         value = weightText,
                         onValueChange = { v ->
                             weightText = v.filter { c -> c.isDigit() || c == '.' }
-                            onUpdate(draft.copy(targetWeight = weightText.toDoubleOrNull()))
+                            onUpdate(draft.copy(targetWeight = weightUnit.parseToLbs(weightText)))
                         },
-                        label = { Text(LocalWeightUnit.current.formatWeightLabel()) },
+                        label = { Text(weightUnit.formatWeightLabel()) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f),
                         singleLine = true,

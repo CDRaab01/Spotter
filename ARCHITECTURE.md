@@ -26,7 +26,9 @@ logic, one service per domain) → `app/models/` (SQLAlchemy 2.0 async) with `ap
 (Pydantic) validating every request/response. Cross-cutting: `security.py` (JWT session +
 `get_cross_app_user`), `limiter.py` (slowapi), `limits.py` (canonical numeric bounds — see
 Guardrails), `progression.py` (pure progressive-overload engine — double progression / deload /
-e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `config.py`
+e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `movement_families.py`
+(the curated movement-family table + `derive_weight` — pure, keyed by catalog exercise name;
+feeds `session_service.create_session`'s starting-load seed, invariant #8), `config.py`
 (pydantic-settings), `database.py` (asyncpg engine). Note: despite older notes, there is **no
 `DB_NULLPOOL` switch in `database.py`** — the env var is a no-op; what actually prevents the
 cross-event-loop asyncpg errors under pytest is conftest's session-scoped event loop.
@@ -137,7 +139,10 @@ each repository writes to Room with `syncPending` first, then `NetworkSyncObserv
 callback registered in `SpotterApp.onCreate`) drains the pending work on reconnect.
 - **Workout mode** (sessions/sets): `SessionRepository` reconciles server + unsynced-local rows
   (and does a wholesale reconciliation after AI adjustments, because swaps/removes delete server
-  rows).
+  rows). On an online `createSession` the local shells adopt the server's seeded `reps`/`weight`
+  (invariant #8 may lift them above the routine prescription); an **offline-created** session
+  keeps the prescription and the reconnect drain maps ids only, because it may already hold
+  completed sets — the accepted gap, same class as prior-bests being server-only.
 - **Bodyweight metrics, routines, and programs** are offline-editable through the same
   write-through queue (`MetricRepository`, `RoutineRepository`, `ProgramRepository`); the sync
   step translates offline-created routine ids to server ids on push so program-day references
@@ -329,6 +334,15 @@ the manifest is load-bearing (see CLAUDE.md suite section).
    the set-type concept, so any new computation over sets must filter it too.
 7. **A PR requires a prior best to beat.** A brand-new exercise's first session sets a baseline,
    not a PR — otherwise every first workout reads as a wall of records.
+8. **A session's seeded load = max(routine prescription, movement-family-derived load).**
+   `create_session` reads the user's *completed*, non-warm-up sets on every lift in the same
+   movement family (`app/movement_families.py`, `FAMILY_EVIDENCE_DAYS` before the session date),
+   normalises through est-1RM, scales by the curated ratio and floors to a plate increment — so a
+   Barbell Row at 100 lifts a Dumbbell Row prescribed at 10 to 40, never the reverse. Seeding
+   **never writes the routine**; the prescription advances only through the user's Apply
+   write-back. Completed-only evidence is load-bearing: the seeds are written as uncompleted
+   rows, and counting them would let a derived load feed itself. Machine/cable members are
+   `source=False` — they can be seeded, never seed a free-weight sibling.
 
 ### Periodization (as built)
 
@@ -348,3 +362,6 @@ just a richer suggestion shape.
 - **Schema change**: Alembic revision (never hand-edit); if mirrored, Room entity + destructive
   rebuild is acceptable.
 - **Prompt/guardrail change**: `services/ai/` only; add/extend a guardrail test with a mocked LLM.
+- **New catalog exercise**: seed it by migration, then decide its `movement_families.FAMILIES`
+  entry (family, ratio, `source`) or its deliberate exclusion — `test_movement_families.py`
+  cross-checks the table against the seed lists, so a typo'd name fails at the moment it is made.

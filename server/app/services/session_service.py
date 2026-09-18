@@ -13,7 +13,13 @@ from app.models.routine_exercise import RoutineExercise
 from app.models.set_log import SetLog
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
-from app.limits import DELOAD_SET_FACTOR, DELOAD_WEIGHT_FACTOR, clamp_weight
+from app.limits import (
+    DELOAD_SET_FACTOR,
+    DELOAD_WEIGHT_FACTOR,
+    FAMILY_EVIDENCE_DAYS,
+    clamp_weight,
+)
+from app.movement_families import Evidence, derive_weight, family_names, family_of
 from app.progression import (
     LOWER_BODY_GROUPS,
     SessionHistory,
@@ -45,6 +51,69 @@ def _deload_weight(weight: float | None) -> float | None:
     if weight is None:
         return None
     return clamp_weight(round(weight * DELOAD_WEIGHT_FACTOR / 2.5) * 2.5)
+
+
+async def _family_seed_weights(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    planned: list[RoutineExercise],
+    on_date: datetime.date,
+    exclude_session_id: uuid.UUID,
+) -> dict[uuid.UUID, float]:
+    """Starting loads implied by the user's recent history on each planned lift's
+    movement family (``app.movement_families``), keyed by exercise id.
+
+    Evidence is every **completed**, non-warm-up, weighted set on any family member within
+    ``FAMILY_EVIDENCE_DAYS`` before ``on_date``, across all of this user's other sessions.
+    Completed-only is load-bearing: the seeds this function feeds are written as *uncompleted*
+    rows, so counting them would make a derived load its own evidence next session.
+    Bodyweight rows and lifts outside every family are simply absent from the result.
+    """
+    weighted = [pe for pe in planned if not pe.is_bodyweight]
+    if not weighted:
+        return {}
+    name_rows = await db.execute(
+        select(Exercise.id, Exercise.name).where(
+            Exercise.id.in_([pe.exercise_id for pe in weighted])
+        )
+    )
+    name_by_id = dict(name_rows.all())
+    families = {family_of(n) for n in name_by_id.values()} - {None}
+    if not families:
+        return {}
+
+    since = on_date - datetime.timedelta(days=FAMILY_EVIDENCE_DAYS)
+    rows = await db.execute(
+        select(Exercise.name, WorkoutSession.date, SetLog.weight, SetLog.reps)
+        .join(SetLog, SetLog.exercise_id == Exercise.id)
+        .join(WorkoutSession, SetLog.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.user_id == user_id,
+            WorkoutSession.id != exclude_session_id,
+            WorkoutSession.date >= since,
+            WorkoutSession.date <= on_date,
+            Exercise.name.in_(family_names(families)),
+            SetLog.completed == True,  # noqa: E712
+            SetLog.weight.is_not(None),
+            SetLog.set_type != "warmup",
+        )
+    )
+    evidence = [
+        Evidence(name=name, date=date, weight=weight, reps=reps)
+        for name, date, weight, reps in rows.all()
+    ]
+    if not evidence:
+        return {}
+
+    derived: dict[uuid.UUID, float] = {}
+    for pe in weighted:
+        name = name_by_id.get(pe.exercise_id)
+        if name is None:
+            continue
+        w = derive_weight(name, pe.target_reps, evidence)
+        if w is not None:
+            derived[pe.exercise_id] = w
+    return derived
 
 
 def suggest_next_weight(
@@ -101,12 +170,22 @@ async def create_session(
             .order_by(RoutineExercise.order)
         )
         planned_exercises = pe_result.scalars().all()
+        # Related lifts progress together: a lift's starting load is the greater of its
+        # routine prescription and what the user's recent history on its movement family
+        # implies (a Barbell Row at 100 lifts a Dumbbell Row prescribed at 10). Never below
+        # the prescription, never written back to the routine.
+        derived_by_ex = await _family_seed_weights(
+            db, user_id, planned_exercises, req.date, session.id
+        )
         # Scheduled deload: when this routine's active program is in its deload week,
         # seed fewer sets at a lighter load so the week self-programs.
         is_deload = await program_service.is_deload_day(db, user_id, req.routine_id, req.date)
         for pe in planned_exercises:
             target_sets = pe.target_sets or 3
             weight = pe.target_weight
+            derived = derived_by_ex.get(pe.exercise_id)
+            if derived is not None:
+                weight = derived if weight is None else max(weight, derived)
             if is_deload:
                 target_sets = math.ceil(target_sets * DELOAD_SET_FACTOR)
                 weight = _deload_weight(weight)

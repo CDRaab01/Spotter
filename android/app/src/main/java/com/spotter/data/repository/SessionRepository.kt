@@ -95,26 +95,36 @@ class SessionRepository @Inject constructor(
         setLogDao.upsertAll(localSetLogs)
 
         // Try the server immediately; if offline, sync will happen later.
+        var logs = localSetLogs
         try {
             val serverSession = api.createSession(req.copy(routineId = routineServerId(req.routineId)))
-            reconcileNewSession(localId, sessionEntity, localSetLogs, serverSession)
+            logs = reconcileNewSession(localId, sessionEntity, localSetLogs, serverSession)
         } catch (_: Exception) {}
 
-        return sessionEntity.toSessionOut(localSetLogs)
+        return sessionEntity.toSessionOut(logs)
     }
 
-    // After a successful POST /sessions, match server set log IDs to local
-    // entities by (exerciseId, setNumber) and persist the server IDs.
+    /**
+     * After a successful POST /sessions, match server set logs to the local shells by
+     * (exerciseId, setNumber), persist the server IDs, and take the server's seeded `reps`/`weight`.
+     * The weight matters: the server seeds a movement-family-derived load (a Barbell Row at 100
+     * lifts a Dumbbell Row prescribed at 10 — see ARCHITECTURE.md invariant #8), while the shells
+     * were built from the routine prescription. The shells are fresh (`syncPending = false`,
+     * nothing completed), so adopting the server values clobbers no user input. Returns the
+     * reconciled logs so the caller renders the seeded load even if the follow-up GET fails.
+     */
     private suspend fun reconcileNewSession(
         localId: String,
         sessionEntity: WorkoutSessionEntity,
         localLogs: List<SetLogEntity>,
         serverSession: SessionOut,
-    ) {
+    ): List<SetLogEntity> {
         sessionDao.upsert(sessionEntity.copy(serverId = serverSession.id, syncPending = false))
-        for (sl in serverSession.setLogs) {
-            val local = localLogs.find { it.exerciseId == sl.exerciseId && it.setNumber == sl.setNumber }
-            if (local != null) setLogDao.upsert(local.copy(serverId = sl.id))
+        return localLogs.map { local ->
+            val sl = serverSession.setLogs.find {
+                it.exerciseId == local.exerciseId && it.setNumber == local.setNumber
+            } ?: return@map local
+            local.copy(serverId = sl.id, reps = sl.reps, weight = sl.weight).also { setLogDao.upsert(it) }
         }
     }
 
@@ -460,7 +470,9 @@ class SessionRepository @Inject constructor(
                 )
                 sessionDao.upsert(session.copy(serverId = serverSession.id, syncPending = false))
                 val localLogs = setLogDao.getBySession(session.id)
-                // Match server set logs → local by (exerciseId, setNumber)
+                // Match server set logs → local by (exerciseId, setNumber). Ids only — unlike the
+                // online create path, an offline session may already hold completed sets, so the
+                // server's family-seeded weights must not overwrite what was actually lifted.
                 for (sl in serverSession.setLogs) {
                     val local = localLogs.find {
                         it.exerciseId == sl.exerciseId && it.setNumber == sl.setNumber
