@@ -50,7 +50,9 @@ fun CardioRunScreen(
     val pulse = SpotterTheme.pulse
     var locked by remember { mutableStateOf(false) }
 
-    KeepScreenOn()
+    // Only while the clock is actually running — a paused, finished or absent run lets the display
+    // time out normally (the screen is the most expensive thing this feature can hold on).
+    KeepScreenOn(enabled = state?.let { !it.isPaused && !it.isComplete } == true)
 
     // Back leaves the run in progress (resumable) — unless locked, which swallows it.
     BackHandler(enabled = true) {
@@ -322,12 +324,12 @@ private fun Controls(
     }
 }
 
-/** Keep the screen awake while the run screen is visible. */
+/** Keep the screen awake while [enabled] and the run screen is visible. */
 @Composable
-private fun KeepScreenOn() {
+private fun KeepScreenOn(enabled: Boolean) {
     val view = LocalView.current
-    DisposableEffect(Unit) {
-        view.keepScreenOn = true
+    DisposableEffect(view, enabled) {
+        view.keepScreenOn = enabled
         onDispose { view.keepScreenOn = false }
     }
 }

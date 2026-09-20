@@ -6,10 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.spotter.util.ForegroundServiceSupport
 import com.spotter.util.NotificationNav
-import com.spotter.util.WakeLockHolder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,10 +20,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Keeps the device awake-enough to run the cardio timer while the screen is off or the app is
+ * Keeps the process alive to run the cardio timer while the screen is off or the app is
  * backgrounded, and surfaces an ongoing notification with the current phase + countdown. It holds
- * no timer logic itself — [CardioRunController] is the source of truth; this just mirrors its
- * state and self-stops when the run ends (state becomes null or completes).
+ * no timer logic and **no wake-lock** — [CardioRunController] is the source of truth and owns the
+ * lock (held only while the run is un-paused); this just mirrors its state and self-stops when the
+ * run ends (state becomes null or completes). It deliberately stays up across a pause so the user
+ * can come back to the run; the controller exits a run left paused too long.
  */
 @AndroidEntryPoint
 class CardioRunService : Service() {
@@ -33,7 +35,6 @@ class CardioRunService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var collectJob: Job? = null
     private lateinit var notificationManager: NotificationManager
-    private val wakeLock by lazy { WakeLockHolder(this, WAKE_LOCK_TAG, MAX_WAKELOCK_MS) }
 
     override fun onCreate() {
         super.onCreate()
@@ -45,7 +46,6 @@ class CardioRunService : Service() {
         ForegroundServiceSupport.startForegroundSpecialUse(
             this, NOTIFICATION_ID, buildNotification("Cardio", "Starting…"),
         )
-        wakeLock.acquire()
         collectJob?.cancel()
         collectJob = scope.launch {
             controller.state.collectLatest { state ->
@@ -58,8 +58,8 @@ class CardioRunService : Service() {
                     title = state.label + (state.weekDayLabel?.let { " · $it" } ?: ""),
                     text = when {
                         state.isComplete -> "Completed · ${format(state.totalElapsedSec)}"
-                        state.isOpenEnded -> "Running · ${format(state.totalElapsedSec)}"
                         state.isPaused -> "Paused · ${state.phase.label}"
+                        state.isOpenEnded -> "Running · ${format(state.totalElapsedSec)}"
                         else -> "${state.phase.label} · ${format(state.intervalRemainingSec)} left"
                     },
                 ))
@@ -88,7 +88,6 @@ class CardioRunService : Service() {
 
     override fun onDestroy() {
         collectJob?.cancel()
-        wakeLock.release()
         scope.cancel()
         super.onDestroy()
     }
@@ -98,15 +97,24 @@ class CardioRunService : Service() {
     companion object {
         const val CHANNEL_ID = "spotter_cardio"
         const val NOTIFICATION_ID = 2001
-        private const val WAKE_LOCK_TAG = "spotter:cardio_run"
-        private const val MAX_WAKELOCK_MS = 6L * 60 * 60 * 1000  // 6h backstop
+        private const val TAG = "CardioRunService"
 
+        /**
+         * Never throws: on Android 12+ a start attempted while the app is in the background raises
+         * `ForegroundServiceStartNotAllowedException`. Runs are started from the UI so that should
+         * not happen, but the timer itself lives in the controller — losing the notification must
+         * not take the process (and the run) down with it.
+         */
         fun start(context: Context) {
             val intent = Intent(context, CardioRunService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not start the cardio foreground service", e)
             }
         }
 

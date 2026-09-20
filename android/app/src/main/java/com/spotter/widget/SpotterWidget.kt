@@ -1,5 +1,6 @@
 package com.spotter.widget
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -37,6 +38,7 @@ import kotlinx.serialization.json.Json
 @InstallIn(SingletonComponent::class)
 interface WidgetEntryPoint {
     fun widgetSnapshotStore(): WidgetSnapshotStore
+    fun widgetUpdater(): WidgetUpdater
 }
 
 private fun entryPoint(context: Context): WidgetEntryPoint =
@@ -44,8 +46,20 @@ private fun entryPoint(context: Context): WidgetEntryPoint =
 
 private val widgetJson = Json { ignoreUnknownKeys = true }
 
+/**
+ * Data changes redraw the widget through [WidgetUpdater]'s Room observers, so the system's periodic
+ * update (`updatePeriodMillis`, a device wake-up + possible cold start each time) only has one job
+ * left: the **day rollover** — "today's workout" goes stale at midnight with no data change. It is
+ * therefore set to 6 h (4 wakes/day, was 30 min = 48), and the tick recomputes the snapshot rather
+ * than just re-rendering the stored one, so it also works when the process was already alive.
+ */
 class SpotterWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = SpotterWidget()
+
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        super.onUpdate(context, appWidgetManager, appWidgetIds)
+        runCatching { entryPoint(context).widgetUpdater().refresh() }
+    }
 }
 
 /**

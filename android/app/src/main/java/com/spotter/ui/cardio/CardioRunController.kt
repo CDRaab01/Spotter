@@ -3,7 +3,6 @@ package com.spotter.ui.cardio
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -12,20 +11,23 @@ import com.spotter.data.local.entity.CardioSessionEntity
 import com.spotter.data.model.CardioPhase
 import com.spotter.data.model.Interval
 import com.spotter.data.repository.CardioRepository
+import com.spotter.di.ApplicationScope
+import com.spotter.util.TimeProvider
+import com.spotter.util.WakeLockHolder
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.Dispatchers
 
 /** A live snapshot of the active cardio run, observed by the run screen and notification. */
 data class CardioRunState(
@@ -57,18 +59,40 @@ private data class RunPlan(
 )
 
 /**
- * The drift-free cardio timer. Time is measured from [SystemClock.elapsedRealtime] deltas, not a
- * tick counter, so coalesced ticks or a backgrounded screen never accumulate error — the displayed
+ * The drift-free cardio timer. Time is measured from [TimeProvider.elapsedRealtimeMs] deltas, not
+ * a tick counter, so coalesced ticks or a backgrounded screen never accumulate error — the displayed
  * time is always recomputed from a monotonic baseline. The loop lives in an app-scoped coroutine
  * and is kept alive in the background by [CardioRunService] (a foreground service), so cues still
  * fire and progress still persists while the phone is locked.
+ *
+ * Battery contract: the tick loop and the partial wake-lock exist **only while the run is actually
+ * running**. The controller owns the wake-lock itself (like
+ * [com.spotter.ui.workout.WorkoutTimerController]) because only it knows when the run pauses,
+ * resumes and how long the plan can legitimately take; the service is just the notification.
+ * - Paused ⇒ no loop, no wake-lock. The foreground service stays up (cheap without the lock) so the
+ *   user can come back to the run, but a single delayed coroutine exits a run left paused for
+ *   [PAUSED_IDLE_EXIT_MS] — persisted and resumable, exactly like [pauseAndExit].
+ * - The wake-lock timeout is derived from the plan (remaining duration + margin) rather than a flat
+ *   backstop. An open-ended run has no natural end, so one un-paused stretch is capped at
+ *   [OPEN_ENDED_MAX_SEGMENT_MS] and then **auto-paused** (never left "running" without its lock).
  */
 @Singleton
-class CardioRunController @Inject constructor(
-    @ApplicationContext private val context: Context,
+class CardioRunController internal constructor(
+    private val context: Context,
     private val repository: CardioRepository,
+    private val time: TimeProvider,
+    private val scope: CoroutineScope,
+    private val wakeLock: WakeLockHolder,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    @Inject constructor(
+        @ApplicationContext context: Context,
+        repository: CardioRepository,
+        time: TimeProvider,
+        @ApplicationScope scope: CoroutineScope,
+    ) : this(
+        context, repository, time, scope,
+        WakeLockHolder(context, WAKE_LOCK_TAG, OPEN_ENDED_MAX_SEGMENT_MS + WAKELOCK_MARGIN_MS),
+    )
 
     private val _state = MutableStateFlow<CardioRunState?>(null)
     val state: StateFlow<CardioRunState?> = _state.asStateFlow()
@@ -76,6 +100,9 @@ class CardioRunController @Inject constructor(
     private var plan: RunPlan? = null
     private var sessionLocalId: String? = null
     private var runJob: Job? = null
+
+    /** The single delayed "left paused too long" exit. Armed by [pause], disarmed by everything else. */
+    private var pausedIdleJob: Job? = null
 
     /** The local id of the session this run is logging to, for notification deep-links. */
     val activeSessionId: String? get() = sessionLocalId
@@ -125,35 +152,51 @@ class CardioRunController @Inject constructor(
         )
     }
 
+    @Synchronized
     private fun startRun(plan: RunPlan, resume: CardioSessionEntity?) {
         runJob?.cancel()
+        pausedIdleJob?.cancel()
         this.plan = plan
         sessionLocalId = resume?.id
         val startElapsed = resume?.totalElapsedSec ?: 0
         accumulatedMs = startElapsed * 1000L
-        segmentStartRealtime = SystemClock.elapsedRealtime()
+        segmentStartRealtime = time.elapsedRealtimeMs()
         paused = false
         complete = false
         lastCuedIndex = -1
         lastPersistSec = startElapsed
         emit(elapsedSec = startElapsed)
         initTts()
+        acquireWakeLock(plan, startElapsed)
         CardioRunService.start(context)
+        launchTickLoop(plan)
+    }
+
+    /**
+     * (Re)launch the tick loop — on start and on every [resume]. The session row is created on the
+     * first launch only (a resumed or restored run already has its id).
+     */
+    private fun launchTickLoop(plan: RunPlan) {
         runJob = scope.launch {
             if (sessionLocalId == null) {
-                val entity = try {
-                    repository.startSession(plan.programId, plan.week, plan.day)
-                } catch (_: Exception) {
-                    null
+                // NonCancellable: a Pause landing mid-create (it awaits the server) must not lose
+                // the new row's id, or the run would have nothing to persist to.
+                val entity = withContext(NonCancellable) {
+                    try {
+                        repository.startSession(plan.programId, plan.week, plan.day)
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
                 sessionLocalId = entity?.id
+                if (paused && !complete) persistNow()
             }
             tickLoop()
         }
     }
 
     private suspend fun tickLoop() {
-        while (scope.isActive && !complete) {
+        while (currentCoroutineContext().isActive && !complete && !paused) {
             val elapsed = currentElapsedSec()
             emit(elapsed)
             maybeCue()
@@ -163,27 +206,73 @@ class CardioRunController @Inject constructor(
                 finalizeComplete(elapsed)
                 break
             }
+            if (p != null && p.openEnded &&
+                time.elapsedRealtimeMs() - segmentStartRealtime >= OPEN_ENDED_MAX_SEGMENT_MS
+            ) {
+                // A forgotten Free Run: stop burning the CPU, but keep the run (persisted, resumable)
+                // rather than letting the wake-lock time out underneath a "running" clock.
+                pause()
+                break
+            }
             delay(TICK_MS)
         }
     }
 
+    /**
+     * Hold the CPU for as long as this plan can legitimately keep running from [elapsedSec]: the
+     * remaining plan time for a guided/interval run, one capped stretch for an open-ended one —
+     * plus a margin so the loop (which completes or auto-pauses the run) always beats the timeout.
+     */
+    private fun acquireWakeLock(p: RunPlan, elapsedSec: Int) {
+        wakeLock.acquire(wakeLockTimeoutMs(p.openEnded, totalDurationSec(p), elapsedSec))
+    }
+
     // -- controls -----------------------------------------------------------
 
+    /**
+     * Pause: freeze the clock, then stop the loop and drop the wake-lock so a paused run costs
+     * nothing with the phone locked. The foreground service stays up; [PAUSED_IDLE_EXIT_MS] later a
+     * still-paused run exits itself. That timer is one delayed coroutine — it holds no wake-lock, so
+     * in doze it simply fires late, which is fine (a suspended device isn't spending anything on us).
+     */
+    @Synchronized
     fun pause() {
-        if (paused || complete) return
+        if (paused || complete || _state.value == null) return
         accumulatedMs = rawElapsedMs()
         paused = true
+        runJob?.cancel()
+        wakeLock.release()
         emit(currentElapsedSec())
         persistNow()
+        pausedIdleJob?.cancel()
+        pausedIdleJob = scope.launch {
+            delay(PAUSED_IDLE_EXIT_MS)
+            exitIfStillPaused()
+        }
     }
 
+    @Synchronized
     fun resume() {
-        if (!paused || complete) return
-        segmentStartRealtime = SystemClock.elapsedRealtime()
+        if (!paused || complete || _state.value == null) return
+        val p = plan ?: return
+        pausedIdleJob?.cancel()
+        segmentStartRealtime = time.elapsedRealtimeMs()
         paused = false
-        emit(currentElapsedSec())
+        val elapsed = currentElapsedSec()
+        emit(elapsed)
+        acquireWakeLock(p, elapsed)
+        // Idempotent insurance: the service normally outlives a pause; this covers it having died.
+        CardioRunService.start(context)
+        launchTickLoop(p)
     }
 
+    @Synchronized
+    private fun exitIfStillPaused() {
+        // A resume that raced the delay wins (its cancel may land after this coroutine woke).
+        if (paused && !complete && _state.value != null) pauseAndExit()
+    }
+
+    @Synchronized
     fun skipWarmup() {
         val p = plan ?: return
         if (p.openEnded) return
@@ -196,6 +285,7 @@ class CardioRunController @Inject constructor(
     }
 
     /** Leave the run screen without finishing — the session stays in progress and is resumable. */
+    @Synchronized
     fun pauseAndExit() {
         if (!complete) {
             if (!paused) {
@@ -205,11 +295,15 @@ class CardioRunController @Inject constructor(
             persistNow()
         }
         runJob?.cancel()
+        pausedIdleJob?.cancel()
+        wakeLock.release()
         CardioRunService.stop(context)
         _state.value = null
+        releaseTts()
     }
 
     /** Finish the run now (counts as completed). */
+    @Synchronized
     fun finish() {
         val elapsed = currentElapsedSec()
         finalizeComplete(elapsed)
@@ -220,11 +314,14 @@ class CardioRunController @Inject constructor(
         _state.value = null
     }
 
+    @Synchronized
     private fun finalizeComplete(elapsedSec: Int) {
         complete = true
         paused = true
         accumulatedMs = elapsedSec * 1000L
         runJob?.cancel()
+        pausedIdleJob?.cancel()
+        wakeLock.release()
         cue("Workout complete. Great job.")
         val id = sessionLocalId
         scope.launch {
@@ -246,13 +343,13 @@ class CardioRunController @Inject constructor(
     // -- timing helpers -----------------------------------------------------
 
     private fun rawElapsedMs(): Long =
-        accumulatedMs + if (!paused) (SystemClock.elapsedRealtime() - segmentStartRealtime) else 0L
+        accumulatedMs + if (!paused) (time.elapsedRealtimeMs() - segmentStartRealtime) else 0L
 
     private fun currentElapsedSec(): Int = (rawElapsedMs() / 1000L).toInt()
 
     private fun setElapsed(sec: Int) {
         accumulatedMs = sec * 1000L
-        segmentStartRealtime = SystemClock.elapsedRealtime()
+        segmentStartRealtime = time.elapsedRealtimeMs()
     }
 
     private fun totalDurationSec(p: RunPlan): Int =
@@ -418,5 +515,26 @@ class CardioRunController @Inject constructor(
     companion object {
         private const val TICK_MS = 200L
         private const val PERSIST_EVERY_SEC = 15
+        private const val WAKE_LOCK_TAG = "spotter:cardio_run"
+
+        /** Slack on top of the expected run time so the loop always ends the run before the lock does. */
+        const val WAKELOCK_MARGIN_MS = 5L * 60 * 1000
+
+        /**
+         * The longest single un-paused stretch of an open-ended run. Nothing else ever ends a Free
+         * Run, so a forgotten one is auto-paused here (resuming starts a fresh stretch).
+         */
+        const val OPEN_ENDED_MAX_SEGMENT_MS = 3L * 60 * 60 * 1000
+
+        /** A run left paused this long exits itself (persisted + resumable), stopping the service. */
+        const val PAUSED_IDLE_EXIT_MS = 30L * 60 * 1000
+
+        /** Wake-lock leak guard for a run at [elapsedSec]. Pure for testing. */
+        fun wakeLockTimeoutMs(openEnded: Boolean, totalDurationSec: Int, elapsedSec: Int): Long =
+            if (openEnded) {
+                OPEN_ENDED_MAX_SEGMENT_MS + WAKELOCK_MARGIN_MS
+            } else {
+                (totalDurationSec - elapsedSec).coerceAtLeast(0) * 1000L + WAKELOCK_MARGIN_MS
+            }
     }
 }
