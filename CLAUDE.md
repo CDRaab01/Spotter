@@ -1170,3 +1170,40 @@ related Barbell Row ↔ Dumbbell Row ↔ Seated Cable Row anywhere. Server **400
   lift's own recent history — the in-workout set edit and the engine's stall→deload chip are the
   escape hatches; if that bites, the fix is a per-routine opt-out flag, not a ratio tweak.
 
+
+## Battery round — cardio run, keep-screen-on, widget ticks (2026-09-19)
+
+Android-only. `:app:testDebugUnitTest` (478, incl. new `CardioRunControllerTest`, 11) +
+`:app:assembleDebug` green. **On-device verification still owed** (wake-lock behaviour can't be
+proven on the JVM): `adb shell dumpsys power | grep spotter` while paused must show no
+`spotter:cardio_run`.
+
+- **[HIGH] A paused cardio run pinned the CPU.** `pause()` only set a flag: the 200 ms tick loop
+  kept spinning and `CardioRunService` held `spotter:cardio_run` from `onStartCommand` to
+  `onDestroy` with a flat 6 h backstop — Pause + lock the phone = CPU awake for up to 6 h; a
+  forgotten open-ended Free Run did the same un-paused. The controller now **owns the wake-lock**
+  (the `WorkoutTimerController` pattern; the service is notification-only): pause cancels the loop
+  and releases the lock, resume re-acquires and relaunches. Lock timeout = remaining plan time +
+  5 min; an open-ended stretch is capped at 3 h and then **auto-paused**; a run left paused 30 min
+  exits itself via `pauseAndExit()` (persisted, resumable from the resume strip — the same path as
+  restore-after-process-death). `pauseAndExit()` now releases TTS too (a bound engine leaked).
+  This supersedes Sprint 8's "cardio's timing internals were intentionally left untouched" — the
+  timing math is still untouched (`TICK_MS` stays 200), the ownership moved. Details:
+  ARCHITECTURE.md "Timers → Battery contract".
+- **[HIGH] `KeepScreenOn` was unconditional** on the run screen — now on only while a run exists
+  and is neither paused nor complete.
+- **[MED] Background cold start could crash the process.** `ActiveWorkoutNotifier` calls
+  `startForegroundService` from `Application.onCreate`; a widget tick or nudge worker starting the
+  process with a workout in progress threw `ForegroundServiceStartNotAllowedException` (Android
+  12+) inside an unhandled coroutine. Both services' `start()` are now non-throwing, and a refused
+  workout-notification start is retried from `MainActivity.onStart`.
+- **[MED] Widget `updatePeriodMillis` 30 min → 6 h** (48 → 4 device wakes/day). Data changes
+  already redraw via `WidgetUpdater`; the tick only serves the midnight "today" rollover. The
+  nudge workers were **not** used for that — they're cancelled whenever Reminders is off (the
+  default) — and `0` would leave yesterday's workout showing indefinitely. `onUpdate` now
+  recomputes the snapshot instead of re-rendering the stored one. Worst case: the widget shows
+  yesterday's "today" for up to 6 h after midnight. If that matters, a once-daily WorkManager
+  job just after midnight is the next step (non-waking, 1/day).
+- **Accepted:** the 30-min paused-exit is a plain `delay` (no alarm, no wake-lock), so in deep
+  doze it fires late — a suspended device isn't spending anything on the run, so that's fine. If
+  it fires while the run screen is open, the screen shows its existing "No active run" state.

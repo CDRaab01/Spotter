@@ -25,6 +25,7 @@ import com.spotter.ui.navigation.Screen
 import com.spotter.ui.theme.LocalDistanceUnit
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
+import com.spotter.util.ActiveWorkoutNotifier
 import com.spotter.util.AppPreferences
 import com.spotter.util.DarkModePreference
 import com.spotter.util.DeepLinkBus
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var tokenStore: TokenStore
     @Inject lateinit var deepLinkBus: DeepLinkBus
     @Inject lateinit var shortcutBus: ShortcutBus
+    @Inject lateinit var activeWorkoutNotifier: ActiveWorkoutNotifier
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,6 +106,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Warm-start: the foreground service launches us SINGLE_TOP, so taps arrive here. */
+    override fun onStart() {
+        super.onStart()
+        // A background cold start can't raise the workout notification; now we're allowed to.
+        activeWorkoutNotifier.onAppForegrounded()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

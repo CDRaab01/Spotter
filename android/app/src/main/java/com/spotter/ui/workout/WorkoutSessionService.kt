@@ -142,12 +142,24 @@ class WorkoutSessionService : Service() {
         const val CHANNEL_ID = "spotter_workout"
         const val NOTIFICATION_ID = 1002
 
-        fun start(context: Context) {
+        /**
+         * Never throws; returns whether the start was accepted. On Android 12+ a start attempted
+         * while the app is in the background raises `ForegroundServiceStartNotAllowedException` —
+         * and [com.spotter.util.ActiveWorkoutNotifier] calls this from `Application.onCreate`, which
+         * also runs for background cold starts (widget update, nudge workers).
+         */
+        fun start(context: Context): Boolean {
             val intent = Intent(context, WorkoutSessionService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            return try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                true
+            } catch (e: Exception) {
+                android.util.Log.w("WorkoutSessionService", "Could not start the workout foreground service", e)
+                false
             }
         }
 

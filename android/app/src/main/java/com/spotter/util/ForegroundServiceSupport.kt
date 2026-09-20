@@ -63,27 +63,36 @@ object ForegroundServiceSupport {
 /**
  * A non-reference-counted partial wake-lock with safe acquire/release. Keeps the CPU running so a
  * timer's loop keeps firing with the screen off; a foreground service is what keeps the process
- * alive. [backstopMs] is only a leak guard.
+ * alive. [backstopMs] is only a leak guard — the default timeout; an owner that knows how long its
+ * timer can legitimately run passes a tighter one to [acquire]. Open so tests can fake it.
  */
-class WakeLockHolder(
+open class WakeLockHolder(
     private val context: Context,
     private val tag: String,
     private val backstopMs: Long,
 ) {
     private var wakeLock: PowerManager.WakeLock? = null
 
+    /**
+     * Acquire with a [timeoutMs] leak guard. Re-acquiring while held re-arms the timeout (the lock
+     * is not reference-counted, so this never double-holds).
+     */
     @Synchronized
-    fun acquire() {
-        if (wakeLock?.isHeld == true) return
+    open fun acquire(timeoutMs: Long = backstopMs) {
+        val held = wakeLock
+        if (held?.isHeld == true) {
+            held.acquire(timeoutMs)
+            return
+        }
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag).apply {
             setReferenceCounted(false)
-            acquire(backstopMs)
+            acquire(timeoutMs)
         }
     }
 
     @Synchronized
-    fun release() {
+    open fun release() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
     }

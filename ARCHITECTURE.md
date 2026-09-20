@@ -195,6 +195,24 @@ and was the original gold standard. One foreground service per feature (`Workout
 `CardioRunService`) sharing `util/ForegroundServiceSupport.kt`. Do not reintroduce `delay(1000)`
 counters.
 
+**Battery contract (2026-09-19) — a timer holds the CPU only while it is actually counting.**
+Both controllers own their wake-lock; the services hold none and are only the notification.
+`CardioRunController` runs its tick loop and holds `spotter:cardio_run` **only while un-paused**:
+`pause()` cancels the loop and releases the lock (the foreground service deliberately stays up so
+the run can be returned to), `resume()` re-acquires and relaunches. The lock's timeout is derived
+from the plan (remaining duration + `WAKELOCK_MARGIN_MS`), not a flat backstop; an open-ended Free
+Run has no natural end, so one un-paused stretch is capped at `OPEN_ENDED_MAX_SEGMENT_MS` (3 h) and
+then **auto-paused** — never left "running" with an expired lock. A run left paused for
+`PAUSED_IDLE_EXIT_MS` (30 min) exits itself via `pauseAndExit()` (one delayed coroutine, no
+wake-lock, so it may fire late in doze — fine). Every exit leaves the Room session `in_progress`
+with its elapsed persisted, so the resume strip (`ActiveCardioStore` → `AppShellViewModel
+.resumeCardio`) re-arms the controller exactly as it does after process death. The run screen's
+`keepScreenOn` follows the same rule (on only while running). Foreground-service starts are
+**non-throwing** (`*.Service.start`): `ActiveWorkoutNotifier` fires from `Application.onCreate`,
+which also runs for background cold starts (widget tick, nudge workers) where Android 12+ throws
+`ForegroundServiceStartNotAllowedException`; a refused start is retried from
+`MainActivity.onStart`.
+
 ### Feature packages worth knowing
 
 - `ui/workout/` — the core product surface (set logging, rest panel, resume strip via
@@ -264,7 +282,10 @@ counters.
 - `widget/` — a home-screen **Glance** app widget (`SpotterWidget` + `WidgetContent`,
   `SpotterWidgetReceiver` in the manifest) showing today's workout / set progress; it reads a
   `data/local/WidgetSnapshotStore` snapshot (updated via `WidgetUpdater`) so it renders without a
-  network round-trip.
+  network round-trip. Data changes redraw it through `WidgetUpdater`'s Room observers, so the
+  system tick (`updatePeriodMillis`, a device wake + possible cold start) exists only for the
+  midnight "today" rollover: **6 h, not 30 min** — don't shorten it; the receiver's `onUpdate`
+  recomputes the snapshot so the tick works even when the process was already alive.
 - `util/ShortcutNav.kt` + `ui/navigation/ShortcutViewModel.kt` — static launcher shortcuts
   (`res/xml/shortcuts.xml`: Start workout / Log weight / Coach). Each fires a
   `spotter://shortcut/<target>` VIEW intent parked on a `ShortcutBus`; because the app gates on
