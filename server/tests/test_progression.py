@@ -9,6 +9,7 @@ import datetime
 
 import pytest
 
+from app.loading import DEFAULT_INVENTORY_LB, Inventory, Plate, ladder_for
 from app.progression import (
     ADD_REPS,
     ADD_WEIGHT,
@@ -145,3 +146,66 @@ def test_is_pr_false_when_history_higher():
     r = suggest_progression(5, [_sr(5, 100.0)], [_hist(-3, [_sr(3, 120.0)])], "chest", False)
     # e1RM(120,3)=132 > e1RM(100,5)=116.7 → not a PR
     assert r.is_pr is False
+
+
+# ── loadable jumps (app/loading.py ladders) ──────────────────────────────────
+# The reported bug: "+2 lb" suggestions. The engine's +2.5 upper-body step is 1.25 lb a side on a
+# barbell. With the user's equipment ladder every suggested load is one they can actually make.
+
+BENCH = ladder_for("barbell", "Bench Press", DEFAULT_INVENTORY_LB)
+_THREE_AT_8 = [_sr(8, 115.0), _sr(8, 115.0), _sr(8, 115.0)]
+
+
+def test_barbell_increase_is_a_plate_on_each_side():
+    r = suggest_progression(8, _THREE_AT_8, [], "chest", False, ladder=BENCH)
+    assert r.action == ADD_WEIGHT
+    assert r.suggested_weight == 120.0  # not 117.5
+    assert "add 5 lb (2.5 lb per side)" in r.reason
+
+
+def test_lower_body_step_already_loadable_is_unchanged():
+    squat = ladder_for("barbell", "Barbell Back Squat", DEFAULT_INVENTORY_LB)
+    sets = [_sr(5, 135.0)] * 3
+    r = suggest_progression(5, sets, [], "legs", False, ladder=squat)
+    assert r.suggested_weight == 140.0
+
+
+def test_dumbbells_move_to_the_next_pair():
+    inv = Inventory(unit="lb", bars=(), plates=(), dumbbells=(20.0, 25.0, 35.0), stack_step=None)
+    curl = ladder_for("dumbbell", "Dumbbell Curl", inv)
+    r = suggest_progression(10, [_sr(10, 25.0)] * 3, [], "biceps", False, ladder=curl)
+    assert r.action == ADD_WEIGHT
+    assert r.suggested_weight == 35.0
+    assert "move up to the 35 lb dumbbells" in r.reason
+
+
+def test_top_of_the_equipment_holds_and_adds_reps():
+    inv = Inventory(unit="lb", bars=(45.0,), plates=(Plate(25.0, 1),), dumbbells=(), stack_step=None)
+    ladder = ladder_for("barbell", "Bench Press", inv)  # loads: 45, 95
+    r = suggest_progression(8, [_sr(8, 95.0)] * 3, [], "chest", False, ladder=ladder)
+    assert r.action == HOLD
+    assert r.suggested_weight == 95.0
+    assert "heaviest your equipment loads" in r.reason
+
+
+def test_deload_lands_on_a_loadable_weight():
+    sets = [_sr(5, 115.0), _sr(5, 115.0), _sr(2, 115.0, completed=False)]
+    history = [_hist(-3, sets), _hist(-6, sets)]
+    r = suggest_progression(5, sets, history, "chest", False, ladder=BENCH)
+    assert r.action == DELOAD
+    assert r.suggested_weight == 105.0  # 115 × 0.9 = 103.5 → nearest loadable below 115
+    assert "deload to 105 lb" in r.reason
+
+
+def test_deload_at_the_lightest_load_holds():
+    sets = [_sr(5, 15.0), _sr(5, 15.0), _sr(2, 15.0, completed=False)]
+    history = [_hist(-3, sets), _hist(-6, sets)]
+    r = suggest_progression(5, sets, history, "chest", False, ladder=BENCH)
+    assert r.action == HOLD
+    assert r.suggested_weight == 15.0
+    assert "lightest load" in r.reason
+
+
+def test_without_a_ladder_the_legacy_step_stands():
+    r = suggest_progression(8, _THREE_AT_8, [], "chest", False)
+    assert r.suggested_weight == 117.5

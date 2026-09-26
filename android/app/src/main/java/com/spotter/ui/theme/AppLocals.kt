@@ -7,8 +7,18 @@ import com.spotter.util.DistanceUnit
 val LocalWeightUnit = compositionLocalOf { WeightUnit.LBS }
 val LocalDistanceUnit = compositionLocalOf { DistanceUnit.MI }
 
+/**
+ * "117.5 lb" / "61.2 kg": rounded to one decimal, trailing ".0" dropped. It used to *truncate*
+ * (`toInt()`), so a suggested 117.5 read "117 lb" — a "+2 lb" jump nobody could load.
+ */
 fun WeightUnit.formatWeight(lbs: Double): String =
-    if (this == WeightUnit.KG) "${(lbs * 0.453592).toInt()} kg" else "${lbs.toInt()} lb"
+    "${formatLoadNumber(toDisplay(lbs))} ${if (this == WeightUnit.KG) "kg" else "lb"}"
+
+/** One decimal, rounded half-up, without a trailing ".0". */
+internal fun formatLoadNumber(value: Double): String {
+    val rounded = Math.round(value * 10.0) / 10.0
+    return if (rounded % 1.0 == 0.0) rounded.toLong().toString() else rounded.toString()
+}
 
 fun WeightUnit.formatWeightNullable(lbs: Double?): String =
     if (lbs == null) "BW" else formatWeight(lbs)

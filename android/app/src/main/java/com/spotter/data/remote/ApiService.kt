@@ -10,6 +10,8 @@ import com.spotter.data.model.CardioSessionCreate
 import com.spotter.data.model.CardioSessionOut
 import com.spotter.data.model.CardioSessionUpdate
 import com.spotter.data.model.ChatRequest
+import com.spotter.data.model.EquipmentInventory
+import com.spotter.data.model.EquipmentOut
 import com.spotter.data.model.ChatResponse
 import com.spotter.data.model.DebriefOut
 import com.spotter.data.model.ExerciseOut
@@ -192,6 +194,18 @@ interface ApiService {
     /** Partial profile write: omitted key = unchanged, explicit empty string = cleared. */
     @PATCH("users/me/profile")
     suspend fun updateProfile(@Body req: ProfileUpdate): ProfileOut
+
+    /** The weights the user can load; `configured = false` → the standard-gym default. */
+    @GET("users/me/equipment")
+    suspend fun getEquipment(): EquipmentOut
+
+    /** Replaces the whole equipment inventory (it is always edited as one form). */
+    @PUT("users/me/equipment")
+    suspend fun putEquipment(@Body inventory: EquipmentInventory): EquipmentOut
+
+    /** Forgets the saved inventory; returns the standard-gym default it falls back to. */
+    @DELETE("users/me/equipment")
+    suspend fun resetEquipment(): EquipmentOut
 
     /** Wipes all of the current user's server data; the account (login) is kept. */
     @POST("users/reset")

@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, String, Text
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,6 +27,11 @@ class User(Base):
     age_group: Mapped[str | None] = mapped_column(String(32), nullable=True)
     limitations: Mapped[str | None] = mapped_column(Text, nullable=True)
     profile_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # The weights the user can actually load (migration 0017) — bars, plate pairs, dumbbells,
+    # stack step, in the inventory's own unit. NULL = never set; the server then assumes a
+    # standard commercial gym (app/loading.py). Shape: app/schemas/equipment.py.
+    equipment_inventory: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     routines = relationship("WorkoutRoutine", back_populates="user", lazy="raise")
     sessions = relationship("WorkoutSession", back_populates="user", lazy="raise")

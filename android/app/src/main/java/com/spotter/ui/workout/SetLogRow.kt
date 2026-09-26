@@ -95,6 +95,7 @@ fun SetLogRow(
     onOpenTypePicker: () -> Unit = {},
     trackRpe: Boolean = false,
     onRpeCommit: (Double?) -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
     val weightUnit = LocalWeightUnit.current
     val haptics = LocalHapticFeedback.current
@@ -130,7 +131,7 @@ fun SetLogRow(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Column {
+    Column(modifier) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

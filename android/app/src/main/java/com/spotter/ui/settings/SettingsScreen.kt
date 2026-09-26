@@ -62,6 +62,7 @@ fun SettingsScreen(
     val healthConnectEnabled by viewModel.healthConnectEnabled.collectAsState()
     val profileDraft by viewModel.profileDraft.collectAsState()
     val profileSaving by viewModel.profileSaving.collectAsState()
+    val equipmentSummary by viewModel.equipmentSummary.collectAsState()
     val context = LocalContext.current
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -162,6 +163,7 @@ fun SettingsScreen(
         darkMode = darkMode,
         weightUnit = weightUnit,
         distanceUnit = distanceUnit,
+        equipmentSummary = equipmentSummary,
         trackRpe = trackRpe,
         autoStartRest = autoStartRest,
         cadenceDays = cadenceDays,
@@ -181,6 +183,7 @@ fun SettingsScreen(
     )
 
     val actions = SettingsActions(
+        onOpenEquipment = { navController.navigate(Screen.Equipment.route) },
         onSetTrackRpe = viewModel::setTrackRpe,
         onSetAutoStartRest = viewModel::setAutoStartRest,
         onSetCadenceDays = viewModel::setWorkoutCadenceDays,

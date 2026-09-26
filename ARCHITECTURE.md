@@ -28,7 +28,10 @@ logic, one service per domain) → `app/models/` (SQLAlchemy 2.0 async) with `ap
 Guardrails), `progression.py` (pure progressive-overload engine — double progression / deload /
 e1RM, table-tested, no I/O; feeds `session_service.get_prior_bests`), `movement_families.py`
 (the curated movement-family table + `derive_weight` — pure, keyed by catalog exercise name;
-feeds `session_service.create_session`'s starting-load seed, invariant #8), `config.py`
+feeds `session_service.create_session`'s starting-load seed, invariant #8), `loading.py` (the
+equipment model — turns the user's inventory + an exercise's catalog equipment into a `Ladder` of
+every load that implement can make; pure, cached; feeds progression, seeding and deloads,
+invariant #9), `config.py`
 (pydantic-settings), `database.py` (asyncpg engine). Note: despite older notes, there is **no
 `DB_NULLPOOL` switch in `database.py`** — the env var is a no-op; what actually prevents the
 cross-event-loop asyncpg errors under pytest is conftest's session-scoped event loop.
@@ -38,6 +41,7 @@ cross-event-loop asyncpg errors under pytest is conftest's session-scoped event 
 | Domain | Router | Service | Models |
 |---|---|---|---|
 | Auth/users | `auth.py`, `users.py`, `suite_auth.py` | `auth_service`, `suite_auth` | `User` |
+| Equipment inventory | `users.py` (`GET/PUT/DELETE /users/me/equipment`) | `equipment_service` (+ `loading.py`) | `User.equipment_inventory` (JSON, migration `0017`; NULL = standard-gym default) |
 | Routines (the user-facing "plans") | `routines.py` | `routine_service` | `WorkoutRoutine`, `RoutineExercise` |
 | Programs (multi-day) | `programs.py` | `program_service` | `WorkoutProgram`, `ProgramDay` |
 | Sessions + sets | `sessions.py` | `session_service` (+ `progression.py` for `/prior-bests`) | `WorkoutSession`, `SetLog` (+ `rpe`, `set_type`) |
@@ -74,7 +78,10 @@ All prompt + guardrail logic is deliberately confined here so it can be audited 
 - `context_service.py` — trusted context from the DB: the user's persisted **training profile**
   (equipment/experience/goal/age group/limitations, from `users`) then training history, plus a
   live-session summary when `current_session_id` is given. Client-supplied profile text is
-  appended as stated preferences only — it never overrides DB-derived facts.
+  appended as stated preferences only — it never overrides DB-derived facts. A **saved** equipment
+  inventory adds a `Loadable weights` line (bars, plate pairs and the resulting barbell step,
+  dumbbells, stack step); the standard-gym default is never claimed to the coach, since it's the
+  server's assumption, not something the athlete said.
   **Equipment belongs in the trusted block, not the client string.** It used to live only in
   Android DataStore, written once by onboarding (which most users never see, since login marks
   onboarding done) and forwarded as an optional `user_context` string — so the coach genuinely
@@ -117,7 +124,7 @@ truncated to 255 on accept.
 
 ### Migrations & tests
 
-Alembic (12 revisions), auto-applied on container boot (`docker-entrypoint.sh`). 27 pytest files
+Alembic (17 revisions), auto-applied on container boot (`docker-entrypoint.sh`). 27 pytest files
 (~220 tests) cover routers, the guardrail/extraction layer (LLM mocked), bounds, and cross-app
 auth. Local run: throwaway DB + `DATABASE_URL` on **127.0.0.1** + `DB_NULLPOOL=1` (see CLAUDE.md
 "Local pytest recipe"). (The old `CardioScheduleTest` timezone flake was fixed 2026-08-10 —
@@ -155,6 +162,11 @@ callback registered in `SpotterApp.onCreate`) drains the pending work on reconne
   round would pull the stale server copy straight over an edit made offline), and `save()`
   returns whether the server actually acknowledged, so the UI can say "saved on this device,
   will sync later" rather than falsely claiming a sync.
+- **Equipment inventory** (`EquipmentRepository`): same shape as the profile — server row is the
+  source of truth, `AppPreferences.equipmentJson` the mirror, refresh drains before pulling. The
+  queue remembers *which* write is pending (`put` edit vs `delete` reset). Pulled by the Home sync
+  round, the reconnect observer and Settings. Unset, the phone computes with the standard gym **in
+  the display unit** (`EquipmentRepository.effectiveInventory`) — a kg user isn't shown lb plates.
 - **Exercise catalog mirror** (`ExerciseEntity`/`ExerciseDao`, Room v13): the seeded server
   catalog is mirrored locally — seeded opportunistically by the Home sync round and the reconnect
   observer, and refreshed as a side effect of every online read (`ExerciseRepository`). Offline it
@@ -205,6 +217,15 @@ counters.
   Rest supports ±15s, an auto-start toggle, and per-exercise overrides read from the routine
   mirror (`SessionRepository.getRestSeconds`) — an explicit prescription is used verbatim, with
   no failure bump. Exercises can be added/removed mid-session by hand, not just by the coach.
+  **The list follows you** (`WorkoutAutoScroll`, pure + tested): opening a workout jumps to the
+  current set (first incomplete, superset blocks worked round-robin), finishing an exercise glides
+  to the next, and the next set is nudged into view past the rest ring (a `BringIntoViewRequester`
+  on that row, after a short settle delay). Un-ticking an earlier set never scrolls. The last
+  position acted on is `rememberSaveable`, so rotation or returning from the coach doesn't re-jump.
+  The **plate calculator** and **warm-up ramp** run on the user's inventory (`util/Loading.kt`, the
+  client mirror of `app/loading.py`): the calculator searches the owned plate counts (not a greedy
+  fill from unlimited plates) and handles one-sided T-bar loading; Plates is hidden for dumbbell
+  and stack lifts.
 - `ui/ai/` — coach chat + four suggestion cards (routine / program / live adjustment / training
   profile update). **A card is an attribute of the assistant turn that produced it**, persisted
   with that row (`chat_messages.suggestionsJson` + `suggestionSessionId`, Room v15) — the messages
@@ -276,7 +297,10 @@ counters.
   none of them caught the text-under-the-toggle or clipped-stepper defects that shipped. Rows come
   from Pulse (`PulseSwitchRow`/`PulseSettingRow`/`PulseTimeRow`/`PulseStepperRow`); the in-tree
   copies of `ProfileHeader`/`SettingsSection` are gone. Nine groups, tap-only sections first and the
-  one long form (Training profile) below them.
+  one long form (Training profile) below them. **Workout → My equipment** opens `EquipmentScreen`
+  (same stateless `EquipmentContent` split): unit, bars, plate *pairs* per size, per-hand dumbbells,
+  machine/cable stack step — edited as a draft and saved as one PUT (the endpoint is rate-limited,
+  so no per-tap autosave), with a discard guard on back.
 - `util/nudge/` — the opt-in local reminder system, three kinds behind one Settings toggle
   (`WorkoutNudgeScheduler` enqueues two daily WorkManager workers): the morning
   `WorkoutNudgeWorker` (~8:00 "workout day today"), and the evening `EveningNudgeWorker`
@@ -343,6 +367,18 @@ the manifest is load-bearing (see CLAUDE.md suite section).
    write-back. Completed-only evidence is load-bearing: the seeds are written as uncompleted
    rows, and counting them would let a derived load feed itself. Machine/cable members are
    `source=False` — they can be seeded, never seed a free-weight sibling.
+9. **Every load the server suggests or seeds is one the user's equipment can make.**
+   `loading.ladder_for(equipment, name, inventory)` models how the lift loads — a barbell takes a
+   plate on *each* side (so the smallest jump is two of the smallest plate; every listed bar
+   counts), `T-Bar Row` loads one sleeve, dumbbells are the listed weights, machines/cables move
+   by the stack step. Progression's add-weight is the lightest loadable weight at least one step
+   up (past the top of the equipment it holds and pushes reps); the stall deload and the
+   deload-week seed land on the nearest load strictly below; seeds (prescription and family) floor
+   to a loadable weight but are never rounded *up* past what was prescribed. No ladder
+   (bodyweight, unknown equipment, an implement the user owns none of) = the legacy arithmetic.
+   Unset inventory = a standard commercial gym (2.5 lb smallest plate), so the fix applies before
+   anyone configures anything. The inventory keeps its own unit (plates are stamped lb or kg);
+   ladders are converted to canonical pounds.
 
 ### Periodization (as built)
 
@@ -362,6 +398,10 @@ just a richer suggestion shape.
 - **Schema change**: Alembic revision (never hand-edit); if mirrored, Room entity + destructive
   rebuild is acceptable.
 - **Prompt/guardrail change**: `services/ai/` only; add/extend a guardrail test with a mocked LLM.
+- **Equipment/loading rules**: `app/loading.py` and its client mirror `util/Loading.kt` must stay
+  in step (same defaults, same rounding) — `test_loading.py` and `LoadingTest.kt` pin the same
+  cases. A barbell-catalog lift that is really loaded from one end belongs in
+  `SINGLE_SIDED_NAMES` on both sides.
 - **New catalog exercise**: seed it by migration, then decide its `movement_families.FAMILIES`
   entry (family, ratio, `source`) or its deliberate exclusion — `test_movement_families.py`
   cross-checks the table against the seed lists, so a typo'd name fails at the moment it is made.

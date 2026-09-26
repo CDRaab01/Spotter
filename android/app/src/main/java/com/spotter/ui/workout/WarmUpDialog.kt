@@ -16,19 +16,22 @@ import design.pulse.ui.components.DataText
 import com.spotter.ui.theme.LocalWeightUnit
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
+import com.spotter.util.Ladder
 import com.spotter.util.warmupSets
 
 /**
  * Read-only helper showing ramp-up sets for a working weight. Does not mutate or
- * log any sets — it just tells the lifter how to warm up into the working load.
+ * log any sets — it just tells the lifter how to warm up into the working load. With the
+ * lift's [ladder] every ramp weight is one the user's equipment can actually make.
  */
 @Composable
 fun WarmUpDialog(
     workingWeightLbs: Double,
     onDismiss: () -> Unit,
+    ladder: Ladder? = null,
 ) {
     val weightUnit = LocalWeightUnit.current
-    val sets = warmupSets(workingWeightLbs)
+    val sets = warmupSets(workingWeightLbs, ladder = ladder)
 
     AlertDialog(
         onDismissRequest = onDismiss,

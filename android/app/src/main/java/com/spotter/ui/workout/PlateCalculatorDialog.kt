@@ -25,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,37 +34,34 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.spotter.util.WeightUnit
+import com.spotter.data.model.EquipmentInventory
+import com.spotter.ui.settings.EquipmentOptions
+import com.spotter.util.Loading
 
+/**
+ * How to load a target weight with the user's own bars and plates (Settings → My equipment),
+ * respecting how many of each they own — so it never answers with a plate they don't have or
+ * a third pair of 45s from a home gym with two. Weights are shown in the inventory's unit
+ * (plates are stamped in one). [singleSided] = T-bar/landmine: plates on one sleeve, no bar.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlateCalculatorDialog(
-    initialWeight: Float,
-    weightUnit: WeightUnit,
+    initialWeightLbs: Double,
+    inventory: EquipmentInventory,
     onDismiss: () -> Unit,
+    singleSided: Boolean = false,
 ) {
-    val isMetric = weightUnit == WeightUnit.KG
-    val unitLabel = if (isMetric) "kg" else "lb"
-
-    val barOptions = if (isMetric)
-        listOf("20 kg" to 20f, "15 kg" to 15f, "10 kg" to 10f)
-    else
-        listOf("45 lb" to 45f, "35 lb" to 35f, "15 lb" to 15f)
-
-    val plateOptions = if (isMetric)
-        listOf(20f, 15f, 10f, 5f, 2.5f, 1.25f)
-    else
-        listOf(45f, 35f, 25f, 10f, 5f, 2.5f)
-
+    val unit = inventory.unit
+    val isMetric = unit == "kg"
+    val initial = Loading.fromLb(initialWeightLbs, unit)
     var targetText by remember {
-        mutableStateOf(if (initialWeight > 0f) "%.0f".format(initialWeight) else "")
+        mutableStateOf(if (initial > 0.0) EquipmentOptions.num(initial) else "")
     }
-    var selectedBarIdx by remember { mutableIntStateOf(0) }
-
-    val barWeight = barOptions[selectedBarIdx].second
-    val total = targetText.toFloatOrNull() ?: 0f
-    val perSide = ((total - barWeight).coerceAtLeast(0f)) / 2f
-    val plates = plateSides(total, barWeight, plateOptions)
+    val target = targetText.toDoubleOrNull() ?: 0.0
+    val bars = inventory.bars.sortedDescending()
+    // Default to the heaviest bar that fits under the target (an EZ bar for a light curl).
+    var chosenBar by remember { mutableStateOf(bars.firstOrNull { it <= initial } ?: bars.lastOrNull()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -75,87 +71,82 @@ fun PlateCalculatorDialog(
                 OutlinedTextField(
                     value = targetText,
                     onValueChange = { raw ->
-                        // Allow digits and at most one decimal point
                         val filtered = raw.filter { c -> c.isDigit() || c == '.' }
-                        val dotCount = filtered.count { it == '.' }
-                        targetText = if (dotCount <= 1) filtered else targetText
+                        if (filtered.count { it == '.' } <= 1) targetText = filtered
                     },
-                    label = { Text("Target weight ($unitLabel)") },
+                    label = { Text("Target weight ($unit)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Text(
-                    "Bar weight",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    barOptions.forEachIndexed { idx, (label, _) ->
-                        FilterChip(
-                            selected = selectedBarIdx == idx,
-                            onClick = { selectedBarIdx = idx },
-                            label = { Text(label) },
-                        )
+                if (!singleSided) {
+                    Text(
+                        "Bar",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (bars.isEmpty()) {
+                        Muted("No bars in your equipment — add one in Settings → My equipment.")
+                    } else {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            bars.forEach { bar ->
+                                FilterChip(
+                                    selected = chosenBar == bar,
+                                    onClick = { chosenBar = bar },
+                                    label = { Text("${EquipmentOptions.num(bar)} $unit") },
+                                )
+                            }
+                        }
                     }
                 }
 
                 HorizontalDivider()
 
+                val bar = if (singleSided) null else chosenBar
+                val load = if (target > 0.0 && (singleSided || bar != null)) {
+                    Loading.plateLoad(target, bar, inventory.plates)
+                } else {
+                    null
+                }
                 when {
-                    total < 0.01f -> Text(
-                        "Enter a target weight above.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    total <= barWeight -> Text(
-                        "Weight is ≤ bar weight — no plates needed.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    target <= 0.0 -> Muted("Enter a target weight above.")
+                    !singleSided && bar == null -> Unit
+                    load == null -> Muted("That's lighter than the bar.")
                     else -> {
-                        val achievablePerSide = plates.fold(0f) { acc, (p, c) -> acc + p * c }
-                        val achievableTotal = barWeight + achievablePerSide * 2
-                        val residual = total - achievableTotal
+                        val short = target - load.total
                         Text(
-                            "Per side: ${"%.2f".format(perSide).trimEnd('0').trimEnd('.')} $unitLabel",
+                            if (load.plates.isEmpty()) "Just the bar."
+                            else if (singleSided) "On the sleeve:" else "Each side:",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                         )
-                        if (residual > 0.01f) {
+                        if (short > Loading.EPS) {
                             Text(
-                                "Nearest achievable: ${"%.1f".format(achievableTotal)} $unitLabel (${
-                                    "%.2f".format(residual).trimEnd('0').trimEnd('.')
-                                } $unitLabel short)",
+                                "Closest you can load: ${EquipmentOptions.num(load.total)} $unit " +
+                                    "(${EquipmentOptions.num(short)} $unit short)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            plates.forEach { (plate, count) ->
-                                repeat(count) {
-                                    PlateCircle(plate = plate, isMetric = isMetric)
+                        if (load.plates.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                load.plates.forEach { (plate, count) ->
+                                    repeat(count) { PlateCircle(plate = plate, isMetric = isMetric) }
                                 }
                             }
-                        }
-                        if (plates.isNotEmpty()) {
                             Spacer(Modifier.height(4.dp))
-                            plates.forEach { (plate, count) ->
-                                val plateLabel = if (plate % 1f < 0.01f)
-                                    "${plate.toLong()} $unitLabel"
-                                else "$plate $unitLabel"
-                                Text(
-                                    "× $count  $plateLabel",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            load.plates.forEach { (plate, count) ->
+                                Muted("× $count  ${EquipmentOptions.num(plate)} $unit")
                             }
                         }
                     }
@@ -169,7 +160,16 @@ fun PlateCalculatorDialog(
 }
 
 @Composable
-private fun PlateCircle(plate: Float, isMetric: Boolean) {
+private fun Muted(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun PlateCircle(plate: Double, isMetric: Boolean) {
     val info = plateInfo(plate, isMetric)
     Box(
         modifier = Modifier
@@ -190,32 +190,26 @@ private fun PlateCircle(plate: Float, isMetric: Boolean) {
 
 private data class PlateInfo(val bg: Color, val textColor: Color, val label: String)
 
-private fun plateInfo(plate: Float, isMetric: Boolean): PlateInfo =
-    if (isMetric) when (plate) {
-        20f   -> PlateInfo(Color(0xFFD32F2F), Color.White, "20")
-        15f   -> PlateInfo(Color(0xFF1976D2), Color.White, "15")
-        10f   -> PlateInfo(Color(0xFFF9A825), Color.Black, "10")
-        5f    -> PlateInfo(Color(0xFF388E3C), Color.White, "5")
-        2.5f  -> PlateInfo(Color.White,       Color.Black, "2.5")
-        1.25f -> PlateInfo(Color(0xFF424242), Color.White, "1.25")
-        else  -> PlateInfo(Color.Gray, Color.White, plate.toString())
+private fun plateInfo(plate: Double, isMetric: Boolean): PlateInfo {
+    val label = EquipmentOptions.num(plate)
+    return if (isMetric) when (plate) {
+        25.0 -> PlateInfo(Color(0xFFD32F2F), Color.White, label)
+        20.0 -> PlateInfo(Color(0xFF1976D2), Color.White, label)
+        15.0 -> PlateInfo(Color(0xFFF9A825), Color.Black, label)
+        10.0 -> PlateInfo(Color(0xFF388E3C), Color.White, label)
+        5.0 -> PlateInfo(Color.White, Color.Black, label)
+        2.5 -> PlateInfo(Color(0xFF212121), Color.White, label)
+        1.25 -> PlateInfo(Color(0xFF9E9E9E), Color.Black, label)
+        else -> PlateInfo(Color.Gray, Color.White, label)
     } else when (plate) {
-        45f  -> PlateInfo(Color(0xFFD32F2F), Color.White, "45")
-        35f  -> PlateInfo(Color(0xFF1976D2), Color.White, "35")
-        25f  -> PlateInfo(Color(0xFF212121), Color.White, "25")
-        10f  -> PlateInfo(Color(0xFF388E3C), Color.White, "10")
-        5f   -> PlateInfo(Color.White,       Color.Black, "5")
-        2.5f -> PlateInfo(Color(0xFFF9A825), Color.Black, "2.5")
-        else -> PlateInfo(Color.Gray, Color.White, plate.toString())
-    }
-
-private fun plateSides(total: Float, bar: Float, plates: List<Float>): List<Pair<Float, Int>> {
-    var remaining = (total - bar).coerceAtLeast(0f) / 2f
-    return plates.mapNotNull { plate ->
-        val count = (remaining / plate).toInt()
-        if (count > 0) {
-            remaining -= count * plate
-            plate to count
-        } else null
+        45.0 -> PlateInfo(Color(0xFFD32F2F), Color.White, label)
+        35.0 -> PlateInfo(Color(0xFF1976D2), Color.White, label)
+        25.0 -> PlateInfo(Color(0xFF212121), Color.White, label)
+        15.0 -> PlateInfo(Color(0xFFF9A825), Color.Black, label)
+        10.0 -> PlateInfo(Color(0xFF388E3C), Color.White, label)
+        5.0 -> PlateInfo(Color.White, Color.Black, label)
+        2.5 -> PlateInfo(Color(0xFFF9A825), Color.Black, label)
+        1.25 -> PlateInfo(Color(0xFF9E9E9E), Color.Black, label)
+        else -> PlateInfo(Color.Gray, Color.White, label)
     }
 }

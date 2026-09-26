@@ -39,6 +39,7 @@ import com.spotter.ui.plan.CreateRoutineScreen
 import com.spotter.ui.plan.RoutineDetailScreen
 import com.spotter.ui.progress.ProgressScreen
 import com.spotter.ui.recap.WeeklyRecapScreen
+import com.spotter.ui.settings.EquipmentScreen
 import com.spotter.ui.settings.SettingsScreen
 import com.spotter.ui.program.ProgramDetailScreen
 import com.spotter.ui.program.ProgramPresetDetailScreen
@@ -296,6 +297,9 @@ fun AppNavGraph(
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(navController = navController)
+            }
+            composable(Screen.Equipment.route) {
+                EquipmentScreen(navController = navController)
             }
             composable(Screen.Programs.route) {
                 ProgramScreen(navController = navController)

@@ -9,6 +9,8 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.SuggestedAdjustmentAction
+import com.spotter.data.model.EquipmentOut
+import com.spotter.data.repository.EquipmentRepository
 import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.ui.workout.WorkoutTimerController
@@ -16,6 +18,7 @@ import com.spotter.ui.workout.WorkoutViewModel
 import com.spotter.util.AppPreferences
 import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
+import com.spotter.util.WeightUnit
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +52,7 @@ class WorkoutViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var repository: SessionRepository
     private lateinit var exerciseRepository: ExerciseRepository
+    private lateinit var equipmentRepository: EquipmentRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var context: Context
     private lateinit var time: FakeTimeProvider
@@ -70,11 +74,14 @@ class WorkoutViewModelTest {
         Dispatchers.setMain(testDispatcher)
         repository = mock()
         exerciseRepository = mock()
+        equipmentRepository = mock()
         appPreferences = mock()
         context = mock()
         time = FakeTimeProvider(testDispatcher.scheduler)
         whenever(appPreferences.trackRpe).thenReturn(flowOf(false))
         whenever(appPreferences.autoStartRest).thenReturn(flowOf(true))
+        whenever(appPreferences.weightUnit).thenReturn(flowOf(WeightUnit.LBS))
+        whenever(equipmentRepository.equipment).thenReturn(flowOf(EquipmentOut()))
         // Suspend mocks default to null (not an empty map) — stub the override lookup globally.
         wheneverBlocking { repository.getRestSeconds(any()) }.thenReturn(emptyMap())
         viewModel = createViewModel()
@@ -83,7 +90,9 @@ class WorkoutViewModelTest {
     private fun createViewModel(): WorkoutViewModel {
         // read() returns null by default → no pending rest to resume in tests.
         val timer = WorkoutTimerController(context, time, CoroutineScope(testDispatcher), mock())
-        return WorkoutViewModel(repository, exerciseRepository, timer, time, appPreferences)
+        return WorkoutViewModel(
+            repository, exerciseRepository, timer, time, appPreferences, equipmentRepository,
+        )
     }
 
     @After

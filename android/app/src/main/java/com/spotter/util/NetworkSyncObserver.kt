@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
+import com.spotter.data.repository.EquipmentRepository
 import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.ProfileRepository
@@ -31,6 +32,7 @@ class NetworkSyncObserver @Inject constructor(
     private val metricRepository: MetricRepository,
     private val exerciseRepository: ExerciseRepository,
     private val profileRepository: ProfileRepository,
+    private val equipmentRepository: EquipmentRepository,
     private val appPreferences: AppPreferences,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -54,6 +56,8 @@ class NetworkSyncObserver @Inject constructor(
                         // Push a training-profile edit made offline, then re-pull the server copy
                         // (the coach's memory of the user's equipment lives there now).
                         try { profileRepository.refresh() } catch (_: Exception) {}
+                        // …and an equipment edit made offline.
+                        try { equipmentRepository.refresh() } catch (_: Exception) {}
                         // Best-effort exercise-catalog seed (offline search / preset resolution /
                         // offline muscle-group summary). Reaching the server here also means the
                         // queues above just drained, so stamp the stale-banner freshness marker.

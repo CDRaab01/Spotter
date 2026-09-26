@@ -52,6 +52,17 @@ MAX_ADJUSTMENT_ACTIONS = 6
 # session's starting load. Older history is a memory, not a prescription.
 FAMILY_EVIDENCE_DAYS = 90
 
+# Equipment inventory (app/loading.py, PUT /users/me/equipment). Values are in the inventory's
+# own unit (lb or kg); the bounds only have to reject nonsense, not describe every gym.
+INVENTORY_BAR_MAX = 100.0  # specialty bars top out well under this
+INVENTORY_PLATE_MAX = 100.0  # 100 lb / 50 kg plates exist; nothing heavier
+INVENTORY_MAX_PAIRS = 20
+INVENTORY_MAX_BARS = 6
+INVENTORY_MAX_PLATE_SIZES = 12
+INVENTORY_DUMBBELL_MAX = 200.0
+INVENTORY_MAX_DUMBBELLS = 100
+INVENTORY_STACK_STEP_MAX = 50.0
+
 
 def clamp_int(value: int, bounds: tuple[int, int]) -> int:
     lo, hi = bounds

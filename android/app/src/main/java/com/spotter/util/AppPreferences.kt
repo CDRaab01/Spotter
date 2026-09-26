@@ -86,6 +86,8 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
         private val AUTO_START_REST = booleanPreferencesKey("pref_auto_start_rest")
         private val HEALTH_CONNECT_ENABLED = booleanPreferencesKey("pref_health_connect_enabled")
         private val PROFILE_SYNC_PENDING = booleanPreferencesKey("pref_profile_sync_pending")
+        private val EQUIPMENT_JSON = stringPreferencesKey("pref_equipment_json")
+        private val EQUIPMENT_SYNC_PENDING = stringPreferencesKey("pref_equipment_sync_pending")
         private val COMEBACK_NUDGE_ANCHOR = stringPreferencesKey("pref_comeback_nudge_anchor")
         private val MORNING_NUDGE_HOUR = intPreferencesKey("pref_morning_nudge_hour")
         private val MORNING_NUDGE_MINUTE = intPreferencesKey("pref_morning_nudge_minute")
@@ -194,6 +196,29 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
 
     suspend fun setProfileSyncPending(value: Boolean) {
         context.dataStore.edit { it[PROFILE_SYNC_PENDING] = value }
+    }
+
+    /**
+     * The offline mirror of `GET /users/me/equipment`, as the serialized `EquipmentOut` JSON
+     * (owned by [com.spotter.data.repository.EquipmentRepository], which does the parsing). Null
+     * until the first pull or edit on this device.
+     */
+    val equipmentJson: Flow<String?> = context.dataStore.data.map { prefs -> prefs[EQUIPMENT_JSON] }
+
+    suspend fun setEquipmentJson(value: String) {
+        context.dataStore.edit { it[EQUIPMENT_JSON] = value }
+    }
+
+    /**
+     * An equipment write the server hasn't acknowledged yet: `""` none, `"put"` an edit, `"delete"`
+     * a reset to the default. Drained by [com.spotter.data.repository.EquipmentRepository].
+     */
+    val equipmentSyncPending: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[EQUIPMENT_SYNC_PENDING] ?: ""
+    }
+
+    suspend fun setEquipmentSyncPending(value: String) {
+        context.dataStore.edit { it[EQUIPMENT_SYNC_PENDING] = value }
     }
 
     /**
@@ -397,6 +422,9 @@ class AppPreferences @Inject constructor(@ApplicationContext private val context
             prefs.remove(PROFILE_LIMITATIONS)
             // The server copy is wiped by the same reset, so there is nothing left to push.
             prefs.remove(PROFILE_SYNC_PENDING)
+            // The reset clears the saved equipment inventory too (back to the default).
+            prefs.remove(EQUIPMENT_JSON)
+            prefs.remove(EQUIPMENT_SYNC_PENDING)
         }
     }
 }

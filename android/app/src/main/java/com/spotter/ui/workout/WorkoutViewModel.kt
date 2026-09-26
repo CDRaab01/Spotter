@@ -2,6 +2,7 @@ package com.spotter.ui.workout
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.spotter.data.model.EquipmentInventory
 import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.MuscleGroupSummary
@@ -11,11 +12,15 @@ import com.spotter.data.model.SetLogCreate
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.SetLogUpdate
 import com.spotter.data.model.SuggestedAdjustmentAction
+import com.spotter.data.repository.EquipmentRepository
 import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.SessionRepository
 import com.spotter.util.AppPreferences
+import com.spotter.util.ExerciseLoad
+import com.spotter.util.Loading
 import com.spotter.util.TimeProvider
 import com.spotter.util.UiState
+import com.spotter.util.WeightUnit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
@@ -27,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -58,7 +64,34 @@ class WorkoutViewModel @Inject constructor(
     private val workoutTimer: WorkoutTimerController,
     private val time: TimeProvider,
     appPreferences: AppPreferences,
+    equipmentRepository: EquipmentRepository,
 ) : ViewModel() {
+
+    /**
+     * The load arithmetic the phone does itself (plate calculator, warm-up ramp) runs on the
+     * user's own equipment — the standard gym in their display unit until they set one.
+     * Progression suggestions and seeded loads are already snapped server-side.
+     */
+    val inventory: StateFlow<EquipmentInventory> = combine(
+        equipmentRepository.equipment,
+        appPreferences.weightUnit,
+    ) { out, unit ->
+        EquipmentRepository.effectiveInventory(out, if (unit == WeightUnit.KG) "kg" else "lb")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Loading.DEFAULT_LB)
+
+    /** Catalog rows (equipment + name) for the session's exercises, from the offline mirror. */
+    private val exerciseMeta = MutableStateFlow<Map<String, ExerciseOut>>(emptyMap())
+
+    /** exerciseId → how that lift loads. Absent = catalog row not known yet. */
+    val exerciseLoads: StateFlow<Map<String, ExerciseLoad>> =
+        combine(inventory, exerciseMeta) { inv, meta ->
+            meta.mapValues { (_, ex) ->
+                ExerciseLoad(
+                    mode = Loading.mode(ex.equipment, ex.name),
+                    ladder = Loading.ladder(ex.equipment, ex.name, inv),
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     private val _session = MutableStateFlow<UiState<SessionOut>>(UiState.Loading)
     val session: StateFlow<UiState<SessionOut>> = _session
@@ -192,11 +225,19 @@ class WorkoutViewModel @Inject constructor(
             _session.value = try {
                 val data = sessionRepository.getSession(sessionId)
                 _exerciseNotes.value = data.exerciseNotes ?: emptyMap()
+                loadExerciseMeta(data.setLogs.map { it.exerciseId }.distinct())
                 UiState.Success(data)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Failed to load session")
             }
             loadPriorBests(sessionId)
+        }
+    }
+
+    private fun loadExerciseMeta(ids: List<String>) {
+        if (ids.all { it in exerciseMeta.value }) return
+        viewModelScope.launch {
+            runCatching { exerciseRepository.byIds(ids) }.getOrNull()?.let { exerciseMeta.value = it }
         }
     }
 

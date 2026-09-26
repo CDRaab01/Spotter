@@ -40,10 +40,10 @@ A personal fitness app. An Android client connects to a self-hosted server that 
 4. **Progress tracking** — persist weight (bodyweight and/or per-exercise load) and reps over time; expose for charting.
 5. **Programs** — multi-day programs (`WorkoutProgram` → ordered `ProgramDay`s, each linking a plan) with a "next day" suggestion on Home. **Preset programs** (StrongLifts 5x5, PPL, Upper/Lower, Full Body, Dumbbell-only, Bodyweight, **Back After a Break — Restart** and **Back After a Break — Ramp Up** (a staged returner pair, 2026-08-10), plus special-case presets: Knee-Friendly, Prenatal third-trimester, **Postpartum — First Weeks Back** and **Postpartum — Rebuilding Strength** (a staged pair), Lower-Back Friendly) live client-side in `ui/program/ProgramPresets.kt`; applying one resolves exercise names → ids via `GET /exercises` and reuses `POST /ai/programs/accept` to create the plans + program and activate it. Special-case presets avoid that case's contraindicated movement patterns and tell the user to get doctor/physio clearance in the description — they are training programs, not medical advice (consistent with the app's non-medical scope).
 6. **Exercise library** — searchable list of seeded exercises (`/exercises`), reachable from **Settings → Library & data** (and from any workout card's exercise name). Each entry opens a detail screen: form instructions, primary/secondary muscles, equipment, a weight/est-1RM history chart and personal records.
-7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode.
+7. **Workout helpers** — plate calculator, rest timer (with vibration), streaks, and a read-only warm-up ramp-up generator (40/60/80%) in workout mode. The plate calculator and warm-ups use the user's **equipment inventory** (Settings → Workout → My equipment), and the workout list auto-scrolls to the current set.
 
 ## Data Model
-- `User` — id, name, email, password-reset token fields, plus the **training profile** (`equipment`, `experience`, `goal`, `age_group`, `limitations`, `profile_updated_at`; migration `0016`, which also dropped the never-read `settings` column).
+- `User` — id, name, email, password-reset token fields, plus the **training profile** (`equipment`, `experience`, `goal`, `age_group`, `limitations`, `profile_updated_at`; migration `0016`, which also dropped the never-read `settings` column), plus `equipment_inventory` (JSON, migration `0017`: unit, bars, plate pairs, dumbbells, stack step — NULL = standard-gym default).
 - `Exercise` — id, name, muscle_group, equipment, `instructions` (form cues), `secondary_muscles`.
 - `WorkoutPlan` — id, user_id, name, source (manual | ai), created_at.
 - `PlannedExercise` — plan_id, exercise_id, target_sets, target_reps, target_weight, is_bodyweight, order, superset_group (nullable).
@@ -83,6 +83,7 @@ The AI assists with workout planning only. The server enforces these — never r
 - `GET /calendar?from=&to=`
 - `GET /exercises?search=`, `GET /exercises/{id}` (name, muscle group, equipment, form `instructions`, `secondary_muscles`), `GET /users/me`
 - `GET/PATCH /users/me/profile` — the persisted **training profile** (`equipment`, `experience`, `goal`, `age_group`, `limitations`, `profile_updated_at`). PATCH is partial: an omitted key is unchanged, an explicit `""`/`null` clears it. 30/min. This is what the coach reads as trusted context — see "Trusted context" in AI Guardrails.
+- `GET/PUT/DELETE /users/me/equipment` — the **equipment inventory** every suggested/seeded load is snapped to (`app/loading.py`): `{configured, inventory{unit, bars, plates[{weight, pairs}], dumbbells, stack_step}}`. GET on an unset user returns `configured:false` + the standard-gym default; PUT replaces the whole inventory (normalised: merged/sorted, zero-pair plates dropped); DELETE forgets it. PUT/DELETE 30/min; account reset clears it.
 - `GET /export` (full JSON), `GET /export/sets.csv` (flat per-set CSV) — both 5/min, `Content-Disposition` attachment.
 - `DELETE /sessions/{id}/sets/{set_id}` — remove a set from an in-progress session (409 once completed).
 - `GET /progress/exercises`, `GET /progress/exercises/{id}`, `GET /progress/records` (per-exercise PRs: top weight, est. 1RM, best set volume)
@@ -1170,3 +1171,61 @@ related Barbell Row ↔ Dumbbell Row ↔ Seated Cable Row anywhere. Server **400
   lift's own recent history — the in-workout set edit and the engine's stall→deload chip are the
   escape hatches; if that bites, the fix is a per-routine opt-out flag, not a ratio tweak.
 
+## Equipment inventory, loadable weights + workout auto-scroll (2026-09-25)
+
+Three reports from the owner: suggested increases like "+2 lb" that no plate makes; weight changes
+that ignore a barbell being loaded on **both** sides; and having to scroll back down to the current
+set every time a workout is reopened. Server **448 pytest green** (migrated scratch DB, `0017`
+round-tripped) + CI's `ruff==0.4.4 check app` clean; Android **512 unit tests green** +
+`compileDebugKotlin`; Roborazzi `settings_*` re-recorded and `equipment_*` added.
+
+### Why "+2 lb" happened (two causes)
+1. The progression engine added an abstract **+2.5 lb** to upper-body lifts. On a barbell that is
+   1.25 lb a side — a plate most people don't own. Deloads (×0.9, unrounded) and family seeds
+   (floored to 2.5) had the same blind spot.
+2. The client's `formatWeight` **truncated** (`toInt()`), so the resulting 117.5 displayed as
+   "117 lb" — reading as a 2 lb jump. Now one-decimal rounding.
+
+### Loadable weights (`app/loading.py`, invariant #9 in ARCHITECTURE.md)
+- The user's inventory + the exercise's catalog `equipment` → a `Ladder` of every load that
+  implement can make: **barbell** = any listed bar + a matching plate per side (bounded by owned
+  pairs — a subset sum, not greedy); **T-Bar Row** = one sleeve, plates only; **dumbbells** = the
+  listed weights; **machine/cable** = the stack step.
+- Add-weight = the lightest loadable weight ≥ one desired step up (the old 2.5/5 become *minimums*);
+  past the top of the equipment it holds and pushes reps. Stall deload and deload-week seeds land on
+  the nearest load strictly below. Session seeds (prescription and family) floor to a loadable
+  weight and are **never rounded up** past what was prescribed. Reasons say how: "add 5 lb (2.5 lb
+  per side)", "move up to the 30 lb dumbbells".
+- **Unset inventory = a standard commercial gym** (45/35/15 bars, plates to 2.5, dumbbells 5–100 by
+  5, 5 lb stack), so the fix applies before anyone configures anything. The inventory keeps its own
+  unit (plates are stamped lb or kg); ladders convert to canonical pounds.
+- **[AI context + prompt change]** a *saved* inventory adds a `Loadable weights` line to the trusted
+  Training profile block, and `prompts.py` gains one rule: prescribe only loads that equipment can
+  make (a bar moves in twice the smallest plate), overriding the generic Progressive Overload
+  increments. The default inventory is deliberately *not* claimed to the coach. Pinned by
+  `test_equipment.py`.
+
+### Android
+- **Settings → Workout → My equipment** (`EquipmentScreen` / stateless `EquipmentContent`): unit,
+  bars, plate pairs per size (steppers), per-hand dumbbells (chips + all/clear), stack step. Draft +
+  one Save (the PUT is rate-limited), discard guard on back. `EquipmentRepository` mirrors
+  `ProfileRepository` (mirror-first, `IOException` queues — remembering put vs delete).
+- `util/Loading.kt` mirrors the server module (same defaults and cases — keep them in step). The
+  **plate calculator** now uses the owned bars/plate counts (search, not greedy), handles T-bar
+  loading, and is hidden for dumbbell/stack lifts; **warm-ups** snap to loadable weights.
+- **Auto-scroll** (`WorkoutAutoScroll`, pure + tested): open → jump to the current set; finish an
+  exercise → glide to the next; next set → nudged into view past the rest ring. Supersets count
+  round-robin; un-ticking an earlier set never scrolls; `rememberSaveable` stops re-jumps on
+  rotation/return. The list state was also hoisted out of the loading branch.
+
+### Deliberately not done (follow-ups)
+- **AI live adjustments aren't snapped server-side** — the coach is told the loadable weights, but
+  an `adjust_weight` it proposes is applied as shown on the card. Snapping at extraction would need
+  the inventory inside `services/ai/client.py`.
+- **No per-exercise loading override**: catalog `machine` lifts that are really plate-loaded sleds
+  (leg press, hack squat) use the stack step. Same increments in practice; revisit if it bites.
+- **Offline-created sessions** keep the raw prescription (seeding is server-side), the same accepted
+  gap as prior-bests.
+- The free-text Training profile `equipment` (what the coach reads for exercise *selection*) and the
+  structured inventory (what loads are *possible*) are separate on purpose; merging them into one
+  form is a possible later pass.

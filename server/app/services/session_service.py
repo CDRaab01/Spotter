@@ -19,6 +19,7 @@ from app.limits import (
     FAMILY_EVIDENCE_DAYS,
     clamp_weight,
 )
+from app.loading import Ladder, ladder_for
 from app.movement_families import Evidence, derive_weight, family_names, family_of
 from app.progression import (
     LOWER_BODY_GROUPS,
@@ -39,18 +40,46 @@ from app.schemas.session import (
     SetLogUpdate,
 )
 from app.services import program_service
+from app.services.equipment_service import load_inventory
 
 # Number of recent sessions per exercise the progression engine looks back over (stall/PR).
 _PROGRESSION_HISTORY_SESSIONS = 5
 
 
-def _deload_weight(weight: float | None) -> float | None:
-    """A deload-week seed load: weight * DELOAD_WEIGHT_FACTOR, rounded to the
-    nearest 2.5 lb (plate-friendly) and clamped into bounds. None (bodyweight)
+def _deload_weight(weight: float | None, ladder: Ladder | None = None) -> float | None:
+    """A deload-week seed load: weight * DELOAD_WEIGHT_FACTOR, landed on the nearest load the
+    user's equipment makes below the working weight (``ladder``) -- or, for a lift that isn't
+    load-modelled, the nearest 2.5 lb -- and clamped into bounds. Already at the lightest load
+    the equipment makes: unchanged (the deload week still trims the sets). None (bodyweight)
     stays None."""
     if weight is None:
         return None
-    return clamp_weight(round(weight * DELOAD_WEIGHT_FACTOR / 2.5) * 2.5)
+    target = weight * DELOAD_WEIGHT_FACTOR
+    if ladder is not None:
+        lighter = ladder.nearest_below(target, ceiling=weight)
+        return clamp_weight(lighter if lighter is not None else weight)
+    return clamp_weight(round(target / 2.5) * 2.5)
+
+
+async def _ladders_for(
+    db: AsyncSession, user_id: uuid.UUID, exercise_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, Ladder]:
+    """The user's load ladder per exercise (``app.loading``), keyed by exercise id. Exercises
+    that aren't load-modelled (bodyweight, unknown equipment) are simply absent."""
+    if not exercise_ids:
+        return {}
+    inventory = await load_inventory(db, user_id)
+    rows = await db.execute(
+        select(Exercise.id, Exercise.equipment, Exercise.name).where(
+            Exercise.id.in_(exercise_ids)
+        )
+    )
+    ladders: dict[uuid.UUID, Ladder] = {}
+    for ex_id, equipment, name in rows.all():
+        ladder = ladder_for(equipment, name, inventory)
+        if ladder is not None:
+            ladders[ex_id] = ladder
+    return ladders
 
 
 async def _family_seed_weights(
@@ -59,6 +88,7 @@ async def _family_seed_weights(
     planned: list[RoutineExercise],
     on_date: datetime.date,
     exclude_session_id: uuid.UUID,
+    ladders: dict[uuid.UUID, Ladder] | None = None,
 ) -> dict[uuid.UUID, float]:
     """Starting loads implied by the user's recent history on each planned lift's
     movement family (``app.movement_families``), keyed by exercise id.
@@ -67,7 +97,8 @@ async def _family_seed_weights(
     ``FAMILY_EVIDENCE_DAYS`` before ``on_date``, across all of this user's other sessions.
     Completed-only is load-bearing: the seeds this function feeds are written as *uncompleted*
     rows, so counting them would make a derived load its own evidence next session.
-    Bodyweight rows and lifts outside every family are simply absent from the result.
+    Bodyweight rows and lifts outside every family are simply absent from the result. With a
+    ``ladders`` entry the derived load is floored to one the user's equipment actually makes.
     """
     weighted = [pe for pe in planned if not pe.is_bodyweight]
     if not weighted:
@@ -110,7 +141,10 @@ async def _family_seed_weights(
         name = name_by_id.get(pe.exercise_id)
         if name is None:
             continue
-        w = derive_weight(name, pe.target_reps, evidence)
+        ladder = (ladders or {}).get(pe.exercise_id)
+        w = derive_weight(
+            name, pe.target_reps, evidence, snap=ladder.floor if ladder is not None else None
+        )
         if w is not None:
             derived[pe.exercise_id] = w
     return derived
@@ -170,12 +204,16 @@ async def create_session(
             .order_by(RoutineExercise.order)
         )
         planned_exercises = pe_result.scalars().all()
+        # Every seeded load is one the user's equipment can make (app/loading.py).
+        ladders = await _ladders_for(
+            db, user_id, [pe.exercise_id for pe in planned_exercises if not pe.is_bodyweight]
+        )
         # Related lifts progress together: a lift's starting load is the greater of its
         # routine prescription and what the user's recent history on its movement family
         # implies (a Barbell Row at 100 lifts a Dumbbell Row prescribed at 10). Never below
         # the prescription, never written back to the routine.
         derived_by_ex = await _family_seed_weights(
-            db, user_id, planned_exercises, req.date, session.id
+            db, user_id, planned_exercises, req.date, session.id, ladders
         )
         # Scheduled deload: when this routine's active program is in its deload week,
         # seed fewer sets at a lighter load so the week self-programs.
@@ -183,12 +221,21 @@ async def create_session(
         for pe in planned_exercises:
             target_sets = pe.target_sets or 3
             weight = pe.target_weight
+            ladder = ladders.get(pe.exercise_id)
             derived = derived_by_ex.get(pe.exercise_id)
             if derived is not None:
                 weight = derived if weight is None else max(weight, derived)
+            if weight is not None and ladder is not None:
+                # A prescription the equipment can't make (an AI-authored 117.5 on a bar whose
+                # smallest plate is 2.5) seeds the heaviest load at or below it: rounding down
+                # is the conservative side. Below the lightest load it is left alone rather
+                # than rounded *up* past what was prescribed.
+                loadable = ladder.floor(weight)
+                if loadable is not None:
+                    weight = loadable
             if is_deload:
                 target_sets = math.ceil(target_sets * DELOAD_SET_FACTOR)
-                weight = _deload_weight(weight)
+                weight = _deload_weight(weight, ladder)
             for set_num in range(1, target_sets + 1):
                 db.add(
                     SetLog(
@@ -534,6 +581,8 @@ async def get_prior_bests(
     for ex in ex_result.scalars().all():
         exercise_names[ex.id] = ex.name
         exercise_muscle[ex.id] = ex.muscle_group
+    # What each lift's next load can be on the user's own equipment.
+    ladders = await _ladders_for(db, user_id, exercise_ids)
 
     # The routine's prescription (target_reps + bodyweight flag) per exercise — the double-progression
     # threshold. Absent (freeform session or exercise not in the routine) → the engine degrades to
@@ -637,6 +686,7 @@ async def get_prior_bests(
             exercise_history=history[1:],
             muscle_group=exercise_muscle.get(exercise_id),
             is_bodyweight=is_bw,
+            ladder=ladders.get(exercise_id),
         )
 
         priors.append(
