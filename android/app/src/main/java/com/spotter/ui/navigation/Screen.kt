@@ -43,6 +43,8 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String) = "session_detail/$sessionId"
     }
     data object Settings : Screen("settings")
+    /** Settings → Workout → My equipment: the bars/plates/dumbbells suggestions are snapped to. */
+    data object Equipment : Screen("equipment")
     data object Programs : Screen("programs")
     data object ProgramPresets : Screen("program_presets")
     data object ProgramPresetDetail : Screen("program_preset_detail/{presetId}") {

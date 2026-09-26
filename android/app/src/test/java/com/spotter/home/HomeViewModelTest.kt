@@ -25,6 +25,7 @@ import com.spotter.data.model.ProgramDayOut
 import com.spotter.data.model.UserOut
 import com.spotter.data.remote.ApiService
 import com.spotter.data.repository.AiRepository
+import com.spotter.data.repository.EquipmentRepository
 import com.spotter.data.repository.ExerciseRepository
 import com.spotter.data.repository.MetricRepository
 import com.spotter.data.repository.ProfileRepository
@@ -76,6 +77,7 @@ class HomeViewModelTest {
     private lateinit var programRepository: ProgramRepository
     private lateinit var exerciseRepository: ExerciseRepository
     private lateinit var profileRepository: ProfileRepository
+    private lateinit var equipmentRepository: EquipmentRepository
     private lateinit var appPreferences: AppPreferences
     private lateinit var sessionDao: WorkoutSessionDao
     private lateinit var programDao: WorkoutProgramDao
@@ -95,6 +97,7 @@ class HomeViewModelTest {
         programRepository = mock()
         exerciseRepository = mock()
         profileRepository = mock()
+        equipmentRepository = mock()
         appPreferences = mock()
         sessionDao = mock()
         programDao = mock()
@@ -125,6 +128,7 @@ class HomeViewModelTest {
         programRepository,
         exerciseRepository,
         profileRepository,
+        equipmentRepository,
         appPreferences,
         apiService,
         sessionDao,

@@ -13,12 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.loading import describe_inventory
 from app.models.body_metric import BodyMetric
 from app.models.exercise import Exercise
 from app.models.set_log import SetLog
 from app.models.user import User
 from app.models.workout_routine import WorkoutRoutine
 from app.models.workout_session import WorkoutSession
+from app.services.equipment_service import parse_inventory
 
 # Bounds that keep the injected context small regardless of history size.
 _MAX_SESSIONS = 5
@@ -177,6 +179,7 @@ async def _training_profile_block(db: AsyncSession, user_id: uuid.UUID) -> str |
             User.goal,
             User.age_group,
             User.limitations,
+            User.equipment_inventory,
         ).where(User.id == user_id)
     )
     row = result.first()
@@ -192,9 +195,14 @@ async def _training_profile_block(db: AsyncSession, user_id: uuid.UUID) -> str |
     )
     lines = [
         f"- {label}: {value.strip()}"
-        for label, value in zip(labels, row)
+        for label, value in zip(labels, row[:5])
         if value and value.strip()
     ]
+    # Only a *saved* inventory: the standard-gym default is the server's assumption, not
+    # something the athlete said, and could contradict the free-text equipment line.
+    inventory = parse_inventory(row[5])
+    if inventory is not None:
+        lines.append(f"- Loadable weights: {describe_inventory(inventory)}")
     if not lines:
         return None
     header = (

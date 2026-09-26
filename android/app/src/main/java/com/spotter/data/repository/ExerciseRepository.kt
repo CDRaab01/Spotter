@@ -48,6 +48,18 @@ class ExerciseRepository @Inject constructor(
     }
 
     /**
+     * Catalog rows for [ids], mirror first (instant, offline); ids the mirror doesn't know yet are
+     * fetched one by one best-effort. Missing ids are simply absent — callers treat that as
+     * "equipment unknown".
+     */
+    suspend fun byIds(ids: List<String>): Map<String, ExerciseOut> {
+        if (ids.isEmpty()) return emptyMap()
+        val known = dao.getByIds(ids).associate { it.id to it.toOut() }
+        val missing = ids.filterNot { it in known }
+        return known + missing.mapNotNull { id -> runCatching { getExercise(id) }.getOrNull()?.let { id to it } }
+    }
+
+    /**
      * Best-effort full-catalog refresh — the opportunistic seed run by the Home sync round and
      * the reconnect observer. Swallows every failure silently (it's a seed, not a feature) and
      * returns whether the server was reached, so callers may use it as a freshness signal.

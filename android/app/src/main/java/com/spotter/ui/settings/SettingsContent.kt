@@ -71,6 +71,7 @@ data class SettingsUiState(
     val darkMode: DarkModePreference = DarkModePreference.SYSTEM,
     val weightUnit: WeightUnit = WeightUnit.LBS,
     val distanceUnit: DistanceUnit = DistanceUnit.MI,
+    val equipmentSummary: String = "",
     val trackRpe: Boolean = false,
     val autoStartRest: Boolean = true,
     val cadenceDays: Int = AppPreferences.DEFAULT_CADENCE_DAYS,
@@ -95,6 +96,7 @@ data class SettingsUiState(
  * without wiring a ViewModel or a NavController.
  */
 data class SettingsActions(
+    val onOpenEquipment: () -> Unit = {},
     val onSetTrackRpe: (Boolean) -> Unit = {},
     val onSetAutoStartRest: (Boolean) -> Unit = {},
     val onSetCadenceDays: (Int) -> Unit = {},
@@ -172,6 +174,19 @@ internal fun ProfileBlock(user: UiState<UserOut>) {
 @Composable
 internal fun WorkoutBlock(state: SettingsUiState, actions: SettingsActions) {
     SettingsSection("Workout") {
+        // Leads the section: it decides what every suggested weight can be.
+        PulseSettingRow(
+            label = "My equipment",
+            subtitle = state.equipmentSummary.ifBlank { null },
+            leading = {
+                Icon(
+                    Icons.Default.FitnessCenter,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = actions.onOpenEquipment,
+        )
         PulseSwitchRow(
             title = "Track RPE",
             subtitle = "Completed sets show a 1–10 effort entry (one decimal).",

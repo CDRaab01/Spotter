@@ -17,8 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.clickable
@@ -51,6 +55,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +68,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
+import com.spotter.data.model.EquipmentInventory
 import com.spotter.data.model.ExerciseOut
 import com.spotter.data.model.ExercisePrior
 import com.spotter.data.model.SetLogOut
@@ -80,11 +86,16 @@ import design.pulse.ui.theme.PulseMotion
 import com.spotter.ui.theme.SpotterTheme
 import com.spotter.ui.theme.formatWeight
 import com.spotter.ui.theme.formatWeightLabel
-import com.spotter.ui.theme.toDisplay
+import com.spotter.util.ExerciseLoad
+import com.spotter.util.Loading
 import com.spotter.util.UiState
 import com.spotter.util.WeightUnit
+import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Lets the rest ring finish opening above the list before the current set is revealed. */
+private const val REVEAL_SETTLE_MS = 350L
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun WorkoutScreen(
     sessionId: String,
@@ -102,6 +113,8 @@ fun WorkoutScreen(
     val trackRpe by viewModel.trackRpe.collectAsState()
     val pendingRestDuration by viewModel.pendingRestDuration.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
+    val inventory by viewModel.inventory.collectAsState()
+    val exerciseLoads by viewModel.exerciseLoads.collectAsState()
     val timerText = formatElapsed(elapsed)
     val isFinishing = finishState is UiState.Loading
 
@@ -147,6 +160,41 @@ fun WorkoutScreen(
     }
 
     val allSets = (session as? UiState.Success)?.data?.setLogs ?: emptyList()
+
+    // Fold consecutive exercises that share a superset group into one bracketed block
+    // (A1/A2 with shared rest); everything else stays a standalone card. One block = one list item.
+    val blocks = remember(allSets) {
+        SupersetGrouping.group(allSets.groupBy { it.exerciseId }.entries.toList()) {
+            it.value.firstOrNull()?.supersetGroup
+        }
+    }
+
+    // Keep the set you're on in view (WorkoutAutoScroll): straight to it when the workout opens,
+    // glide to the next exercise when one is finished, and nudge the next set up past the rest
+    // ring. Saveable, so rotation or coming back from the coach doesn't re-jump.
+    val listState = rememberLazyListState()
+    val currentRowRequester = remember { BringIntoViewRequester() }
+    val current = remember(blocks) {
+        WorkoutAutoScroll.currentSet(blocks.map { block -> block.items.map { it.value } })
+    }
+    var scrolledBlock by rememberSaveable { mutableStateOf<Int?>(null) }
+    var scrolledSetId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(current) {
+        val target = current ?: return@LaunchedEffect
+        val move = WorkoutAutoScroll.move(scrolledBlock, scrolledSetId, target)
+        scrolledBlock = target.blockIndex
+        scrolledSetId = target.setId
+        when (move) {
+            WorkoutAutoScroll.Move.JUMP -> listState.scrollToItem(target.blockIndex)
+            WorkoutAutoScroll.Move.ANIMATE -> listState.animateScrollToItem(target.blockIndex)
+            else -> Unit
+        }
+        if (move != WorkoutAutoScroll.Move.NONE) {
+            delay(REVEAL_SETTLE_MS)
+            currentRowRequester.bringIntoView()
+        }
+    }
+
     val completedCount = allSets.count { it.completed }
     val totalCount = allSets.size
     val progress = if (totalCount > 0) completedCount.toFloat() / totalCount else 0f
@@ -290,13 +338,7 @@ fun WorkoutScreen(
                 ) { Text(state.message, color = MaterialTheme.colorScheme.error) }
 
                 is UiState.Success -> {
-                    val grouped = state.data.setLogs.groupBy { it.exerciseId }
-                    // Fold consecutive exercises that share a superset group into one bracketed block
-                    // (A1/A2 with shared rest); everything else stays a standalone card.
-                    val blocks = SupersetGrouping.group(grouped.entries.toList()) {
-                        it.value.firstOrNull()?.supersetGroup
-                    }
-                    if (grouped.isEmpty()) {
+                    if (state.data.setLogs.isEmpty()) {
                         Box(
                             Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
@@ -317,6 +359,7 @@ fun WorkoutScreen(
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
+                            state = listState,
                             contentPadding = PaddingValues(SpotterTheme.spacing.lg),
                             verticalArrangement = Arrangement.spacedBy(SpotterTheme.spacing.md),
                         ) {
@@ -329,6 +372,10 @@ fun WorkoutScreen(
                                         priorBest = priorBests[exerciseId],
                                         positionLabel = positionLabel,
                                         trackRpe = trackRpe,
+                                        inventory = inventory,
+                                        load = exerciseLoads[exerciseId],
+                                        currentSetId = current?.setId,
+                                        currentRowModifier = Modifier.bringIntoViewRequester(currentRowRequester),
                                         onCommitValues = { setLog, reps, weight ->
                                             viewModel.editSet(sessionId, setLog, reps, weight)
                                         },
@@ -526,6 +573,10 @@ private fun ExerciseCard(
     priorBest: ExercisePrior?,
     positionLabel: String? = null,
     trackRpe: Boolean = false,
+    inventory: EquipmentInventory = Loading.DEFAULT_LB,
+    load: ExerciseLoad? = null,
+    currentSetId: String? = null,
+    currentRowModifier: Modifier = Modifier,
     onCommitValues: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onToggleComplete: (SetLogOut, reps: Int, weightLbs: Double?) -> Unit,
     onAddSet: (SetLogOut) -> Unit,
@@ -556,16 +607,23 @@ private fun ExerciseCard(
         ?: priorBest?.weight
     var showWarmUp by remember { mutableStateOf(false) }
     if (showWarmUp && workingWeight != null) {
-        WarmUpDialog(workingWeightLbs = workingWeight, onDismiss = { showWarmUp = false })
+        WarmUpDialog(
+            workingWeightLbs = workingWeight,
+            onDismiss = { showWarmUp = false },
+            ladder = load?.ladder,
+        )
     }
     var showPlateCalc by remember { mutableStateOf(false) }
     if (showPlateCalc) {
         PlateCalculatorDialog(
-            initialWeight = weightUnit.toDisplay(workingWeight ?: 0.0).toFloat(),
-            weightUnit = weightUnit,
+            initialWeightLbs = workingWeight ?: 0.0,
+            inventory = inventory,
             onDismiss = { showPlateCalc = false },
+            singleSided = load?.mode == Loading.SINGLE,
         )
     }
+    // Plates mean nothing for dumbbells or a pin-loaded stack; unknown equipment keeps the button.
+    val platesApply = load?.mode != Loading.DUMBBELL && load?.mode != Loading.STACK
     // Set-type picker (also hosts deletion): opened from a row's set-number cell.
     var typePickerFor by remember { mutableStateOf<SetLogOut?>(null) }
     typePickerFor?.let { picked ->
@@ -779,6 +837,7 @@ private fun ExerciseCard(
                 onOpenTypePicker = { typePickerFor = setLog },
                 trackRpe = trackRpe,
                 onRpeCommit = { rpe -> onRpeCommit(setLog, rpe) },
+                modifier = if (setLog.id == currentSetId) currentRowModifier else Modifier,
             )
         }
         Row(
@@ -786,8 +845,10 @@ private fun ExerciseCard(
             horizontalArrangement = Arrangement.End,
         ) {
             if (workingWeight != null && workingWeight > 0) {
-                TextButton(onClick = { showPlateCalc = true }) {
-                    Text("Plates")
+                if (platesApply) {
+                    TextButton(onClick = { showPlateCalc = true }) {
+                        Text("Plates")
+                    }
                 }
                 TextButton(onClick = { showWarmUp = true }) {
                     Text("Warm-up")

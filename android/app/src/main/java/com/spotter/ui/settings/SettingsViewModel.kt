@@ -11,6 +11,7 @@ import com.spotter.data.local.entity.WorkoutProgramEntity
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
 import com.spotter.data.remote.ApiService
+import com.spotter.data.repository.EquipmentRepository
 import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.di.IoDispatcher
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -47,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val database: SpotterDatabase,
     private val programRepository: ProgramRepository,
     private val profileRepository: ProfileRepository,
+    private val equipmentRepository: EquipmentRepository,
     private val exportRepository: ExportRepository,
     private val healthConnectManager: HealthConnectManager,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
@@ -187,6 +190,11 @@ class SettingsViewModel @Inject constructor(
     /** Set once the user edits a field, so a slow refresh can't overwrite what they're typing. */
     private var profileEdited = false
 
+    /** The "My equipment" row's subtitle, from the offline mirror (refreshed in init). */
+    val equipmentSummary: StateFlow<String> = equipmentRepository.equipment
+        .map { EquipmentOptions.summary(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
     // ── Health Connect ────────────────────────────────────────────────────────
 
     /** Whether this device can use Health Connect at all — static per install, read once. */
@@ -213,6 +221,7 @@ class SettingsViewModel @Inject constructor(
         loadServerVersion()
         loadProfile()
         viewModelScope.launch { runCatching { programRepository.sync() } }
+        viewModelScope.launch { runCatching { equipmentRepository.refresh() } }
     }
 
     /**

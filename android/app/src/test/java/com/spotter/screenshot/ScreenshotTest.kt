@@ -51,9 +51,14 @@ import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.spotter.R
 import com.spotter.data.local.entity.WorkoutProgramEntity
+import com.spotter.data.model.EquipmentInventory
+import com.spotter.data.model.PlatePair
 import com.spotter.data.model.SetLogOut
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
+import com.spotter.ui.settings.EquipmentActions
+import com.spotter.ui.settings.EquipmentContent
+import com.spotter.ui.settings.EquipmentUiState
 import com.spotter.ui.settings.RemindersBlock
 import com.spotter.ui.settings.SettingsActions
 import com.spotter.ui.settings.SettingsContent
@@ -136,6 +141,8 @@ class ScreenshotTest {
     @Test fun settings_reminders_dark() = capture("settings_reminders_dark", dark = true) { SettingsRemindersScene() }
     @Test fun settings_profile_light() = capture("settings_profile_light", dark = false) { SettingsProfileScene() }
     @Test fun settings_profile_dark() = capture("settings_profile_dark", dark = true) { SettingsProfileScene() }
+    @Test fun equipment_light() = capture("equipment_light", dark = false) { EquipmentScene() }
+    @Test fun equipment_dark() = capture("equipment_dark", dark = true) { EquipmentScene() }
     @Test fun summary_pr_dark() = capture("summary_pr_dark", dark = true) { SummaryScene(prCount = 2, perfect = false) }
     @Test fun shell_dark() = capture("shell_dark", dark = true) { ShellScene() }
     @Test fun coach_adjustment_dark() = capture("coach_adjustment_dark", dark = true) { CoachAdjustmentScene() }
@@ -618,6 +625,7 @@ internal fun settingsFixture(
         VersionOut(name = "Spotter API", version = "1.1.2", commit = "44fe4b4", builtAt = ""),
     ),
     nudgeEnabled = nudgeEnabled,
+    equipmentSummary = "45 lb bar · plates down to 2.5 lb · dumbbells 5–50 lb in 5 lb steps",
     programs = listOf(
         WorkoutProgramEntity(
             id = "p1", serverId = "p1", name = "Push / Pull / Legs", isActive = true,
@@ -650,6 +658,29 @@ internal fun SettingsRemindersScene() {
     ) {
         RemindersBlock(settingsFixture(nudgeEnabled = true), SettingsActions())
     }
+}
+
+/** Settings → My equipment on a saved home-gym inventory (the real stateless content). */
+@Composable
+internal fun EquipmentScene() {
+    EquipmentContent(
+        state = EquipmentUiState(
+            loading = false,
+            configured = true,
+            draft = EquipmentInventory(
+                unit = "lb",
+                bars = listOf(45.0, 25.0),
+                plates = listOf(
+                    PlatePair(45.0, 2), PlatePair(25.0, 1), PlatePair(10.0, 2),
+                    PlatePair(5.0, 1), PlatePair(2.5, 1),
+                ),
+                dumbbells = (1..10).map { it * 5.0 },
+                stackStep = null,
+            ),
+            dirty = true,
+        ),
+        actions = EquipmentActions(),
+    )
 }
 
 /** The training-profile form — guards the chip group that used to break labels mid-word. */

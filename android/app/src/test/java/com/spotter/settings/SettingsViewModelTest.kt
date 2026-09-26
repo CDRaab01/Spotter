@@ -1,12 +1,14 @@
 package com.spotter.settings
 
 import com.spotter.data.local.SpotterDatabase
+import com.spotter.data.model.EquipmentOut
 import com.spotter.data.model.UserOut
 import com.spotter.data.model.VersionOut
 import com.spotter.data.export.ExportKind
 import com.spotter.data.export.ExportRepository
 import com.spotter.data.export.ExportedFile
 import com.spotter.data.remote.ApiService
+import com.spotter.data.repository.EquipmentRepository
 import com.spotter.data.repository.ProfileRepository
 import com.spotter.data.repository.ProgramRepository
 import com.spotter.health.HealthConnectManager
@@ -52,6 +54,7 @@ class SettingsViewModelTest {
     private lateinit var database: SpotterDatabase
     private lateinit var programRepository: ProgramRepository
     private lateinit var profileRepository: ProfileRepository
+    private lateinit var equipmentRepository: EquipmentRepository
     private lateinit var exportRepository: ExportRepository
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var viewModel: SettingsViewModel
@@ -67,6 +70,7 @@ class SettingsViewModelTest {
         database = mock()
         programRepository = mock()
         profileRepository = mock()
+        equipmentRepository = mock()
         exportRepository = mock()
         healthConnectManager = mock()
         whenever(appPreferences.darkMode).thenReturn(flowOf(DarkModePreference.SYSTEM))
@@ -89,6 +93,7 @@ class SettingsViewModelTest {
         whenever(appPreferences.quietEndTime).thenReturn(flowOf(TimeOfDay(7, 0)))
         whenever(programRepository.programs).thenReturn(flowOf(emptyList()))
         wheneverBlocking { profileRepository.current() }.thenReturn(UserProfile())
+        whenever(equipmentRepository.equipment).thenReturn(flowOf(EquipmentOut()))
         whenever(healthConnectManager.permissions).thenReturn(healthPermissions)
         whenever(healthConnectManager.availability())
             .thenReturn(HealthConnectManager.Availability.AVAILABLE)
@@ -99,7 +104,7 @@ class SettingsViewModelTest {
 
     private fun createViewModel() = SettingsViewModel(
         api, tokenStore, appPreferences, database, programRepository, profileRepository,
-        exportRepository, healthConnectManager, testDispatcher,
+        equipmentRepository, exportRepository, healthConnectManager, testDispatcher,
     )
 
     @After

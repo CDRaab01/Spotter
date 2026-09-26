@@ -24,7 +24,9 @@ Design rules (each pinned by ``tests/test_movement_families.py``):
   *target* but inflates a *source* (a 400 lb leg press is not a 267 lb squat). Machine/cable
   stacks and shaky-ratio lifts are ``source=False`` — they can be seeded, never seed others.
   An exercise's own history always counts for itself (ratio identity).
-* **Floor to a plate-friendly increment**, then clamp. Rounding down is the conservative side.
+* **Floor to a loadable weight**, then clamp. Rounding down is the conservative side. With the
+  user's equipment ladder (``snap``) that is the heaviest load they can actually make at or below
+  the estimate; without one, the entry's generic ``increment``.
 * **Bodyweight movements are never in a family** — there is no load to derive.
 
 Pure functions of their inputs: the service loads rows and passes them in; no I/O.
@@ -32,7 +34,7 @@ Pure functions of their inputs: the service loads rows and passes them in; no I/
 
 import datetime
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from app.limits import clamp_weight
@@ -160,6 +162,7 @@ def derive_weight(
     target_name: str,
     target_reps: int | None,
     evidence: Iterable[Evidence],
+    snap: Callable[[float], float | None] | None = None,
 ) -> float | None:
     """The starting load for ``target_name`` implied by the user's recent history on its
     movement family, or ``None`` when nothing applies.
@@ -167,8 +170,8 @@ def derive_weight(
     For each family member that is a ``source`` (or is the target itself), only its **most
     recent** session counts; the best estimated 1RM of that session, divided by the member's
     ratio, puts it on the family's reference scale. The strongest reference wins, is scaled to
-    the target's ratio, solved back for ``target_reps``, floored to the target's increment and
-    clamped into bounds.
+    the target's ratio, solved back for ``target_reps``, floored to a loadable weight (``snap``,
+    the user's equipment ladder — else the target's generic increment) and clamped into bounds.
     """
     target = FAMILIES.get(target_name)
     if target is None:
@@ -197,6 +200,9 @@ def derive_weight(
     reps = _capped_reps(target_reps, _DEFAULT_TARGET_REPS)
     target_e1rm = reference * target.ratio
     raw = target_e1rm if reps <= 1 else target_e1rm / (1 + reps / 30.0)
+    if snap is not None:
+        loadable = snap(raw)
+        return clamp_weight(loadable) if loadable is not None else None
     # The epsilon keeps an exact identity (own history at the same reps) from landing one float
     # ulp short of the increment boundary and flooring a whole step down.
     floored = math.floor(raw / target.increment + 1e-9) * target.increment
